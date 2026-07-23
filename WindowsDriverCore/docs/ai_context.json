@@ -6,81 +6,52 @@
     "port": 4723,
     "launchBrowser": false,
     "license": "MIT",
-    "readmePath": "docs/README.md"
-  },
-  "coreEndpoints": [
-    {
-      "method": "GET",
-      "path": "/status",
-      "description": "Server status and readiness",
-      "response": {"value": {"ready": true, "message": "Windows WebDriver replacement is running"}}
-    },
-    {
-      "method": "POST",
-      "path": "/session",
-      "description": "Create new session with capabilities",
-      "requestBody": {"capabilities": {"alwaysMatch": {"platformName": "Windows", "app": "Path/To/App.exe"}}},
-      "response": {"value": {"sessionId": "uuid", "capabilities": {}}}
-    },
-    {
-      "method": "DELETE",
-      "path": "/session/{sessionId}",
-      "description": "Terminate session",
-      "response": {"value": null}
-    },
-    {
-      "method": "POST",
-      "path": "/session/{sessionId}/element",
-      "description": "Create new element",
-      "requestBody": {"using": "accessibility id", "value": "LoginButton"},
-      "response": {"value": {"elementId": "uuid", "type": "element"}}
-    },
-    {
-      "method": "POST",
-      "path": "/session/{sessionId}/element/{elementId}/click",
-      "description": "Click element",
-      "response": {"value": null}
-    },
-    {
-      "method": "POST",
-      "path": "/session/{sessionId}/element/{elementId}/value",
-      "description": "Send keys to element",
-      "requestBody": {"text": "hello world"},
-      "response": {"value": null}
-    },
-    {
-      "method": "GET",
-      "path": "/session/{sessionId}/screenshot",
-      "description": "Take screenshot",
-      "response": {"value": "iVBORw0KGgoAAAANSUhEUg..."}
+    "readmePath": "docs/README.md",
+    "architecture": {
+      "pattern": "SOLID with domain-driven folders",
+      "diRegistration": "Program.cs via builder.Services",
+      "responseFormat": "WebDriverResponse<T> wrapper with { value: ... } except /status/ which returns top-level"
     }
-  ],
+  },
+  "folders": {
+    "Messages": "WebDriver protocol DTOs (record types)",
+    "Sessions": "Session lifecycle interfaces and implementations",
+    "Windows": "Win32 HWND discovery interfaces",
+    "Applications": "Process launch/close interfaces",
+    "Automation": "UIAutomation element search and interaction interfaces",
+    "Screenshots": "GDI screenshot capture interfaces",
+    "Routes": "Minimal API endpoint registration (extension methods)",
+    "ErrorHandling": "Exception types and WebDriver error code mapping"
+  },
+  "interfaces": {
+    "ISessionStore": { "description": "Session CRUD", "implemented": true, "impl": "SessionStore" },
+    "IWindowFinder": { "description": "HWND discovery via EnumWindows", "implemented": false },
+    "IAppLauncher": { "description": "Process.Start and cleanup", "implemented": false },
+    "IElementFinder": { "description": "UIAutomation FindFirst/FindAll", "implemented": false },
+    "IElementInteractor": { "description": "Click, SendKeys, GetText, etc.", "implemented": false },
+    "IScreenshotCapture": { "description": "GDI BitBlt → PNG → Base64", "implemented": false }
+  },
+  "routes": {
+    "StatusRoutes": { "endpoints": ["GET /status/"], "implemented": true },
+    "SessionRoutes": { "endpoints": ["POST /session", "DELETE /session/{sessionId}"], "implemented": false },
+    "ElementRoutes": { "endpoints": ["POST .../element", "POST .../click", "POST .../value"], "implemented": false },
+    "ScreenshotRoutes": { "endpoints": ["GET .../screenshot"], "implemented": false }
+  },
+  "protocol": {
+    "statusEndpoint": "Returns build+os at top level (NOT wrapped in value)",
+    "standardEndpoint": "Returns wrapped in { value: ... }",
+    "errorFormat": "{ value: { error, message, stacktrace } }",
+    "locatorStrategies": ["accessibility id", "class name", "name", "id", "tag name", "xpath"]
+  },
   "testIntegration": {
     "winAppDriverRoot": "../WinAppDriver",
     "testProjects": ["AbsoluteXPath", "Input", "UWPControls", "WebDriverAPI"],
-    "commonSettings": "WebDriverAPI/AppSessionBase/CommonTestSettings.cs",
     "winAppDriverUrl": "http://127.0.0.1:4723",
     "testFramework": "net48",
     "testRepository": "https://github.com/microsoft/WinAppDriver"
   },
-  "architecture": {
-    "components": ["WebDriverServer", "CommandDispatcher", "SessionManager", "AppLauncher", "WindowFinder", "UIAutomationLayer", "ScreenshotService", "WebDriverModel"],
-    "win32Apis": ["EnumWindows", "GetWindowThreadProcessId", "IsWindowVisible"],
-    "uiAutomation": ["AutomationElement.FromHandle", "FindFirst", "FindAll"],
-    "screenshotTechnique": "GDI BitBlt → PNG → Base64"
-  },
-  "dependencies": {
-    "driver": ["appium-dotnet-driver", "Newtonsoft.Json"],
-    "tests": {
-      "selenium": "3.8.0 / 3.11.2",
-      "appium-dotnet-driver": "3.0.0.2 / 4.0.0.1-beta",
-      "castle": "3.3.3 / 4.2.1",
-      "mstest": "1.1.14 / 1.3.2",
-      "newtonsoft": "10.0.2 / 10.0.3"
-    }
-  },
   "nonTestAssets": {
-    "docs": ["technical-design.md", "implementation-guide.md", "AI_CONTEXT.md", "ai_context.json", "README.md"],
+    "docs": ["AI_CONTEXT.md", "ai_context.json", "technical-design.md", "implementation-guide.md", "README.md"],
     "ignore": [".vs/", "bin/", "obj/", "*.pdb", "*.xml"]
   }
 }

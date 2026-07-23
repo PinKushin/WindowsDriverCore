@@ -1,39 +1,15 @@
-using System.Runtime.InteropServices;
+using WindowsDriverCore.Routes;
+using WindowsDriverCore.Sessions;
 
-namespace WindowsDriverCore
-{
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
-            var app = builder.Build();
+var builder = WebApplication.CreateBuilder(args);
 
-            app.MapGet("/", () => "Hello World!");
+builder.Services.AddSingleton<ISessionStore, SessionStore>();
 
-            app.MapGet("/status/", () =>
-            {
-                var osArch = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
-                var osVersion = Environment.OSVersion.Version.ToString();
+var app = builder.Build();
 
-                return Results.Json(new
-                {
-                    build = new
-                    {
-                        version = "1.0.0",
-                        revision = "0",
-                        time = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
-                    },
-                    os = new
-                    {
-                        arch = osArch,
-                        name = "windows",
-                        version = osVersion
-                    }
-                });
-            });
+app.MapGet("/", () => "Hello World!");
 
-            app.Run();
-        }
-    }
-}
+app.MapStatusRoutes();
+app.MapSessionRoutes();
+
+app.Run();

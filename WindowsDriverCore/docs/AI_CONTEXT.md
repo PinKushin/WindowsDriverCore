@@ -1,93 +1,111 @@
 # WindowsDriverCore — AI Context
 
 ## Project Metadata
-- **Name**: WindowsDriverCore  
-- **Description**: A modern, reliable, open-source Windows automation driver built for Appium and .NET 10.  
-- **TargetFramework**: net10.0  
-- **MainProject**: WindowsDriverCore.csproj  
-- **Port**: 4723 (http://127.0.0.1:4723)  
-- **launchBrowser**: false  
-- **Licenses**: MIT  
-- **README**: docs/README.md  
+- **Name**: WindowsDriverCore
+- **Description**: A modern, reliable, open-source Windows automation driver built for Appium and .NET 10.
+- **TargetFramework**: net10.0
+- **MainProject**: WindowsDriverCore.csproj
+- **Port**: 4723 (http://127.0.0.1:4723)
+- **launchBrowser**: false
+- **Licenses**: MIT
+- **README**: docs/README.md
 
-## Core WebDriver Endpoints (Initial Release)
-The server implements these 7 core endpoints:
+## Architecture (SOLID Principles)
 
-1. `GET /status`  
-   - Returns: `{"value": {"ready": true, "message": "Windows WebDriver replacement is running"}}`
+### Project Structure
+```
+WindowsDriverCore/
+├── Program.cs                     # Entry point: DI registration + route mapping
+├── Messages/                      # WebDriver protocol DTOs (records)
+│   ├── WebDriverResponse.cs       # { value: T } wrapper for all endpoints
+│   ├── ErrorResponse.cs           # { value: { error, message, stacktrace } }
+│   ├── StatusInfo.cs              # BuildInfo + OsInfo (for /status endpoint)
+│   ├── SessionRequest.cs          # POST /session request body
+│   ├── SessionInfo.cs             # sessionId + capabilities response
+│   ├── ElementRequest.cs          # { using, value } for element lookup
+│   └── ElementInfo.cs             # { elementId }
+├── Sessions/                      # Session lifecycle
+│   ├── ISessionStore.cs           # Interface + SessionContext record
+│   └── SessionStore.cs            # ConcurrentDictionary-backed implementation
+├── Windows/                       # Win32 window attachment
+│   └── IWindowFinder.cs           # Interface for HWND discovery
+├── Applications/                  # Process launching
+│   └── IAppLauncher.cs            # Interface for app lifecycle
+├── Automation/                    # UIAutomation element interaction
+│   ├── IElementFinder.cs          # Interface for element search
+│   └── IElementInteractor.cs      # Interface for element actions
+├── Screenshots/                   # Screenshot capture
+│   └── IScreenshotCapture.cs      # Interface for GDI-based capture
+├── Routes/                        # Minimal API route registration (extension methods)
+│   ├── StatusRoutes.cs            # GET /status/
+│   ├── SessionRoutes.cs           # POST /session, DELETE /session/{id}
+│   ├── ElementRoutes.cs           # POST .../element, .../click, .../value
+│   └── ScreenshotRoutes.cs        # GET .../screenshot
+└── ErrorHandling/                 # Exception types + error code mapping
+    ├── WebDriverException.cs      # Typed exception with error code + HTTP status
+    └── ErrorType.cs               # Constants for WebDriver error strings
+```
 
-2. `POST /session`  
-   - Body: `{"capabilities": {"alwaysMatch": {"platformName": "Windows", "app": "Path/To/App.exe"}}}`
+### SOLID Application
+- **S** — Each class has one responsibility (SessionStore manages only sessions, WindowFinder finds only windows)
+- **O** — New locator strategies are added as new implementations — no existing code changes needed
+- **L** — All services accessed through interfaces (ISessionStore, IWindowFinder, etc.) — any impl is substitutable
+- **I** — IElementFinder (search) vs IElementInteractor (actions) — not one monolithic automation service
+- **D** — Routes inject interfaces; Program.cs wires concrete types via `builder.Services`
+
+### DI Registration (Program.cs)
+```
+ISessionStore   → SessionStore (singleton — stateful)
+IWindowFinder   → to be added
+IAppLauncher    → to be added
+IElementFinder  → to be added
+IElementInteractor → to be added
+IScreenshotCapture → to be added
+```
+
+## Core WebDriver Endpoints (WIP — matching WinAppDriver protocol)
+
+### Protocol Notes
+- `/status/` returns build+os info **at the top level** (no `{ value: ... }` wrapper)
+- All other endpoints wrap responses in `{ value: ... }`
+- Session and element routes use sessionId/elementId from URL params to resolve their lifetime
+
+### Endpoints
+1. `GET /status/`
+   - Returns: `{"build": {"version": "...", "revision": "...", "time": "..."}, "os": {"arch": "...", "name": "windows", "version": "..."}}`
+
+2. `POST /session`
+   - Body: `{"capabilities": {"alwaysMatch": {"platformName": "Windows", "app": "..."}}}`
    - Returns: `{"value": {"sessionId": "uuid", "capabilities": {...}}}`
 
-3. `DELETE /session/{sessionId}`  
+3. `DELETE /session/{sessionId}`
    - Returns: `{"value": null}`
 
-4. `POST /session/{sessionId}/element`  
-   - Body: `{"using": "accessibility id", "value": "LoginButton"}`  
+4. `POST /session/{sessionId}/element`
+   - Body: `{"using": "accessibility id", "value": "..."}`
    - Returns: `{"value": {"elementId": "uuid", "type": "element"}}`
 
-5. `POST /session/{sessionId}/element/{elementId}/click`  
+5. `POST /session/{sessionId}/element/{elementId}/click`
    - Returns: `{"value": null}`
 
-6. `POST /session/{sessionId}/element/{elementId}/value`  
+6. `POST /session/{sessionId}/element/{elementId}/value`
    - Body: `{"text": "hello world"}`
    - Returns: `{"value": null}`
 
-7. `GET /session/{sessionId}/screenshot`  
+7. `GET /session/{sessionId}/screenshot`
    - Returns: `{"value": "iVBORw0KGgoAAAANSUhEUg..."}`
 
-## Test Suite Integration (WinAppDriver)
-WindowsDriverCore is intended to be replaced for WinAppDriver:
-
+## Test Suite Integration
 - **Reference**: ../WinAppDriver/Tests/WebDriverAPI/WebDriverAPI.csproj (net48)
-- **Test Projects** (4 total):
-  - `../WinAppDriver/Tests/AbsoluteXPath/AbsoluteXPath.csproj`
-  - `../WinAppDriver/Tests/Input/Input.csproj`
-  - `../WinAppDriver/Tests/UWPControls/UWPControls.csproj`
-  - `../WinAppDriver/Tests/WebDriverAPI/WebDriverAPI.csproj`
+- **4 test projects**: AbsoluteXPath, Input, UWPControls, WebDriverAPI
+- **CommonTestSettings.cs**: `WindowsApplicationDriverUrl = http://127.0.0.1:4723`
+- **App IDs**: CalculatorAppId (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), DesktopAppId (`Root`), etc.
+- **Package Management**: Tests use packages.config with pre-restored packages under their own packages/ folders
 
-- **CommonStartSettings.cs**: Contains all test app IDs and URL configuration (http://127.0.0.1:4723)
-- **Package Management**: All tests restored with proper nuget packages under their `packages/` folders
-
-## Architecture Overview
-From `docs/technical-design.md`:
-
-- **WebDriverServer**: Minimal API host (ASP.NET Core)
-- **CommandDispatcher**: Routes WebDriver commands to handlers  
-- **SessionManager**: Tracks active sessions  
-- **AppLauncher**: Launches and attaches to Windows apps  
-- **WindowFinder**: Win32‑based HWND discovery  
-- **UIAutomationLayer**: Element search and interaction  
-- **ScreenshotService**: High‑performance GDI capture  
-- **WebDriverModel**: DTOs for protocol compliance  
-
-Key techniques:
-- **Win32**: EnumWindows, GetWindowThreadProcessId, IsWindowVisible  
-- **UIAutomation**: from hwnd → AutomationElement → FindFirst/FindAll  
-- **ScreenShots**: GDI BitBlt → PNG → Base64  
-
-## Developer Workflow (From README.md)
-1. Clone repo
-2. **Build with .NET 10** (TargetFramework: net10.0)
-3. Run WindowsDriverCore.Server  
-4. Connect via Appium to http://127.0.0.1:4723  
-5. Implement changes (endpoints in Minimal API, handlers in Commands/)
-6. Test manually + unit tests from WinAppDriver test suite
-7. Open .slnx, reference the 4 test projects
-8. Commit small, focused changes
-
-## Dependencies (from winappdriver‑Tests packages/)
-- **WindowsDriverCore.Server**: (New, needs appium-dotnet-driver, Newtonsoft.Json)
-- **TestProjects**: Selenium.WebDriver 3.8.0 / 3.11.2, appium-dotnet-driver, Castle.Core, Newtonsoft.Json
-
-## Project Non‑Test Assets
-All generated files in `.vs/` directories, `bin/`, `obj/` are artifacts. Only source code matters:
-
-- Driver code in WindowsDriverCore/WindowsDriverCore.csproj
-- Docs folder: `technical-design.md`, `implementation-guide.md`, `AI_CONTEXT.md`, `ai_context.json`, `README.md`
-- Packages folder for test dependencies
-- `.gitignore` includes all build artifacts
-
----
-**Purpose**: Replace un‑maintained WinAppDriver with a modern, open‑source, community‑driven WebDriver server for Windows automation.
+## Development Workflow
+1. Implement endpoint in `Routes/*Routes.cs` using interface injection
+2. Add business logic in `Sessions/*`, `Windows/*`, `Automation/*`, etc.
+3. `dotnet build` — 0 errors, 0 warnings
+4. `dotnet run` — verify with curl/Invoke-WebRequest
+5. Run the relevant WinAppDriver test to validate
+6. Commit small, focused changes
