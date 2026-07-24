@@ -162,6 +162,20 @@ IScreenshotCapture → (planned)
 - **Current passing tests**: 1 (`Status.GetStatus`)
 - **Remaining blockers for more tests**: UWP app launching (AUMID), desktop session ("Root"), /window/position, /window/size, /window/maximize, /keys, /appium/app/close, /appium/app/launch
 
+### Application Under Tests
+The WinAppDriver test suite references test apps in `C:\Users\pinku\source\repos\PinKushin\WinAppDriver\ApplicationUnderTests`:
+
+| App | AUMID | Used By |
+|-----|-------|---------|
+| AppUIBasics | `WinAppDriver.AppUIBasics_xh1ske9axcpv8!App` | UWPControls tests (must be built and deployed first) |
+| Input | (UWP app) | Input tests |
+| Xaml-Controls-Gallery | (UWP app) | Additional UI tests |
+
+**Note**: AppUIBasics must be built and deployed before running UWPControls tests:
+1. Open `ApplicationUnderTests\AppUIBasics\AppUIBasics.sln` in Visual Studio
+2. Select configuration (e.g. x86) and Run
+3. App installs; can be closed after first launch
+
 ## Development Workflow
 1. Implement endpoint in `Routes/*Routes.cs` using interface injection
 2. Add business logic in `Sessions/*`, `Windows/*`, `Automation/*`, etc.
