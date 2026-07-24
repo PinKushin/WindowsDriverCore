@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using WindowsDriverCore.Windows;
 
 namespace WindowsDriverCore.Applications;
 
@@ -56,6 +57,21 @@ public class AppLauncher : IAppLauncher
                 proc.Kill(entireProcessTree: true);
                 try { proc.WaitForExit(2000); } catch { }
             }
+        }
+        catch { }
+
+        // Fallback: send WM_CLOSE to top-level windows owned by this process
+        try
+        {
+            Win32.EnumWindows((hWnd, _) =>
+            {
+                Win32.GetWindowThreadProcessId(hWnd, out var winPid);
+                if ((int)winPid == processId && Win32.IsWindowVisible(hWnd))
+                {
+                    try { Win32.SendMessage(hWnd, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero); } catch { }
+                }
+                return true;
+            }, IntPtr.Zero);
         }
         catch { }
     }

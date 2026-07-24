@@ -79,7 +79,11 @@ public static class SessionRoutes
                         $"Could not find main window for process {processId}");
                 }
 
-                var session = store.Create(processId, mainWindowHandle, caps);
+                // Resolve the actual window PID (UWP COM activation returns a broker PID, not the app PID)
+                Win32.GetWindowThreadProcessId(mainWindowHandle, out var actualWindowPid);
+                var sessionPid = (int)actualWindowPid != 0 ? (int)actualWindowPid : processId;
+
+                var session = store.Create(sessionPid, mainWindowHandle, caps);
                 var sessionInfo = BuildSessionInfo(session);
                 return Results.Json(new WebDriverResponse<SessionInfo>(sessionInfo));
             }
@@ -122,7 +126,10 @@ public static class SessionRoutes
                 throw new WebDriverException(ErrorType.UnknownError, "Currently selected window has been closed", 404);
 
             if (!AppLauncher.IsDesktopAppId(session.Capabilities.GetValueOrDefault("app")?.ToString() ?? ""))
+            {
                 launcher.Close(session.ProcessId);
+                session.ProcessId = 0;
+            }
 
             session.MainWindowHandle = IntPtr.Zero;
 
@@ -172,7 +179,9 @@ public static class SessionRoutes
                 throw new WebDriverException(ErrorType.UnknownError, $"Could not find main window for process {processId}");
             }
 
-            session.ProcessId = processId;
+            // Resolve the actual window PID (UWP COM activation returns a broker PID, not the app PID)
+            Win32.GetWindowThreadProcessId(mainWindowHandle, out var actualWindowPid);
+            session.ProcessId = (int)actualWindowPid != 0 ? (int)actualWindowPid : processId;
             session.MainWindowHandle = mainWindowHandle;
 
             return Results.Json(new WebDriverResponse<object?>(null));
