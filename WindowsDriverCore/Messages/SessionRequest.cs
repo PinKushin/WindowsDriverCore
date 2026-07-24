@@ -1,5 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace WindowsDriverCore.Messages;
 
-public record Capabilities(Dictionary<string, object> AlwaysMatch);
+public record Capabilities(
+    [property: JsonPropertyName("alwaysMatch")] Dictionary<string, object>? AlwaysMatch,
+    [property: JsonPropertyName("firstMatch")] List<Dictionary<string, object>>? FirstMatch);
 
-public record SessionRequest(Capabilities? Capabilities);
+public record SessionRequest(
+    [property: JsonPropertyName("capabilities")] Capabilities? Capabilities,
+    [property: JsonPropertyName("desiredCapabilities")] Dictionary<string, object>? DesiredCapabilities);

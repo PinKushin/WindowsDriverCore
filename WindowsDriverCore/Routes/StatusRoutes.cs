@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 using WindowsDriverCore.Messages;
 
@@ -9,8 +10,12 @@ public static class StatusRoutes
     {
         app.MapGet("/status/", () =>
         {
+            var assembly = Assembly.GetExecutingAssembly();
+            var version = assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+            var revision = assembly.GetName().Version?.Revision.ToString() ?? "0";
+
             var info = new StatusInfo(
-                new BuildInfo("1.0.0", "0", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")),
+                new BuildInfo(version, revision, DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")),
                 new OsInfo(
                     RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant(),
                     "windows",
