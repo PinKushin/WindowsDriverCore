@@ -2,7 +2,7 @@
   "project": {
     "name": "WindowsDriverCore",
     "description": "A modern, reliable, open-source Windows automation driver built for Appium and .NET 10",
-    "targetFramework": "net10.0",
+    "targetFramework": "net10.0-windows",
     "port": 4723,
     "launchBrowser": false,
     "license": "MIT",
@@ -10,45 +10,89 @@
     "architecture": {
       "pattern": "SOLID with domain-driven folders",
       "diRegistration": "Program.cs via builder.Services",
-      "responseFormat": "WebDriverResponse<T> wrapper with { value: ... } except /status/ which returns top-level"
+      "responseFormat": "WebDriverResponse<T> wrapper with { value: ... } except /status/ which returns top-level",
+      "jsonSerialization": "camelCase via ConfigureHttpJsonOptions",
+      "exceptionHandling": "Middleware catches WebDriverException → typed error responses",
+      "elementFormat": "W3C: { element-6066-11e4-a52e-4f735466cecf: id, ELEMENT: id }"
     }
   },
   "folders": {
     "Messages": "WebDriver protocol DTOs (record types)",
     "Sessions": "Session lifecycle interfaces and implementations",
-    "Windows": "Win32 HWND discovery interfaces",
-    "Applications": "Process launch/close interfaces",
-    "Automation": "UIAutomation element search and interaction interfaces",
+    "Windows": "Win32 HWND discovery interfaces and implementations",
+    "Applications": "Process launch/close interfaces and implementations",
+    "Automation": "UIAutomation element search, interaction, and storage",
     "Screenshots": "GDI screenshot capture interfaces",
     "Routes": "Minimal API endpoint registration (extension methods)",
     "ErrorHandling": "Exception types and WebDriver error code mapping"
   },
   "interfaces": {
-    "ISessionStore": { "description": "Session CRUD", "implemented": true, "impl": "SessionStore" },
-    "IWindowFinder": { "description": "HWND discovery via EnumWindows", "implemented": false },
-    "IAppLauncher": { "description": "Process.Start and cleanup", "implemented": false },
-    "IElementFinder": { "description": "UIAutomation FindFirst/FindAll", "implemented": false },
-    "IElementInteractor": { "description": "Click, SendKeys, GetText, etc.", "implemented": false },
+    "ISessionStore": { "description": "Session CRUD with ConcurrentDictionary + GetAll()", "implemented": true, "impl": "SessionStore" },
+    "IWindowFinder": { "description": "HWND discovery via EnumWindows Win32 interop", "implemented": true, "impl": "WindowFinder" },
+    "IAppLauncher": { "description": "Process.Start + Kill with process tracking", "implemented": true, "impl": "AppLauncher" },
+    "IElementFinder": { "description": "UIAutomation FindFirst/FindAll with sub-element search, supports accessibility id/class name/name/id/tag name/xpath", "implemented": true, "impl": "ElementFinder" },
+    "IElementInteractor": { "description": "Click (InvokePattern), SendKeys (ValuePattern), GetText, GetEnabled, GetDisplayed, GetTagName, GetAttribute, Clear, GetSelected, GetCoordinates, GetSize, GetLocationInView, ClickAt", "implemented": true, "impl": "ElementInteractor" },
     "IScreenshotCapture": { "description": "GDI BitBlt → PNG → Base64", "implemented": false }
   },
   "routes": {
     "StatusRoutes": { "endpoints": ["GET /status/"], "implemented": true },
-    "SessionRoutes": { "endpoints": ["POST /session", "DELETE /session/{sessionId}"], "implemented": false },
-    "ElementRoutes": { "endpoints": ["POST .../element", "POST .../click", "POST .../value"], "implemented": false },
+    "SessionRoutes": {
+      "endpoints": [
+        "POST /session",
+        "DELETE /session/{sessionId}",
+        "GET /sessions",
+        "GET /session/{sessionId}/title",
+        "GET /session/{sessionId}/window/handle",
+        "GET /session/{sessionId}/window/handles"
+      ],
+      "implemented": true
+    },
+    "ElementRoutes": {
+      "endpoints": [
+        "POST /session/{sessionId}/element",
+        "POST /session/{sessionId}/elements",
+        "POST /session/{sessionId}/element/{elementId}/element",
+        "POST /session/{sessionId}/element/{elementId}/elements",
+        "POST /session/{sessionId}/element/{elementId}/click",
+        "POST /session/{sessionId}/element/{elementId}/value",
+        "POST /session/{sessionId}/element/{elementId}/clear",
+        "GET /session/{sessionId}/element/{elementId}/text",
+        "GET /session/{sessionId}/element/{elementId}/enabled",
+        "GET /session/{sessionId}/element/{elementId}/displayed",
+        "GET /session/{sessionId}/element/{elementId}/name",
+        "GET /session/{sessionId}/element/{elementId}/attribute/{attributeName}",
+        "GET /session/{sessionId}/element/{elementId}/selected",
+        "GET /session/{sessionId}/element/{elementId}/location",
+        "GET /session/{sessionId}/element/{elementId}/size"
+      ],
+      "implemented": true
+    },
     "ScreenshotRoutes": { "endpoints": ["GET .../screenshot"], "implemented": false }
   },
   "protocol": {
-    "statusEndpoint": "Returns build+os at top level (NOT wrapped in value)",
+    "statusEndpoint": "Returns build+os at top level (NOT wrapped in value). Version pulled from assembly metadata.",
     "standardEndpoint": "Returns wrapped in { value: ... }",
     "errorFormat": "{ value: { error, message, stacktrace } }",
-    "locatorStrategies": ["accessibility id", "class name", "name", "id", "tag name", "xpath"]
+    "locatorStrategies": ["accessibility id", "class name", "name", "id", "tag name", "xpath"],
+    "xpathPatterns": ["//ControlType", "//ControlType[@Attribute='Value']", "//ControlType[@AutomationId='id']"],
+    "elementPatterns": ["InvokePattern (click)", "ValuePattern (sendkeys/gettext/clear)", "ExpandCollapsePattern (click fallback)", "SelectionItemPattern (selected)"]
   },
   "testIntegration": {
     "winAppDriverRoot": "../WinAppDriver",
     "testProjects": ["AbsoluteXPath", "Input", "UWPControls", "WebDriverAPI"],
+    "totalTests": 418,
+    "passingTests": 1,
     "winAppDriverUrl": "http://127.0.0.1:4723",
     "testFramework": "net48",
-    "testRepository": "https://github.com/microsoft/WinAppDriver"
+    "testRepository": "https://github.com/microsoft/WinAppDriver",
+    "currentBlockers": [
+      "UWP app launching by AUMID not supported (Process.Start only handles file paths)",
+      "Desktop session ('Root' app) not supported",
+      "Window position/size/maximize endpoints not implemented",
+      "Keyboard /keys endpoint not implemented",
+      "Appium app close/launch endpoints not implemented",
+      "Back/forward navigation endpoints not implemented"
+    ]
   },
   "nonTestAssets": {
     "docs": ["AI_CONTEXT.md", "ai_context.json", "technical-design.md", "implementation-guide.md", "README.md"],
