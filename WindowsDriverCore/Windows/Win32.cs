@@ -90,6 +90,9 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
+
     // --- Window style ---
     [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
     public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
@@ -188,6 +191,23 @@ internal static class Win32
         public uint dwFlags;
         public uint time;
         public IntPtr dwExtraInfo;
+    }
+
+    // --- DPI ---
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    public static double GetDpiScale(IntPtr hWnd)
+    {
+        try
+        {
+            var dpi = GetDpiForWindow(hWnd);
+            return dpi > 0 ? dpi / 96.0 : 1.0;
+        }
+        catch
+        {
+            return 1.0;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -85,14 +85,36 @@ public class SessionCleanupService : BackgroundService
             catch { }
         }
 
-        // Also kill any remaining tracked PIDs
+        // Also kill any remaining tracked PIDs and their children
         foreach (var pid in _launcher.GetAllTrackedProcessIds())
         {
             try
             {
-                var proc = Process.GetProcessById(pid);
+                using var proc = Process.GetProcessById(pid);
                 if (!proc.HasExited)
+                {
                     proc.Kill(entireProcessTree: true);
+                    try { proc.WaitForExit(2000); } catch { }
+                }
+            }
+            catch { }
+        }
+
+        // Nuclear option: kill all lingering child processes of tracked PIDs
+        foreach (var pid in _launcher.GetAllTrackedProcessIds())
+        {
+            try
+            {
+                foreach (var childId in Windows.Win32.GetChildProcessIds(pid))
+                {
+                    try
+                    {
+                        using var child = Process.GetProcessById(childId);
+                        if (!child.HasExited)
+                            child.Kill(entireProcessTree: true);
+                    }
+                    catch { }
+                }
             }
             catch { }
         }

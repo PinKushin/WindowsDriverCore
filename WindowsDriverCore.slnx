@@ -3,5 +3,6 @@
   <Project Path="../WinAppDriver/Tests/Input/Input.csproj" Id="e0fc5c2c-3c64-4542-a0db-dc8059948619" />
   <Project Path="../WinAppDriver/Tests/UWPControls/UWPControls.csproj" Id="0dfb274b-8d24-401b-949b-51493ee6fd12" />
   <Project Path="../WinAppDriver/Tests/WebDriverAPI/WebDriverAPI.csproj" Id="81529391-98a1-478c-98a2-e59a2e826796" />
+  <Project Path="WindowsDriverCore.Tests/WindowsDriverCore.Tests.csproj" />
   <Project Path="WindowsDriverCore/WindowsDriverCore.csproj" Id="92524f95-9ce7-47c9-b5f8-46fa9417c060" />
 </Solution>

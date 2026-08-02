@@ -99,6 +99,9 @@ public static class SessionRoutes
             if (session is null)
                 throw new WebDriverException(ErrorType.NoSuchSession, "no such session", 404);
 
+            // Always close the window handle directly (works for all app types including Explorer)
+            launcher.CloseWindow(session.MainWindowHandle);
+
             if (!AppLauncher.IsDesktopAppId(session.Capabilities.GetValueOrDefault("app")?.ToString() ?? ""))
                 launcher.Close(session.ProcessId);
 
@@ -297,7 +300,7 @@ public static class SessionRoutes
                 var targetPid = windowFinder.GetWindowProcessId(hWnd);
                 if (targetPid != session.ProcessId)
                     throw new WebDriverException(ErrorType.UnknownError,
-                        "A request to switch to a window could not be satisfied because the window could not be found.", 404);
+                        "Window handle does not belong to the same process/application", 400);
             }
 
             if (!windowFinder.IsTopLevelWindow(hWnd))
@@ -316,7 +319,7 @@ public static class SessionRoutes
                 throw new WebDriverException(ErrorType.UnknownError, "Currently selected window has been closed", 404);
 
             var hWnd = session.MainWindowHandle;
-            Win32.SendMessage(hWnd, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+            Win32.PostMessage(hWnd, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
 
             session.MainWindowHandle = IntPtr.Zero;
 
@@ -331,12 +334,14 @@ public static class SessionRoutes
                 throw new WebDriverException(ErrorType.UnknownError, "Currently selected window has been closed", 404);
 
             Win32.GetWindowRect(session.MainWindowHandle, out var rect);
+            var dpiScale = Win32.GetDpiScale(session.MainWindowHandle);
+            Console.WriteLine($"[GetWindowRect] hwnd={session.MainWindowHandle.ToInt64():X} raw=({rect.Left},{rect.Top},{rect.Right},{rect.Bottom}) dpi={dpiScale}");
             return Results.Json(new WebDriverResponse<object?>(new
             {
-                x = rect.Left,
-                y = rect.Top,
-                width = rect.Right - rect.Left,
-                height = rect.Bottom - rect.Top
+                x = (int)(rect.Left / dpiScale),
+                y = (int)(rect.Top / dpiScale),
+                width = (int)((rect.Right - rect.Left) / dpiScale),
+                height = (int)((rect.Bottom - rect.Top) / dpiScale)
             }));
         });
 
@@ -348,6 +353,7 @@ public static class SessionRoutes
                 throw new WebDriverException(ErrorType.UnknownError, "Currently selected window has been closed", 404);
 
             int x = 0, y = 0, width = 0, height = 0;
+            bool hasX = false, hasY = false, hasWidth = false, hasHeight = false;
             using (var reader = new StreamReader(request.Body))
             {
                 var bodyStr = await reader.ReadToEndAsync();
@@ -356,20 +362,40 @@ public static class SessionRoutes
                     try
                     {
                         var body = JsonSerializer.Deserialize<JsonElement>(bodyStr);
-                        if (body.TryGetProperty("x", out var xProp)) x = xProp.GetInt32();
-                        if (body.TryGetProperty("y", out var yProp)) y = yProp.GetInt32();
-                        if (body.TryGetProperty("width", out var wProp)) width = wProp.GetInt32();
-                        if (body.TryGetProperty("height", out var hProp)) height = hProp.GetInt32();
+                        if (body.TryGetProperty("x", out var xProp)) { x = xProp.GetInt32(); hasX = true; }
+                        if (body.TryGetProperty("y", out var yProp)) { y = yProp.GetInt32(); hasY = true; }
+                        if (body.TryGetProperty("width", out var wProp)) { width = wProp.GetInt32(); hasWidth = true; }
+                        if (body.TryGetProperty("height", out var hProp)) { height = hProp.GetInt32(); hasHeight = true; }
                     }
                     catch { }
                 }
             }
 
-            if (width > 0 && height > 0)
-                Win32.MoveWindow(session.MainWindowHandle, x, y, width, height, true);
-            else if (x != 0 || y != 0)
-                Win32.SetWindowPos(session.MainWindowHandle, IntPtr.Zero, x, y, 0, 0,
-                    Win32.SWP_NOSIZE | Win32.SWP_NOZORDER);
+            var dpiScale = Win32.GetDpiScale(session.MainWindowHandle);
+            Win32.GetWindowRect(session.MainWindowHandle, out var currentRect);
+            var curX = hasX ? (int)(x * dpiScale) : currentRect.Left;
+            var curY = hasY ? (int)(y * dpiScale) : currentRect.Top;
+            var curW = hasWidth ? (int)(width * dpiScale) : currentRect.Right - currentRect.Left;
+            var curH = hasHeight ? (int)(height * dpiScale) : currentRect.Bottom - currentRect.Top;
+
+            Console.WriteLine($"[WindowRect] hwnd={session.MainWindowHandle.ToInt64():X} dpi={dpiScale} before=({currentRect.Left},{currentRect.Top},{currentRect.Right},{currentRect.Bottom}) hasX={hasX} hasY={hasY} hasW={hasWidth} hasH={hasHeight} → MoveWindow({curX},{curY},{curW},{curH})");
+
+            if (hasX || hasY || hasWidth || hasHeight)
+            {
+                Win32.MoveWindow(session.MainWindowHandle, curX, curY, curW, curH, true);
+
+                if ((hasWidth || hasHeight) && !hasX && !hasY)
+                {
+                    Thread.Sleep(50);
+                    Win32.GetWindowRect(session.MainWindowHandle, out var afterRect);
+                    Console.WriteLine($"[WindowRect] after MoveWindow: ({afterRect.Left},{afterRect.Top},{afterRect.Right},{afterRect.Bottom}) — re-enforcing pos ({currentRect.Left},{currentRect.Top})");
+                    Win32.SetWindowPos(session.MainWindowHandle, IntPtr.Zero, currentRect.Left, currentRect.Top, 0, 0,
+                        Win32.SWP_NOSIZE | Win32.SWP_NOZORDER);
+                    Thread.Sleep(50);
+                    Win32.GetWindowRect(session.MainWindowHandle, out var finalRect);
+                    Console.WriteLine($"[WindowRect] after SetWindowPos: ({finalRect.Left},{finalRect.Top},{finalRect.Right},{finalRect.Bottom})");
+                }
+            }
 
             return Results.Json(new WebDriverResponse<object?>(null));
         });
@@ -518,6 +544,24 @@ public static class SessionRoutes
             throw new WebDriverException(ErrorType.InvalidArgument,
                 "Cannot find active window specified by capabilities: appTopLevelWindow", 400);
 
+        // Verify the owning process is still alive (stale handle from closed app)
+        Win32.GetWindowThreadProcessId(hWnd, out var ownerPid);
+        if (ownerPid != 0)
+        {
+            try
+            {
+                var proc = System.Diagnostics.Process.GetProcessById((int)ownerPid);
+                if (proc.HasExited)
+                    throw new WebDriverException(ErrorType.InvalidArgument,
+                        "Cannot find active window specified by capabilities: appTopLevelWindow", 400);
+            }
+            catch (ArgumentException)
+            {
+                throw new WebDriverException(ErrorType.InvalidArgument,
+                    "Cannot find active window specified by capabilities: appTopLevelWindow", 400);
+            }
+        }
+
         Win32.GetWindowThreadProcessId(hWnd, out var pid);
         var session = store.Create((int)pid, hWnd, caps);
         var sessionInfo = BuildSessionInfo(session);
@@ -543,12 +587,16 @@ public static class SessionRoutes
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(WindowWaitTimeoutMs);
 
-        // Snapshot existing ApplicationFrameWindows before activation (for WinUI3 apps)
+        // Snapshot existing windows before launch
         var existingFrameWindows = new HashSet<IntPtr>();
+        var existingCabinetWindows = new HashSet<IntPtr>();
         Win32.EnumWindows((hWnd, _) =>
         {
-            if (windowFinder.GetWindowClassName(hWnd) == "ApplicationFrameWindow")
+            var cls = windowFinder.GetWindowClassName(hWnd);
+            if (cls == "ApplicationFrameWindow")
                 existingFrameWindows.Add(hWnd);
+            else if (cls == "CabinetWClass")
+                existingCabinetWindows.Add(hWnd);
             return true;
         }, IntPtr.Zero);
 
@@ -588,7 +636,6 @@ public static class SessionRoutes
             catch { }
 
             // Fallback for WinUI3 apps: find newly-appeared ApplicationFrameWindows
-            // that contain a child process spawned by our activation
             try
             {
                 var candidateHwnd = windowFinder.FindNewApplicationFrameWindow(processId, existingFrameWindows);
@@ -597,9 +644,38 @@ public static class SessionRoutes
             }
             catch { }
 
+            // Fallback for Explorer/system apps: find newly-appeared CabinetWClass windows
+            // Explorer.exe reuses the shell process, so FindWindowByProcessId can't find it
+            try
+            {
+                var cabinetHwnd = FindNewCabinetWindow(existingCabinetWindows);
+                if (cabinetHwnd != IntPtr.Zero)
+                    return cabinetHwnd;
+            }
+            catch { }
+
             Thread.Sleep(WindowPollIntervalMs);
         }
 
         return IntPtr.Zero;
+    }
+
+    private static IntPtr FindNewCabinetWindow(HashSet<IntPtr> existing)
+    {
+        IntPtr found = IntPtr.Zero;
+        Win32.EnumWindows((hWnd, _) =>
+        {
+            if (existing.Contains(hWnd))
+                return true;
+            var cls = new System.Text.StringBuilder(256);
+            Win32.GetClassName(hWnd, cls, 256);
+            if (cls.ToString() == "CabinetWClass" && Win32.IsWindowVisible(hWnd))
+            {
+                found = hWnd;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
     }
 }

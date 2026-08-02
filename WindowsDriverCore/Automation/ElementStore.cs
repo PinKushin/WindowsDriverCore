@@ -1,21 +1,20 @@
 using System.Collections.Concurrent;
-using System.Windows.Automation;
+using WindowsDriverCore.Automation.Raw;
 
 namespace WindowsDriverCore.Automation;
 
 public class ElementStore
 {
-    private readonly ConcurrentDictionary<string, AutomationElement> _elements = new();
+    private readonly ConcurrentDictionary<string, RawAutomationElement> _elements = new();
 
-    public string Store(AutomationElement element)
+    public string Store(RawAutomationElement element)
     {
-        var runtimeId = element.GetRuntimeId();
-        var elementId = string.Join(",", runtimeId);
+        var elementId = element.GetRuntimeIdString();
         _elements[elementId] = element;
         return elementId;
     }
 
-    public AutomationElement? Get(string elementId)
+    public RawAutomationElement? Get(string elementId)
     {
         _elements.TryGetValue(elementId, out var element);
         return element;

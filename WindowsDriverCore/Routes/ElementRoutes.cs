@@ -1,7 +1,8 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Windows.Automation;
+using WindowsDriverCore.Automation.Com;
+using WindowsDriverCore.Automation.Raw;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.ErrorHandling;
 using WindowsDriverCore.Messages;
@@ -30,12 +31,14 @@ public static class ElementRoutes
 
             ValidateWindow(session, windowFinder);
 
-            var root = System.Windows.Automation.AutomationElement.FromHandle(session.MainWindowHandle);
-            if (root is null)
+            var automation = UIAutomationFactory.Create();
+            int hr = automation.ElementFromHandle(session.MainWindowHandle, out IntPtr rootPtr);
+            if (hr != 0 || rootPtr == IntPtr.Zero)
                 throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
-            var focused = root.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(System.Windows.Automation.AutomationElement.HasKeyboardFocusProperty, true));
+            using var condition = ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_HasKeyboardFocusPropertyId, true);
+            var rawRoot = new RawAutomationElement(rootPtr);
+            var focused = rawRoot.FindFirst(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
 
             if (focused is null)
                 return Results.Json(new { value = new Dictionary<string, string> { [W3cElementKey] = "", ["ELEMENT"] = "" } });
@@ -282,7 +285,7 @@ public static class ElementRoutes
 
             try
             {
-                var bounds = element.Current.BoundingRectangle;
+                var bounds = element.GetBoundingRectangle();
                 if (bounds.IsEmpty)
                     throw new WebDriverException(ErrorType.UnknownError, "Element is not displayed");
 
@@ -298,7 +301,7 @@ public static class ElementRoutes
                 var base64 = Convert.ToBase64String(ms.ToArray());
                 return Results.Json(new WebDriverResponse<string>(base64));
             }
-            catch (ElementNotAvailableException)
+            catch (System.Runtime.InteropServices.COMException)
             {
                 throw new WebDriverException(ErrorType.UnknownError,
                     "An element command failed because the referenced element is no longer attached to the DOM.");
@@ -313,11 +316,12 @@ public static class ElementRoutes
 
             ValidateWindow(session, windowFinder);
 
-            var root = System.Windows.Automation.AutomationElement.FromHandle(session.MainWindowHandle);
-            if (root is null)
+            var automation = UIAutomationFactory.Create();
+            int hr = automation.ElementFromHandle(session.MainWindowHandle, out IntPtr rootPtr);
+            if (hr != 0 || rootPtr == IntPtr.Zero)
                 throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
-            var xml = BuildSourceXml(root);
+            var xml = BuildSourceXml(new RawAutomationElement(rootPtr));
             return Results.Json(new WebDriverResponse<string>(xml));
         });
 
@@ -350,13 +354,13 @@ public static class ElementRoutes
         });
     }
 
-    private static string BuildSourceXml(AutomationElement element, int depth = 0)
+    private static string BuildSourceXml(RawAutomationElement element, int depth = 0)
     {
         var indent = new string(' ', depth * 2);
-        var tag = element.Current.ControlType.ProgrammaticName.Replace("ControlType.", "");
-        var name = EscapeXml(element.Current.Name ?? "");
-        var automationId = element.Current.AutomationId ?? "";
-        var className = element.Current.ClassName ?? "";
+        var tag = element.GetControlTypeName().Replace("ControlType.", "");
+        var name = EscapeXml(element.GetName());
+        var automationId = element.GetAutomationId();
+        var className = element.GetClassName();
 
         var sb = new System.Text.StringBuilder();
         sb.Append($"{indent}<{tag}");
@@ -368,7 +372,7 @@ public static class ElementRoutes
         if (!string.IsNullOrEmpty(name))
             sb.Append($" Name=\"{name}\"");
 
-        var children = element.FindAll(TreeScope.Children, Condition.TrueCondition);
+        var children = element.GetChildren();
         if (children.Count == 0)
         {
             sb.Append(" />");
@@ -376,7 +380,7 @@ public static class ElementRoutes
         else
         {
             sb.AppendLine(">");
-            foreach (AutomationElement child in children)
+            foreach (var child in children)
             {
                 sb.AppendLine(BuildSourceXml(child, depth + 1));
             }

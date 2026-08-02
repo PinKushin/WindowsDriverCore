@@ -4,5 +4,6 @@ public interface IAppLauncher
 {
     int Launch(string appPath, string? arguments = null, string? workingDir = null);
     void Close(int processId);
+    void CloseWindow(IntPtr windowHandle);
     IReadOnlyList<int> GetAllTrackedProcessIds();
 }

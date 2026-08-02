@@ -169,7 +169,8 @@ public class WindowFinder : IWindowFinder
 
     public IntPtr FindNewApplicationFrameWindow(int processId, HashSet<IntPtr> excludeWindows)
     {
-        IntPtr result = IntPtr.Zero;
+        IntPtr frameHwnd = IntPtr.Zero;
+        IntPtr coreHwnd = IntPtr.Zero;
 
         Win32.EnumWindows((hWnd, _) =>
         {
@@ -193,6 +194,7 @@ public class WindowFinder : IWindowFinder
                     if (childPid == processId)
                     {
                         isRelated = true;
+                        coreHwnd = childHWnd;
                         return false;
                     }
 
@@ -203,6 +205,7 @@ public class WindowFinder : IWindowFinder
                         if (children.Contains(childPid))
                         {
                             isRelated = true;
+                            coreHwnd = childHWnd;
                             return false;
                         }
                     }
@@ -213,13 +216,15 @@ public class WindowFinder : IWindowFinder
 
             if (isRelated)
             {
-                result = hWnd;
+                frameHwnd = hWnd;
                 return false;
             }
 
             return true;
         }, IntPtr.Zero);
 
-        return result;
+        // Prefer the CoreWindow (inner content) for window manipulation —
+        // the ApplicationFrameWindow is DWM-managed and ignores position changes
+        return coreHwnd != IntPtr.Zero ? coreHwnd : frameHwnd;
     }
 }

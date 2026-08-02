@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using WindowsDriverCore.Applications;
 using WindowsDriverCore.Automation;
@@ -6,6 +7,12 @@ using WindowsDriverCore.Messages;
 using WindowsDriverCore.Routes;
 using WindowsDriverCore.Sessions;
 using WindowsDriverCore.Windows;
+
+// P/Invoke for DPI awareness — must be called before any windows are created
+[DllImport("user32.dll")]
+static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { } // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://127.0.0.1:4723");

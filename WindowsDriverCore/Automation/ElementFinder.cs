@@ -1,4 +1,6 @@
-using System.Windows.Automation;
+using System.Runtime.InteropServices;
+using WindowsDriverCore.Automation.Com;
+using WindowsDriverCore.Automation.Raw;
 using WindowsDriverCore.ErrorHandling;
 
 namespace WindowsDriverCore.Automation;
@@ -6,20 +8,23 @@ namespace WindowsDriverCore.Automation;
 public class ElementFinder : IElementFinder
 {
     private readonly ElementStore _store;
+    private readonly IUIAutomation _automation;
 
     public ElementFinder(ElementStore store)
     {
         _store = store;
+        _automation = UIAutomationFactory.Create();
+        ConditionFactory.Initialize(_automation);
     }
 
     public string FindElement(IntPtr windowHandle, string usingStrategy, string value)
     {
-        var root = AutomationElement.FromHandle(windowHandle);
-        if (root is null)
+        int hr = _automation.ElementFromHandle(windowHandle, out IntPtr rootPtr);
+        if (hr != 0 || rootPtr == IntPtr.Zero)
             throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
-        var condition = CreateCondition(usingStrategy, value);
-        var element = root.FindFirst(TreeScope.Descendants, condition);
+        using var condition = CreateCondition(usingStrategy, value);
+        var element = new RawAutomationElement(rootPtr).FindFirst(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
 
         if (element is null)
             throw new WebDriverException(ErrorType.UnknownError,
@@ -30,12 +35,13 @@ public class ElementFinder : IElementFinder
 
     public string[] FindElements(IntPtr windowHandle, string usingStrategy, string value)
     {
-        var root = AutomationElement.FromHandle(windowHandle);
-        if (root is null)
+        int hr = _automation.ElementFromHandle(windowHandle, out IntPtr rootPtr);
+        if (hr != 0 || rootPtr == IntPtr.Zero)
             throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
-        var condition = CreateCondition(usingStrategy, value);
-        var elements = root.FindAll(TreeScope.Descendants, condition);
+        using var condition = CreateCondition(usingStrategy, value);
+        var rawRoot = new RawAutomationElement(rootPtr);
+        var elements = rawRoot.FindAll(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
 
         var ids = new string[elements.Count];
         for (int i = 0; i < elements.Count; i++)
@@ -53,22 +59,12 @@ public class ElementFinder : IElementFinder
             throw new WebDriverException(ErrorType.UnknownError,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
 
-        var condition = CreateCondition(usingStrategy, value);
-        AutomationElement? element;
-        try
-        {
-            element = parent.FindFirst(TreeScope.Descendants, condition);
-        }
-        catch (ElementNotAvailableException)
-        {
+        if (!parent.IsAlive())
             throw new WebDriverException(ErrorType.UnknownError,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            throw new WebDriverException(ErrorType.UnknownError,
-                "An element command failed because the referenced element is no longer attached to the DOM.");
-        }
+
+        using var condition = CreateCondition(usingStrategy, value);
+        var element = parent.FindFirst(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
 
         if (element is null)
             throw new WebDriverException(ErrorType.UnknownError,
@@ -84,22 +80,12 @@ public class ElementFinder : IElementFinder
             throw new WebDriverException(ErrorType.UnknownError,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
 
-        var condition = CreateCondition(usingStrategy, value);
-        AutomationElementCollection elements;
-        try
-        {
-            elements = parent.FindAll(TreeScope.Descendants, condition);
-        }
-        catch (ElementNotAvailableException)
-        {
+        if (!parent.IsAlive())
             throw new WebDriverException(ErrorType.UnknownError,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            throw new WebDriverException(ErrorType.UnknownError,
-                "An element command failed because the referenced element is no longer attached to the DOM.");
-        }
+
+        using var condition = CreateCondition(usingStrategy, value);
+        var elements = parent.FindAll(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
 
         var ids = new string[elements.Count];
         for (int i = 0; i < elements.Count; i++)
@@ -110,17 +96,19 @@ public class ElementFinder : IElementFinder
         return ids;
     }
 
-    private static Condition CreateCondition(string usingStrategy, string value)
+    private static RawCondition CreateCondition(string usingStrategy, string value)
     {
         return usingStrategy.ToLowerInvariant() switch
         {
-            "accessibility id" => new PropertyCondition(AutomationElement.AutomationIdProperty, value),
-            "class name" => new PropertyCondition(AutomationElement.ClassNameProperty, value),
-            "name" => new PropertyCondition(AutomationElement.NameProperty, value),
-            "id" => new PropertyCondition(AutomationElement.RuntimeIdProperty, value),
-            "tag name" => new PropertyCondition(AutomationElement.ControlTypeProperty, MapTagNameToControlType(value)),
-            "xpath" => CreateXPathCondition(value),
-            "css selector" => new PropertyCondition(AutomationElement.ClassNameProperty, value),
+            "accessibility id" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_AutomationIdPropertyId, value),
+            "class name" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_ClassNamePropertyId, value),
+            "name" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_NamePropertyId, value),
+            "id" => throw new WebDriverException(ErrorType.InvalidArgument,
+                "RuntimeId lookup not yet supported in raw COM mode"),
+            "tag name" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_ControlTypePropertyId, MapTagNameToControlTypeId(value)),
+            "xpath" => throw new WebDriverException(ErrorType.InvalidArgument,
+                "XPath not yet supported in raw COM mode"),
+            "css selector" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_ClassNamePropertyId, value),
             "link text" =>
                 throw new WebDriverException(ErrorType.InvalidArgument,
                     "Unexpected error. Unimplemented Command: link text locator strategy is not supported"),
@@ -133,159 +121,44 @@ public class ElementFinder : IElementFinder
         };
     }
 
-    private static Condition CreateXPathCondition(string xpath)
-    {
-        var originalXpath = xpath;
-
-        if (xpath.StartsWith("//"))
-            xpath = xpath[2..];
-
-        string? tagName = null;
-        string? attrName = null;
-        string? attrValue = null;
-
-        var atIndex = xpath.IndexOf('[');
-        if (atIndex >= 0)
-        {
-            tagName = xpath[..atIndex];
-            var attrPart = xpath[(atIndex + 1)..];
-
-            var lastCloseBracket = attrPart.LastIndexOf(']');
-            if (lastCloseBracket >= 0)
-                attrPart = attrPart[..lastCloseBracket];
-
-            var equalsIndex = attrPart.IndexOf('=');
-            if (equalsIndex >= 0)
-            {
-                attrName = attrPart[..equalsIndex].TrimStart('@');
-                attrValue = attrPart[(equalsIndex + 1)..].Trim('"', '\'');
-            }
-        }
-        else
-        {
-            tagName = xpath;
-        }
-
-        if (tagName is null || string.IsNullOrWhiteSpace(tagName))
-        {
-            throw new WebDriverException(ErrorType.UnknownError,
-                $"Invalid XPath expression: {originalXpath} (XPathLookupError)");
-        }
-
-        if (tagName.Contains('/') || tagName.Contains(']'))
-        {
-            throw new WebDriverException(ErrorType.UnknownError,
-                $"Invalid XPath expression: {originalXpath} (XPathLookupError)");
-        }
-
-        var controlType = tagName.ToLowerInvariant() switch
-        {
-            "button" => ControlType.Button,
-            "text" or "textblock" => ControlType.Text,
-            "edit" or "textbox" => ControlType.Edit,
-            "checkbox" => ControlType.CheckBox,
-            "radiobutton" or "radio" => ControlType.RadioButton,
-            "combobox" or "dropdown" => ControlType.ComboBox,
-            "listitem" => ControlType.ListItem,
-            "list" or "listview" => ControlType.List,
-            "treeitem" => ControlType.TreeItem,
-            "tree" => ControlType.Tree,
-            "tabitem" => ControlType.TabItem,
-            "tab" => ControlType.Tab,
-            "menu" => ControlType.Menu,
-            "menuitem" => ControlType.MenuItem,
-            "toolbar" => ControlType.ToolBar,
-            "scrollbar" => ControlType.ScrollBar,
-            "slider" => ControlType.Slider,
-            "progressbar" => ControlType.ProgressBar,
-            "hyperlink" => ControlType.Hyperlink,
-            "image" => ControlType.Image,
-            "custom" => ControlType.Custom,
-            "group" or "groupbox" => ControlType.Group,
-            "thumb" => ControlType.Thumb,
-            "datagrid" => ControlType.DataGrid,
-            "dataitem" => ControlType.DataItem,
-            "document" => ControlType.Document,
-            "splitbutton" => ControlType.SplitButton,
-            "window" or "pane" => ControlType.Pane,
-            "spinner" => ControlType.Spinner,
-            "statusbar" => ControlType.StatusBar,
-            "table" => ControlType.Table,
-            "titlebar" => ControlType.TitleBar,
-            "separator" => ControlType.Separator,
-            _ => null
-        };
-
-        var conditions = new List<Condition>();
-
-        if (controlType is not null)
-            conditions.Add(new PropertyCondition(AutomationElement.ControlTypeProperty, controlType));
-
-        if (attrName is not null && attrValue is not null)
-        {
-            var property = attrName.ToLowerInvariant() switch
-            {
-                "automationid" or "automation-id" => AutomationElement.AutomationIdProperty,
-                "name" => AutomationElement.NameProperty,
-                "classname" or "class" => AutomationElement.ClassNameProperty,
-                _ => throw new WebDriverException(ErrorType.UnknownError,
-                    $"Invalid XPath expression: {originalXpath} (XPathLookupError)")
-            };
-            conditions.Add(new PropertyCondition(property, attrValue));
-        }
-
-        if (conditions.Count == 0 && controlType is null)
-        {
-            return new PropertyCondition(AutomationElement.AutomationIdProperty, "___NO_MATCH___");
-        }
-
-        if (conditions.Count == 0)
-            return Condition.TrueCondition;
-
-        if (conditions.Count == 1)
-            return conditions[0];
-
-        return new AndCondition(conditions.ToArray());
-    }
-
-    private static ControlType MapTagNameToControlType(string tagName)
+    private static int MapTagNameToControlTypeId(string tagName)
     {
         return tagName.ToLowerInvariant() switch
         {
-            "button" => ControlType.Button,
-            "text" or "textblock" => ControlType.Text,
-            "edit" or "textbox" => ControlType.Edit,
-            "checkbox" => ControlType.CheckBox,
-            "radiobutton" or "radio" => ControlType.RadioButton,
-            "combobox" or "dropdown" => ControlType.ComboBox,
-            "listitem" => ControlType.ListItem,
-            "list" or "listview" => ControlType.List,
-            "treeitem" => ControlType.TreeItem,
-            "tree" => ControlType.Tree,
-            "tabitem" => ControlType.TabItem,
-            "tab" => ControlType.Tab,
-            "menu" => ControlType.Menu,
-            "menuitem" => ControlType.MenuItem,
-            "toolbar" => ControlType.ToolBar,
-            "scrollbar" => ControlType.ScrollBar,
-            "slider" => ControlType.Slider,
-            "progressbar" => ControlType.ProgressBar,
-            "hyperlink" => ControlType.Hyperlink,
-            "image" => ControlType.Image,
-            "custom" => ControlType.Custom,
-            "group" or "groupbox" => ControlType.Group,
-            "thumb" => ControlType.Thumb,
-            "datagrid" => ControlType.DataGrid,
-            "dataitem" => ControlType.DataItem,
-            "document" => ControlType.Document,
-            "splitbutton" => ControlType.SplitButton,
-            "window" or "pane" => ControlType.Pane,
-            "spinner" => ControlType.Spinner,
-            "statusbar" => ControlType.StatusBar,
-            "table" => ControlType.Table,
-            "titlebar" => ControlType.TitleBar,
-            "separator" => ControlType.Separator,
-            _ => ControlType.Custom
+            "button" => UIAControlTypeIds.UIA_ButtonControlTypeId,
+            "text" or "textblock" => UIAControlTypeIds.UIA_TextControlTypeId,
+            "edit" or "textbox" => UIAControlTypeIds.UIA_EditControlTypeId,
+            "checkbox" => UIAControlTypeIds.UIA_CheckBoxControlTypeId,
+            "radiobutton" or "radio" => UIAControlTypeIds.UIA_RadioButtonControlTypeId,
+            "combobox" or "dropdown" => UIAControlTypeIds.UIA_ComboBoxControlTypeId,
+            "listitem" => UIAControlTypeIds.UIA_ListItemControlTypeId,
+            "list" or "listview" => UIAControlTypeIds.UIA_ListControlTypeId,
+            "treeitem" => UIAControlTypeIds.UIA_TreeItemControlTypeId,
+            "tree" => UIAControlTypeIds.UIA_TreeControlTypeId,
+            "tabitem" => UIAControlTypeIds.UIA_TabItemControlTypeId,
+            "tab" => UIAControlTypeIds.UIA_TabControlTypeId,
+            "menu" => UIAControlTypeIds.UIA_MenuControlTypeId,
+            "menuitem" => UIAControlTypeIds.UIA_MenuItemControlTypeId,
+            "toolbar" => UIAControlTypeIds.UIA_ToolBarControlTypeId,
+            "scrollbar" => UIAControlTypeIds.UIA_ScrollBarControlTypeId,
+            "slider" => UIAControlTypeIds.UIA_SliderControlTypeId,
+            "progressbar" => UIAControlTypeIds.UIA_ProgressBarControlTypeId,
+            "hyperlink" => UIAControlTypeIds.UIA_HyperlinkControlTypeId,
+            "image" => UIAControlTypeIds.UIA_ImageControlTypeId,
+            "custom" => UIAControlTypeIds.UIA_CustomControlTypeId,
+            "group" or "groupbox" => UIAControlTypeIds.UIA_GroupControlTypeId,
+            "thumb" => UIAControlTypeIds.UIA_ThumbControlTypeId,
+            "datagrid" => UIAControlTypeIds.UIA_DataGridControlTypeId,
+            "dataitem" => UIAControlTypeIds.UIA_DataItemControlTypeId,
+            "document" => UIAControlTypeIds.UIA_DocumentControlTypeId,
+            "splitbutton" => UIAControlTypeIds.UIA_SplitButtonControlTypeId,
+            "window" or "pane" => UIAControlTypeIds.UIA_PaneControlTypeId,
+            "spinner" => UIAControlTypeIds.UIA_SpinnerControlTypeId,
+            "statusbar" => UIAControlTypeIds.UIA_StatusBarControlTypeId,
+            "table" => UIAControlTypeIds.UIA_TableControlTypeId,
+            "titlebar" => UIAControlTypeIds.UIA_TitleBarControlTypeId,
+            "separator" => UIAControlTypeIds.UIA_SeparatorControlTypeId,
+            _ => UIAControlTypeIds.UIA_CustomControlTypeId
         };
     }
 }

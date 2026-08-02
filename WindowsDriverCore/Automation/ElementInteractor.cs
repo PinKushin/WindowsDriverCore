@@ -1,4 +1,6 @@
-using System.Windows.Automation;
+using System.Runtime.InteropServices;
+using WindowsDriverCore.Automation.Com;
+using WindowsDriverCore.Automation.Raw;
 using WindowsDriverCore.ErrorHandling;
 
 namespace WindowsDriverCore.Automation;
@@ -12,27 +14,16 @@ public class ElementInteractor : IElementInteractor
         _store = store;
     }
 
-    private AutomationElement GetAndVerifyAlive(string elementId)
+    private RawAutomationElement GetAndVerifyAlive(string elementId)
     {
         var element = _store.Get(elementId);
         if (element is null)
             throw new WebDriverException(ErrorType.UnknownError,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
 
-        try
-        {
-            var _ = element.Current.BoundingRectangle;
-        }
-        catch (ElementNotAvailableException)
-        {
+        if (!element.IsAlive())
             throw new WebDriverException(ErrorType.UnknownError,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            throw new WebDriverException(ErrorType.UnknownError,
-                "An element command failed because the referenced element is no longer attached to the DOM.");
-        }
 
         return element;
     }
@@ -41,25 +32,31 @@ public class ElementInteractor : IElementInteractor
     {
         var element = GetAndVerifyAlive(elementId);
 
-        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern))
+        // Try InvokePattern
+        var invoke = element.TryGetPattern<IUIAutomationInvokePattern>(UIAPatternIds.UIA_InvokePatternId);
+        if (invoke is not null)
         {
-            ((InvokePattern)pattern).Invoke();
+            invoke.Invoke();
             return;
         }
 
-        if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selectPattern))
+        // Try SelectionItemPattern
+        var selectItem = element.TryGetPattern<IUIAutomationSelectionItemPattern>(UIAPatternIds.UIA_SelectionItemPatternId);
+        if (selectItem is not null)
         {
-            ((SelectionItemPattern)selectPattern).Select();
+            selectItem.Select();
             return;
         }
 
-        if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expandPattern))
+        // Try ExpandCollapsePattern
+        var expand = element.TryGetPattern<IUIAutomationExpandCollapsePattern>(UIAPatternIds.UIA_ExpandCollapsePatternId);
+        if (expand is not null)
         {
-            var el = (ExpandCollapsePattern)expandPattern;
-            if (el.Current.ExpandCollapseState == ExpandCollapseState.Collapsed)
-                el.Expand();
+            expand.get_ExpandCollapseState(out int state);
+            if (state == UIAExpandCollapseState.ExpandCollapseState_Collapsed)
+                expand.Expand();
             else
-                el.Collapse();
+                expand.Collapse();
             return;
         }
 
@@ -71,9 +68,10 @@ public class ElementInteractor : IElementInteractor
     {
         var element = GetAndVerifyAlive(elementId);
 
-        if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+        var value = element.TryGetPattern<IUIAutomationValuePattern>(UIAPatternIds.UIA_ValuePatternId);
+        if (value is not null)
         {
-            ((ValuePattern)pattern).SetValue(text);
+            value.SetValue(text);
             return;
         }
 
@@ -85,31 +83,33 @@ public class ElementInteractor : IElementInteractor
     {
         var element = GetAndVerifyAlive(elementId);
 
-        if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+        var value = element.TryGetPattern<IUIAutomationValuePattern>(UIAPatternIds.UIA_ValuePatternId);
+        if (value is not null)
         {
-            return ((ValuePattern)pattern).Current.Value ?? string.Empty;
+            value.get_Value(out string text);
+            return text ?? string.Empty;
         }
 
-        return element.Current.Name ?? string.Empty;
+        return element.GetName();
     }
 
     public bool GetEnabled(string elementId)
     {
         var element = GetAndVerifyAlive(elementId);
-        return element.Current.IsEnabled;
+        return element.GetIsEnabled();
     }
 
     public bool GetDisplayed(string elementId)
     {
         var element = GetAndVerifyAlive(elementId);
-        var bounds = element.Current.BoundingRectangle;
-        return !bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0;
+        var bounds = element.GetBoundingRectangle();
+        return !bounds.IsEmpty;
     }
 
     public string GetTagName(string elementId)
     {
         var element = GetAndVerifyAlive(elementId);
-        return element.Current.ControlType.ProgrammaticName;
+        return element.GetControlTypeName();
     }
 
     public string? GetAttribute(string elementId, string attributeName)
@@ -118,16 +118,16 @@ public class ElementInteractor : IElementInteractor
 
         return attributeName.ToLowerInvariant() switch
         {
-            "name" => element.Current.Name ?? string.Empty,
-            "automationid" => element.Current.AutomationId ?? string.Empty,
-            "classname" => element.Current.ClassName ?? string.Empty,
-            "controltype" => element.Current.ControlType.ProgrammaticName,
-            "isenabled" => element.Current.IsEnabled.ToString(),
-            "haskeyboardfocus" => element.Current.HasKeyboardFocus.ToString(),
-            "nativewindowhandle" => element.Current.NativeWindowHandle.ToString(),
-            "boundingrectangle" => element.Current.BoundingRectangle.ToString(),
-            "processid" => element.Current.ProcessId.ToString(),
-            "runtimeid" => string.Join(",", element.GetRuntimeId()),
+            "name" => element.GetName(),
+            "automationid" => element.GetAutomationId(),
+            "classname" => element.GetClassName(),
+            "controltype" => element.GetControlTypeName(),
+            "isenabled" => element.GetIsEnabled().ToString(),
+            "haskeyboardfocus" => element.GetHasKeyboardFocus().ToString(),
+            "nativewindowhandle" => element.GetNativeWindowHandle().ToString(),
+            "boundingrectangle" => element.GetBoundingRectangle().ToString(),
+            "processid" => element.GetProcessId().ToString(),
+            "runtimeid" => element.GetRuntimeIdString(),
             _ => null
         };
     }
@@ -136,9 +136,10 @@ public class ElementInteractor : IElementInteractor
     {
         var element = GetAndVerifyAlive(elementId);
 
-        if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+        var value = element.TryGetPattern<IUIAutomationValuePattern>(UIAPatternIds.UIA_ValuePatternId);
+        if (value is not null)
         {
-            ((ValuePattern)pattern).SetValue(string.Empty);
+            value.SetValue(string.Empty);
             return;
         }
 
@@ -150,9 +151,11 @@ public class ElementInteractor : IElementInteractor
     {
         var element = GetAndVerifyAlive(elementId);
 
-        if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern))
+        var selectItem = element.TryGetPattern<IUIAutomationSelectionItemPattern>(UIAPatternIds.UIA_SelectionItemPatternId);
+        if (selectItem is not null)
         {
-            return ((SelectionItemPattern)pattern).Current.IsSelected.ToString();
+            selectItem.get_IsSelected(out bool isSelected);
+            return isSelected.ToString();
         }
 
         return bool.FalseString;
@@ -161,14 +164,14 @@ public class ElementInteractor : IElementInteractor
     public string GetCoordinates(string elementId)
     {
         var element = GetAndVerifyAlive(elementId);
-        var bounds = element.Current.BoundingRectangle;
+        var bounds = element.GetBoundingRectangle();
         return $"{(int)bounds.X},{(int)bounds.Y}";
     }
 
     public string GetSize(string elementId)
     {
         var element = GetAndVerifyAlive(elementId);
-        var bounds = element.Current.BoundingRectangle;
+        var bounds = element.GetBoundingRectangle();
         return $"{(int)bounds.Width},{(int)bounds.Height}";
     }
 
