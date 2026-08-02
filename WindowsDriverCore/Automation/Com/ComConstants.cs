@@ -93,6 +93,7 @@ public static class UIATreeScope
     public const int TreeScope_Element = 0x0001;
     public const int TreeScope_Children = 0x0002;
     public const int TreeScope_Descendants = 0x0004;
+    public const int TreeScope_Parent = 0x0008;
     public const int TreeScope_Subtree = TreeScope_Element | TreeScope_Children | TreeScope_Descendants;
 }
 

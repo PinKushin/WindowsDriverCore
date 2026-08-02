@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using Interop.UIAutomationClient;
 using WindowsDriverCore.Automation.Com;
 using WindowsDriverCore.Automation.Raw;
 using WindowsDriverCore.ErrorHandling;
@@ -19,12 +19,13 @@ public class ElementFinder : IElementFinder
 
     public string FindElement(IntPtr windowHandle, string usingStrategy, string value)
     {
-        int hr = _automation.ElementFromHandle(windowHandle, out IntPtr rootPtr);
-        if (hr != 0 || rootPtr == IntPtr.Zero)
+        var root = _automation.ElementFromHandle(windowHandle);
+        if (root is null)
             throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
         using var condition = CreateCondition(usingStrategy, value);
-        var element = new RawAutomationElement(rootPtr).FindFirst(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
+        using var rawRoot = new RawAutomationElement(root);
+        var element = rawRoot.FindFirst(TreeScope.TreeScope_Descendants, condition.Condition);
 
         if (element is null)
             throw new WebDriverException(ErrorType.UnknownError,
@@ -35,13 +36,13 @@ public class ElementFinder : IElementFinder
 
     public string[] FindElements(IntPtr windowHandle, string usingStrategy, string value)
     {
-        int hr = _automation.ElementFromHandle(windowHandle, out IntPtr rootPtr);
-        if (hr != 0 || rootPtr == IntPtr.Zero)
+        var root = _automation.ElementFromHandle(windowHandle);
+        if (root is null)
             throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
         using var condition = CreateCondition(usingStrategy, value);
-        var rawRoot = new RawAutomationElement(rootPtr);
-        var elements = rawRoot.FindAll(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
+        using var rawRoot = new RawAutomationElement(root);
+        var elements = rawRoot.FindAll(TreeScope.TreeScope_Descendants, condition.Condition);
 
         var ids = new string[elements.Count];
         for (int i = 0; i < elements.Count; i++)
@@ -64,7 +65,7 @@ public class ElementFinder : IElementFinder
                 "An element command failed because the referenced element is no longer attached to the DOM.");
 
         using var condition = CreateCondition(usingStrategy, value);
-        var element = parent.FindFirst(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
+        var element = parent.FindFirst(TreeScope.TreeScope_Descendants, condition.Condition);
 
         if (element is null)
             throw new WebDriverException(ErrorType.UnknownError,
@@ -85,7 +86,7 @@ public class ElementFinder : IElementFinder
                 "An element command failed because the referenced element is no longer attached to the DOM.");
 
         using var condition = CreateCondition(usingStrategy, value);
-        var elements = parent.FindAll(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
+        var elements = parent.FindAll(TreeScope.TreeScope_Descendants, condition.Condition);
 
         var ids = new string[elements.Count];
         for (int i = 0; i < elements.Count; i++)

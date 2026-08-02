@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Interop.UIAutomationClient;
 using WindowsDriverCore.Automation.Com;
 using WindowsDriverCore.Automation.Raw;
 using WindowsDriverCore.Automation;
@@ -32,13 +33,13 @@ public static class ElementRoutes
             ValidateWindow(session, windowFinder);
 
             var automation = UIAutomationFactory.Create();
-            int hr = automation.ElementFromHandle(session.MainWindowHandle, out IntPtr rootPtr);
-            if (hr != 0 || rootPtr == IntPtr.Zero)
+            var root = automation.ElementFromHandle(session.MainWindowHandle);
+            if (root is null)
                 throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
             using var condition = ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_HasKeyboardFocusPropertyId, true);
-            var rawRoot = new RawAutomationElement(rootPtr);
-            var focused = rawRoot.FindFirst(UIATreeScope.TreeScope_Descendants, condition.ConditionPtr);
+            using var rawRoot = new RawAutomationElement(root);
+            var focused = rawRoot.FindFirst(TreeScope.TreeScope_Descendants, condition.Condition);
 
             if (focused is null)
                 return Results.Json(new { value = new Dictionary<string, string> { [W3cElementKey] = "", ["ELEMENT"] = "" } });
@@ -317,11 +318,11 @@ public static class ElementRoutes
             ValidateWindow(session, windowFinder);
 
             var automation = UIAutomationFactory.Create();
-            int hr = automation.ElementFromHandle(session.MainWindowHandle, out IntPtr rootPtr);
-            if (hr != 0 || rootPtr == IntPtr.Zero)
+            var root = automation.ElementFromHandle(session.MainWindowHandle);
+            if (root is null)
                 throw new WebDriverException(ErrorType.UnknownError, "Unable to get automation element from handle");
 
-            var xml = BuildSourceXml(new RawAutomationElement(rootPtr));
+            var xml = BuildSourceXml(new RawAutomationElement(root), automation);
             return Results.Json(new WebDriverResponse<string>(xml));
         });
 
@@ -354,7 +355,7 @@ public static class ElementRoutes
         });
     }
 
-    private static string BuildSourceXml(RawAutomationElement element, int depth = 0)
+    private static string BuildSourceXml(RawAutomationElement element, IUIAutomation automation, int depth = 0)
     {
         var indent = new string(' ', depth * 2);
         var tag = element.GetControlTypeName().Replace("ControlType.", "");
@@ -372,7 +373,8 @@ public static class ElementRoutes
         if (!string.IsNullOrEmpty(name))
             sb.Append($" Name=\"{name}\"");
 
-        var children = element.GetChildren();
+        using var trueCondition = ConditionFactory.CreateTrueCondition();
+        var children = element.GetChildren(trueCondition.Condition);
         if (children.Count == 0)
         {
             sb.Append(" />");
@@ -382,7 +384,7 @@ public static class ElementRoutes
             sb.AppendLine(">");
             foreach (var child in children)
             {
-                sb.AppendLine(BuildSourceXml(child, depth + 1));
+                sb.AppendLine(BuildSourceXml(child, automation, depth + 1));
             }
             sb.Append($"{indent}</{tag}>");
         }

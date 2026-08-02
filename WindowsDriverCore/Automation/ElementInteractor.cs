@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using Interop.UIAutomationClient;
 using WindowsDriverCore.Automation.Com;
 using WindowsDriverCore.Automation.Raw;
 using WindowsDriverCore.ErrorHandling;
@@ -32,7 +32,6 @@ public class ElementInteractor : IElementInteractor
     {
         var element = GetAndVerifyAlive(elementId);
 
-        // Try InvokePattern
         var invoke = element.TryGetPattern<IUIAutomationInvokePattern>(UIAPatternIds.UIA_InvokePatternId);
         if (invoke is not null)
         {
@@ -40,7 +39,6 @@ public class ElementInteractor : IElementInteractor
             return;
         }
 
-        // Try SelectionItemPattern
         var selectItem = element.TryGetPattern<IUIAutomationSelectionItemPattern>(UIAPatternIds.UIA_SelectionItemPatternId);
         if (selectItem is not null)
         {
@@ -48,12 +46,10 @@ public class ElementInteractor : IElementInteractor
             return;
         }
 
-        // Try ExpandCollapsePattern
         var expand = element.TryGetPattern<IUIAutomationExpandCollapsePattern>(UIAPatternIds.UIA_ExpandCollapsePatternId);
         if (expand is not null)
         {
-            expand.get_ExpandCollapseState(out int state);
-            if (state == UIAExpandCollapseState.ExpandCollapseState_Collapsed)
+            if (expand.CurrentExpandCollapseState == ExpandCollapseState.ExpandCollapseState_Collapsed)
                 expand.Expand();
             else
                 expand.Collapse();
@@ -86,8 +82,7 @@ public class ElementInteractor : IElementInteractor
         var value = element.TryGetPattern<IUIAutomationValuePattern>(UIAPatternIds.UIA_ValuePatternId);
         if (value is not null)
         {
-            value.get_Value(out string text);
-            return text ?? string.Empty;
+            return value.CurrentValue ?? string.Empty;
         }
 
         return element.GetName();
@@ -154,8 +149,7 @@ public class ElementInteractor : IElementInteractor
         var selectItem = element.TryGetPattern<IUIAutomationSelectionItemPattern>(UIAPatternIds.UIA_SelectionItemPatternId);
         if (selectItem is not null)
         {
-            selectItem.get_IsSelected(out bool isSelected);
-            return isSelected.ToString();
+            return selectItem.CurrentIsSelected != 0 ? bool.TrueString : bool.FalseString;
         }
 
         return bool.FalseString;

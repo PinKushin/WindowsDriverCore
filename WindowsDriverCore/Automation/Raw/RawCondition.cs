@@ -1,34 +1,35 @@
 using System.Runtime.InteropServices;
-using WindowsDriverCore.Automation.Com;
+using Interop.UIAutomationClient;
 
 namespace WindowsDriverCore.Automation.Raw;
 
 /// <summary>
-/// Managed wrapper around IUIAutomationCondition COM pointer.
-/// Stores raw IntPtr — conditions are opaque handles, we never call methods on them.
+/// Managed wrapper around IUIAutomationCondition COM object.
 /// </summary>
 public sealed class RawCondition : IDisposable
 {
-    private IntPtr _conditionPtr;
+    private IUIAutomationCondition? _condition;
     private bool _disposed;
 
-    public RawCondition(IntPtr conditionPtr)
+    public RawCondition(IUIAutomationCondition condition)
     {
-        _conditionPtr = conditionPtr;
+        _condition = condition ?? throw new ArgumentNullException(nameof(condition));
     }
 
-    /// <summary>
-    /// The raw COM condition pointer. Safe to pass to IUIAutomationElement.FindFirst/FindAll.
-    /// </summary>
-    public IntPtr ConditionPtr => _disposed ? IntPtr.Zero : _conditionPtr;
+    public IUIAutomationCondition Condition =>
+        _condition ?? throw new ObjectDisposedException(nameof(RawCondition));
 
     public void Dispose()
     {
-        if (!_disposed && _conditionPtr != IntPtr.Zero)
+        if (!_disposed)
         {
-            Marshal.Release(_conditionPtr);
-            _conditionPtr = IntPtr.Zero;
+            if (_condition is not null)
+            {
+                try { Marshal.ReleaseComObject(_condition); } catch { }
+                _condition = null;
+            }
             _disposed = true;
         }
+        GC.SuppressFinalize(this);
     }
 }
