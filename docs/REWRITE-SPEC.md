@@ -380,6 +380,35 @@ The one thing SOLID's Liskov rule still buys us here: an interface implementatio
 substitutable. No partial implementations, no `NotImplementedException` — if a type cannot honour a
 contract, the contract is wrong or the type needs a narrower one.
 
+## 7c. Branching
+
+```
+main
+ └── feat/rewrite-jwp-core          integration branch for the whole rewrite
+      ├── feat/rewrite/session-create
+      ├── feat/rewrite/window-routes
+      └── feat/rewrite/element-find
+```
+
+`feat/rewrite-jwp-core` is long-lived and merges to `main` only when it is worth
+merging — realistically at parity, or earlier if the old implementation is retired first.
+
+**One sub-branch per complete sub-step.** A sub-step is complete when the build is clean, its
+tests are green, and its behaviour has been verified by mutation. Then:
+
+```bash
+git checkout feat/rewrite-jwp-core
+git merge --no-ff feat/rewrite/<step>
+git branch -d feat/rewrite/<step>
+```
+
+`--no-ff` so each sub-step stays a visible unit in the history rather than dissolving into a flat
+list. The scaffold, protocol contract and session lifecycle landed directly on the integration
+branch before this convention was set; everything after uses sub-branches.
+
+Push is separate and deliberate. Local commits accumulate; pushing happens when a unit of work is
+finished and stable, or when something specifically needs CI.
+
 ## 8. Standards, non-negotiable
 
 From the project's engineering standards, called out because the current code violates all of them:
