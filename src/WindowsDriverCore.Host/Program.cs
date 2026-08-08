@@ -59,10 +59,29 @@ public partial class Program
         if (address.BasePath is not null)
         {
             // One mount, configured at startup — the same shape WinAppDriver has.
-            // Serving both the root and the base path would be a behaviour it
-            // does not have.
+            //
+            // Both lines are needed and neither is sufficient. UsePathBase strips
+            // the prefix when a request carries it, but lets everything else
+            // through untouched, so on its own the server answers BOTH
+            // /wd/hub/status and bare /status. Measured against WinAppDriver
+            // 1.2.2009.02003 started with "127.0.0.1 4728/wd/hub": the prefixed
+            // path returns 200 and the bare path returns 404. The gate supplies
+            // that rejection; UsePathBase then lets routes be declared once, at
+            // the root.
+            app.UseMiddleware<BasePathGate>(address.BasePath);
             app.UsePathBase(address.BasePath);
         }
+
+        // Explicit, and load-bearing. WebApplication inserts UseRouting at the
+        // FRONT of the pipeline when endpoints exist and it has not been called,
+        // which would run routing before UsePathBase and leave the base path with
+        // no effect. Calling it here suppresses the automatic one.
+        //
+        // The in-memory protocol tests could not catch this: they never request a
+        // base path. It was found by running the real executable with
+        // "127.0.0.1 4725/wd/hub" and watching /wd/hub/status 404 while bare
+        // /status answered 200.
+        app.UseRouting();
 
         app.MapJsonWireProtocol();
 
