@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-08-08T17:38:58.7637768-04:00",
+  "recordedAt": "2026-08-08T18:52:38.0101792-04:00",
   "winAppDriverVersion": "1.2.2009.02003",
   "os": "10.0.26200.0",
   "note": "Raw responses from real WinAppDriver. This is the contract; do not edit by hand.",
@@ -419,6 +419,70 @@
       "requestBody": null,
       "httpStatus": 404,
       "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "session.create.bothCapabilities",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\",\"appTopLevelWindow\":\"DEADBEEF\"}}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":100,\"value\":{\"error\":\"invalid argument\",\"message\":\"Bad capabilities. Specify either app or appTopLevelWindow to create a session\"}}"
+    },
+    {
+      "name": "session.create.emptyApp",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{\"app\":\"\"}}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":100,\"value\":{\"error\":\"invalid argument\",\"message\":\"Capability: app cannot be empty\"}}"
+    },
+    {
+      "name": "session.create.w3cAlwaysMatch",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"capabilities\":{\"alwaysMatch\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\"}}}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":100,\"value\":{\"error\":\"invalid argument\",\"message\":\"Bad capabilities. Specify either app or appTopLevelWindow to create a session\"}}"
+    },
+    {
+      "name": "session.create.noBody",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":100,\"value\":{\"error\":\"invalid argument\",\"message\":\"Bad capabilities. Specify either app or appTopLevelWindow to create a session\"}}"
+    },
+    {
+      "name": "session.create.rootDesktop",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{\"app\":\"Root\"}}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"app\":\"Root\"}}"
+    },
+    {
+      "name": "session.rootDesktop.windowHandle",
+      "method": "GET",
+      "path": "/session/11F247DF-CF5F-425D-AB94-116C5108316E/window_handle",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"0x0001000C\"}"
+    },
+    {
+      "name": "session.rootDesktop.title",
+      "method": "GET",
+      "path": "/session/11F247DF-CF5F-425D-AB94-116C5108316E/title",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Desktop 1\"}"
+    },
+    {
+      "name": "session.create.extraCapability",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\",\"platformName\":\"Windows\",\"deviceName\":\"WindowsPC\"}}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\",\"platformName\":\"Windows\"}}"
     }
   ]
 }
