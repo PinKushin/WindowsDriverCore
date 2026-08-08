@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -34,6 +35,40 @@ public static class SessionRoutes
     public static IEndpointRouteBuilder MapSessionRoutes(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        app.MapPost("/session", async (HttpContext context, ISessionStore sessions, SessionFactory factory) =>
+        {
+            using JsonDocument body = await JsonDocument
+                .ParseAsync(context.Request.Body)
+                .ConfigureAwait(false);
+
+            CapabilityParseResult parsed = SessionCapabilities.Parse(body.RootElement);
+            if (parsed.Capabilities is null)
+            {
+                // Validation before anything is started. Launching and then
+                // rejecting would leave an application running that nothing will
+                // ever close.
+                return Results.Json(
+                    JsonWireResponse.ForFault(parsed.Fault!, parsed.Message!),
+                    statusCode: parsed.Fault!.HttpStatus);
+            }
+
+            SessionCreateResult created = factory.Create(parsed.Capabilities);
+            if (created.Session is null)
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(created.Fault!, created.Message!),
+                    statusCode: created.Fault!.HttpStatus);
+            }
+
+            // Stored only once it exists. A session reported but not stored fails
+            // on the client's very next request.
+            sessions.Add(created.Session);
+
+            return Results.Json(JsonWireResponse.ForSession(
+                created.Session.Id,
+                created.Session.Capabilities));
+        });
 
         app.MapGet("/sessions", (ISessionStore sessions) =>
             Results.Json(JsonWireResponse.ForServer(

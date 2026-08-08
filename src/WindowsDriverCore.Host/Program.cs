@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using WindowsDriverCore.Host.CommandLine;
+using WindowsDriverCore.Platform.Applications;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Routing;
 using WindowsDriverCore.Protocol.Sessions;
 using WindowsDriverCore.Protocol.Status;
@@ -55,6 +57,11 @@ public partial class Program
 
         builder.Services.AddSingleton<IServerStatusProvider, ServerStatusProvider>();
         builder.Services.AddSingleton<ISessionStore, SessionStore>();
+        builder.Services.AddSingleton<SessionFactory>();
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<MainWindowWaiter>();
+        builder.Services.AddSingleton<IWindowLocator, WindowLocator>();
+        builder.Services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
 
         WebApplication app = builder.Build();
 

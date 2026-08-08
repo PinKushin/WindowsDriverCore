@@ -1,6 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Win32 P/Invoke, window discovery, input synthesis, process lifetime.
        Bottom of the stack: references nothing of ours. -->
+  <PropertyGroup>
+    <!-- Scoped to this project, not the solution. LibraryImport generates the
+         marshalling stubs and they are unsafe by construction; this is also the
+         only project that should ever need it, since it is the only one that
+         touches native memory. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Drawing.Common" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
