@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <!-- SharpFuzz instruments a target assembly and drives it with libFuzzer.
+       Targets are the untrusted-input boundaries: JSON request bodies, the
+       capability strings that reach process launch, and the window-handle
+       parser, which takes an arbitrary caller-supplied hex string. Scheduled,
+       not per-push. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsDriverCore.Protocol\WindowsDriverCore.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpFuzz" />
+  </ItemGroup>
+</Project>

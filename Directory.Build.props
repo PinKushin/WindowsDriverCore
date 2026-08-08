@@ -1,0 +1,51 @@
+<Project>
+
+  <!-- Settings shared by every project in the solution. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <TargetFramework>net10.0-windows</TargetFramework>
+
+    <!-- Strict null analysis: reference types are non-nullable by default and a
+         possible null is a compile error. Nullability is opt-in via `string?`. -->
+    <Nullable>enable</Nullable>
+
+    <!-- Namespaces are declared explicitly in each project's GlobalUsings.cs
+         rather than injected invisibly by the SDK. -->
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Required for IDE0005 (unused usings) to run during build, not just in
+         the IDE. Test projects suppress the resulting CS1591. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+
+    <!-- Every security rule, not just the recommended subset. This server binds
+         a socket, launches processes from caller-supplied strings, and marshals
+         raw COM pointers — the three places CA3xxx/CA5xxx findings actually
+         matter. The previous implementation shipped a command-injection vector
+         through Process.Start that `recommended` would not have flagged.
+         Combined with TreatWarningsAsErrors, a security finding fails the build
+         rather than joining a warning list nobody reads. -->
+    <AnalysisModeSecurity>All</AnalysisModeSecurity>
+
+    <!-- Fail restore on a dependency with a known advisory, transitive included. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- Analyzers applied everywhere. Neither ships: both are analyzer-only
+       packages with PrivateAssets=all. -->
+  <ItemGroup>
+    <PackageReference Include="Roslynator.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

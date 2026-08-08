@@ -266,6 +266,45 @@ Each milestone ends green and measurable.
 
 ---
 
+## 7b. Coding conventions
+
+### No `var`
+
+Explicit types everywhere. The type is part of what the line says, and this codebase's whole
+problem was call sites whose behaviour you could not read locally.
+
+Two consequences worth stating, because they are the point rather than side effects:
+
+- **No anonymous types.** Every JSON response is a **named record**. This directly removes the old
+  implementation's worst inconsistency, where `Results.Json(new { value = new { x, y } })` and
+  `Results.Json(new WebDriverResponse<object?>(...))` produced different envelopes from
+  code that read the same. One response type per endpoint shape, declared once, serialized once.
+- **No JSON round-tripping between layers.** With explicit types there is nothing tempting about
+  returning a `string` of JSON from the automation layer and re-parsing it in the route, which is
+  exactly what the old `GetCoordinates`/`GetSize` did.
+
+`var` is not used even where the type is obvious from the right-hand side.
+
+### Composition, not inheritance
+
+- **Zero base classes carrying logic.** No `abstract class`, no `protected` members, no template
+  methods. If two services share behaviour, one takes the other as a constructor dependency.
+- **Interfaces are contracts, not inheritance.** They exist so collaborators can be substituted in
+  tests and swapped through DI. Keep them narrow (ISP) — `IElementActions` and
+  `IElementProperties`, not one 14-method `IElementInteractor`.
+- **`sealed` on every concrete class.** Unsealing is a deliberate decision with a stated reason,
+  not a default.
+- **No static reachable from a route handler.** Statics are what made the old code untestable.
+  `Win32`, condition creation, keyboard input, the UIA factory — all instance types behind
+  interfaces, all injected.
+- **Test doubles are hand-written stubs** implementing the interface. No shared test base classes
+  with logic; where fixtures are needed, compose them in (xUnit class/collection fixtures) rather
+  than inheriting from a base.
+
+The one thing SOLID's Liskov rule still buys us here: an interface implementation must be *fully*
+substitutable. No partial implementations, no `NotImplementedException` — if a type cannot honour a
+contract, the contract is wrong or the type needs a narrower one.
+
 ## 8. Standards, non-negotiable
 
 From the project's engineering standards, called out because the current code violates all of them:

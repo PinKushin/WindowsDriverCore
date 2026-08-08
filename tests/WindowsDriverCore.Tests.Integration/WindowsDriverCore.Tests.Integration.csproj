@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Drives a real application through the real driver. Targets apps we
+       control and version — not Store apps, which drift underneath the suite.
+       Requires a desktop session. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsDriverCore.Host\WindowsDriverCore.Host.csproj" />
+  </ItemGroup>
+</Project>
