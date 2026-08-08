@@ -63,6 +63,15 @@ public static class SessionRoutes
             return Results.Json(JsonWireResponse.ForServerVoid());
         });
 
+        // Orientation is fixed. WinAppDriver answers LANDSCAPE for every session
+        // regardless of the window, which the recording confirms — there is no
+        // rotation concept on the desktop.
+        app.MapGet("/session/{sessionId}/orientation", (HttpContext context) =>
+            Results.Json(JsonWireResponse.ForSession(
+                context.GetSession().Id,
+                "LANDSCAPE")))
+            .RequiresSession();
+
         return app;
     }
 }
