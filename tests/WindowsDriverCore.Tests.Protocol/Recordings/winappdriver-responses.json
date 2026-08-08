@@ -1,0 +1,328 @@
+{
+  "recordedAt": "2026-08-08T17:27:36.1177881-04:00",
+  "winAppDriverVersion": "1.2.2009.02003",
+  "os": "10.0.26200.0",
+  "note": "Raw responses from real WinAppDriver. This is the contract; do not edit by hand.",
+  "records": [
+    {
+      "name": "status",
+      "method": "GET",
+      "path": "/status",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"build\":{\"revision\":\"2003\",\"time\":\"Wed Aug 26 07:56:06 2020\",\"version\":\"1.2.2009\"},\"os\":{\"arch\":\"amd64\",\"name\":\"windows\",\"version\":\"10.0.26200\"}}"
+    },
+    {
+      "name": "session.create.calculator",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\"}}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\"}}"
+    },
+    {
+      "name": "sessions.list",
+      "method": "GET",
+      "path": "/sessions",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"status\":0,\"value\":[{\"capabilities\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\"},\"id\":\"{sessionId}\"},{\"capabilities\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\"},\"id\":\"{sessionId}\"}]}"
+    },
+    {
+      "name": "window_handle",
+      "method": "GET",
+      "path": "/session/{sessionId}/window_handle",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"0x00551120\"}"
+    },
+    {
+      "name": "window_handles",
+      "method": "GET",
+      "path": "/session/{sessionId}/window_handles",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":[\"0x00551120\"]}"
+    },
+    {
+      "name": "title",
+      "method": "GET",
+      "path": "/session/{sessionId}/title",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Calculator\"}"
+    },
+    {
+      "name": "orientation",
+      "method": "GET",
+      "path": "/session/{sessionId}/orientation",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"LANDSCAPE\"}"
+    },
+    {
+      "name": "window.size",
+      "method": "GET",
+      "path": "/session/{sessionId}/window/size",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"height\":534,\"width\":502}}"
+    },
+    {
+      "name": "element.find.byAccessibilityId",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"num5Button\",\"using\":\"accessibility id\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"ELEMENT\":\"42.19466560.4.73\"}}"
+    },
+    {
+      "name": "element.text",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Five\"}"
+    },
+    {
+      "name": "element.enabled",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/enabled",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":true}"
+    },
+    {
+      "name": "element.displayed",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/displayed",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":true}"
+    },
+    {
+      "name": "element.name.tagName",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"ControlType.Button\"}"
+    },
+    {
+      "name": "element.location",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/location",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"x\":129,\"y\":372}}"
+    },
+    {
+      "name": "element.size",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/size",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"height\":51,\"width\":122}}"
+    },
+    {
+      "name": "element.attribute.AutomationId",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/attribute/AutomationId",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"num5Button\"}"
+    },
+    {
+      "name": "element.selected",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/selected",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":false}"
+    },
+    {
+      "name": "element.click",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/42.19466560.4.73/click",
+      "requestBody": "{}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "elements.findAll.byClassName",
+      "method": "POST",
+      "path": "/session/{sessionId}/elements",
+      "requestBody": "{\"value\":\"Button\",\"using\":\"class name\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":[{\"ELEMENT\":\"42.19466560.4.90\"},{\"ELEMENT\":\"42.19466560.4.88\"},{\"ELEMENT\":\"42.19466560.4.20\"},{\"ELEMENT\":\"42.19466560.4.85\"},{\"ELEMENT\":\"42.19466560.4.23\"},{\"ELEMENT\":\"42.19466560.4.25\"},{\"ELEMENT\":\"42.19466560.4.27\"},{\"ELEMENT\":\"42.19466560.4.29\"},{\"ELEMENT\":\"42.19466560.4.31\"},{\"ELEMENT\":\"42.19466560.4.33\"},{\"ELEMENT\":\"42.19466560.4.36\"},{\"ELEMENT\":\"42.19466560.4.38\"},{\"ELEMENT\":\"42.19466560.4.40\"},{\"ELEMENT\":\"42.19466560.4.42\"},{\"ELEMENT\":\"42.19466560.4.45\"},{\"ELEMENT\":\"42.19466560.4.47\"},{\"ELEMENT\":\"42.19466560.4.49\"},{\"ELEMENT\":\"42.19466560.4.52\"},{\"ELEMENT\":\"42.19466560.4.54\"},{\"ELEMENT\":\"42.19466560.4.56\"},{\"ELEMENT\":\"42.19466560.4.58\"},{\"ELEMENT\":\"42.19466560.4.60\"},{\"ELEMENT\":\"42.19466560.4.63\"},{\"ELEMENT\":\"42.19466560.4.65\"},{\"ELEMENT\":\"42.19466560.4.67\"},{\"ELEMENT\":\"42.19466560.4.69\"},{\"ELEMENT\":\"42.19466560.4.71\"},{\"ELEMENT\":\"42.19466560.4.73\"},{\"ELEMENT\":\"42.19466560.4.75\"},{\"ELEMENT\":\"42.19466560.4.77\"},{\"ELEMENT\":\"42.19466560.4.79\"},{\"ELEMENT\":\"42.19466560.4.81\"},{\"ELEMENT\":\"42.19466560.4.83\"}]}"
+    },
+    {
+      "name": "error.noSuchElement.accessibilityId",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"ThisDoesNotExistAnywhere\",\"using\":\"accessibility id\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "error.noSuchElement.name",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"ThisDoesNotExistAnywhere\",\"using\":\"name\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "error.noSuchElement.tagName",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"InvalidTagName\",\"using\":\"tag name\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "error.tagName.malformed",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"//@InvalidTagNameMalformed\",\"using\":\"tag name\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "error.xpath.lookupError",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"//*[@InvalidAttribute=]\",\"using\":\"xpath\"}",
+      "httpStatus": 500,
+      "responseBody": "{\"status\":19,\"value\":{\"error\":\"XPath Lookup Error\",\"message\":\"Invalid XPath expression: //*[@InvalidAttribute=]\"}}"
+    },
+    {
+      "name": "error.locator.cssSelector",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\".SomeClass\",\"using\":\"css selector\"}",
+      "httpStatus": 501,
+      "responseBody": "Unimplemented Command: css selector locator strategy is not supported"
+    },
+    {
+      "name": "error.locator.linkText",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"whatever\",\"using\":\"link text\"}",
+      "httpStatus": 501,
+      "responseBody": "Unimplemented Command: link text locator strategy is not supported"
+    },
+    {
+      "name": "error.locator.partialLinkText",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"whatever\",\"using\":\"partial link text\"}",
+      "httpStatus": 501,
+      "responseBody": "Unimplemented Command: partial link text locator strategy is not supported"
+    },
+    {
+      "name": "error.elements.noSuchElement",
+      "method": "POST",
+      "path": "/session/{sessionId}/elements",
+      "requestBody": "{\"value\":\"ThisDoesNotExistAnywhere\",\"using\":\"accessibility id\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":[]}"
+    },
+    {
+      "name": "error.timeouts.pageLoad",
+      "method": "POST",
+      "path": "/session/{sessionId}/timeouts",
+      "requestBody": "{\"type\":\"page load\",\"ms\":1000}",
+      "httpStatus": 501,
+      "responseBody": "Unimplemented Command: page load timeout type is not supported"
+    },
+    {
+      "name": "error.timeouts.script",
+      "method": "POST",
+      "path": "/session/{sessionId}/timeouts",
+      "requestBody": "{\"type\":\"script\",\"ms\":1000}",
+      "httpStatus": 501,
+      "responseBody": "Unimplemented Command: script timeout type is not supported"
+    },
+    {
+      "name": "error.timeouts.negativeMs",
+      "method": "POST",
+      "path": "/session/{sessionId}/timeouts",
+      "requestBody": "{\"type\":\"implicit\",\"ms\":-1}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":100,\"value\":{\"error\":\"invalid argument\",\"message\":\"Bad Command Parameter: ms:-1, type:implicit\"}}"
+    },
+    {
+      "name": "timeouts.implicit.valid",
+      "method": "POST",
+      "path": "/session/{sessionId}/timeouts",
+      "requestBody": "{\"type\":\"implicit\",\"ms\":1000}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "error.invalidSessionId",
+      "method": "GET",
+      "path": "/session/{sessionId}/window_handle",
+      "requestBody": null,
+      "httpStatus": 404,
+      "responseBody": "{\"status\":101,\"value\":{\"error\":\"invalid session id\",\"message\":\"No active session with ID {sessionId}\"}}"
+    },
+    {
+      "name": "error.unknownRoute",
+      "method": "GET",
+      "path": "/session/{sessionId}/no_such_command",
+      "requestBody": null,
+      "httpStatus": 404,
+      "responseBody": "{\"status\":9,\"value\":{\"error\":\"unknown command\",\"message\":\"Command not recognized: GET: /session/{sessionId}/no_such_command\"}}"
+    },
+    {
+      "name": "error.window.switchBadHandle",
+      "method": "POST",
+      "path": "/session/{sessionId}/window",
+      "requestBody": "{\"name\":\"DEADBEEF\"}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":23,\"value\":{\"error\":\"no such window\",\"message\":\"A request to switch to a window could not be satisfied because the window could not be found.\"}}"
+    },
+    {
+      "name": "error.element.staleAfterId",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/99999.99999.99999/text",
+      "requestBody": null,
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "error.session.badCapabilities",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{}}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":100,\"value\":{\"error\":\"invalid argument\",\"message\":\"Bad capabilities. Specify either app or appTopLevelWindow to create a session\"}}"
+    },
+    {
+      "name": "error.session.appNotFound",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{\"app\":\"C:\\\\this\\\\does\\\\not\\\\exist.exe\"}}",
+      "httpStatus": 500,
+      "responseBody": "{\"status\":13,\"value\":{\"error\":\"unknown error\",\"message\":\"The system cannot find the file specified\"}}"
+    },
+    {
+      "name": "error.session.badTopLevelWindow",
+      "method": "POST",
+      "path": "/session",
+      "requestBody": "{\"desiredCapabilities\":{\"appTopLevelWindow\":\"DEADBEEF\"}}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":23,\"value\":{\"error\":\"no such window\",\"message\":\"Cannot find active window specified by capabilities: appTopLevelWindow\"}}"
+    },
+    {
+      "name": "session.delete",
+      "method": "DELETE",
+      "path": "/session/{sessionId}",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"status\":0}"
+    }
+  ]
+}

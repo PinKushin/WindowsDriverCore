@@ -108,28 +108,28 @@ application re-launching."
 
 ## Error envelope
 
-From `Docs/FAQ.md`, WinAppDriver's own logged response:
+**SUPERSEDED 2026-08-08 — see `docs/PROJECT-KNOWLEDGE.md` and the checked-in recordings at
+`tests/WindowsDriverCore.Tests.Protocol/Recordings/winappdriver-responses.json`.**
 
-```json
-{"status":23,"value":{"error":"no such window","message":"Currently selected window has been closed"}}
-```
+Two claims in the original version of this section were **false**, both produced by a broken
+measurement rather than by the server:
 
-JWP shape: **numeric top-level `status`**, plus `value.error` and `value.message`. Our
-`Messages/ErrorResponse.cs` emits `{"value":{"error":…,"message":…,"stacktrace":…}}` with **no
-`status` field**. Worth verifying against a live session whether Selenium 3.8 needs it to select
-the right exception type — several tests catch `InvalidOperationException` specifically.
+- "unknown session -> bare HTTP 404, empty body, no JSON at all" — false. It returns
+  `{"status":101,"value":{"error":"invalid session id","message":"No active session with ID ..."}}`.
+- "unknown route -> same" — false. It returns `{"status":9,"value":{"error":"unknown command",...}}`.
 
-Measured live (probes against WinAppDriver, no session created):
+Cause: PowerShell 7's `Invoke-WebRequest` throws on non-2xx and `$_.Exception.Response` is an
+`HttpResponseMessage`, which has no `GetResponseStream()`. The body reader failed silently and
+every error body read as empty. Fixed with `-SkipHttpErrorCheck`.
 
-- `GET /session/{bogus}/window_handle` → **HTTP 404, empty body**. No JSON envelope at all for an
-  unknown session. We return a JSON `invalid session id` error instead.
-- `GET /session/{bogus}/totally_unknown_route` → HTTP 404, empty body.
-- `GET /status` → `{"build":{"revision":…,"time":…,"version":…},"os":{"arch":"amd64","name":"windows","version":"10.0.26200"}}`
-  — **not** wrapped in `value`. Our `StatusRoutes` matches this shape. Note our route template is
-  `"/status/"` with a trailing slash; confirm it still matches `GET /status`.
+A third inference recorded elsewhere was also wrong: that WinAppDriver could not be returning
+status 7 for a find miss, argued from the client raising `InvalidOperationException` rather than
+`NoSuchElementException`. It does return 7. That was reasoning from a client symptom to a server
+behaviour, and measuring settled it in minutes.
 
-Canonical error strings live in `Tests/WebDriverAPI/AppSessionBase/CommonTestSettings.cs`
-(`ErrorStrings` class) — that is the authoritative list, not our guesses.
+What survives: the envelope shape is `{"status":<int>,"value":{"error":...,"message":...}}`, and
+`GET /status` is unwrapped. Everything else about error responses should be read from the
+recordings, including the fact that HTTP 501 responses are **plain text with no JSON envelope**.
 
 ## Locator strategies (`Docs/AuthoringTestScripts.md`)
 

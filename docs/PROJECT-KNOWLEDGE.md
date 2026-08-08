@@ -137,22 +137,85 @@ Only `AlarmClockBase` calls it; `CalculatorBase` checks `session == null` instea
 relaunches once per test *class* by design — 35 of 43 classes have
 `[ClassCleanup] → TearDown() → session.Quit()`.
 
-### Error envelope
+### Response envelopes — recorded, not inferred
+
+**All of this is measured** from WinAppDriver 1.2.2009.02003 on Win11 26200 and checked in at
+`tests/WindowsDriverCore.Tests.Protocol/Recordings/winappdriver-responses.json` (40 records).
+That file is the contract. Do not hand-edit it; re-record it.
+
+**Success** carries `sessionId`; **errors do not**:
 
 ```json
-{"status":23,"value":{"error":"no such window","message":"Currently selected window has been closed"}}
+{"sessionId":"…","status":0,"value":{"ELEMENT":"42.19466560.4.73"}}
+{"status":7,"value":{"error":"no such element","message":"An element could not be located on the page using the given search parameters."}}
 ```
 
-Numeric top-level `status` plus `value.error` and `value.message`. Measured live against
-WinAppDriver 1.2.2009.02003:
+`GET /status` is unwrapped — no `value`, no `status`:
+```json
+{"build":{"revision":"2003","time":"…","version":"1.2.2009"},"os":{"arch":"amd64","name":"windows","version":"10.0.26200"}}
+```
 
-- unknown session → **bare HTTP 404, empty body**, no JSON at all
-- unknown route → same
-- `GET /status` → `{"build":{...},"os":{...}}`, **not** wrapped in `value`
+**Status codes actually emitted**, with their HTTP status:
 
-Canonical error strings are in `Tests/WebDriverAPI/AppSessionBase/CommonTestSettings.cs`, class
-`ErrorStrings`. Use that file verbatim; do not reverse-engineer strings from failures the way the
-last implementation did.
+| `status` | `error` | HTTP | Trigger |
+|---|---|---|---|
+| 0 | — | 200 | success |
+| 7 | `no such element` | 404 | find miss, malformed tag name, unknown element id |
+| 9 | `unknown command` | 404 | unrecognised route |
+| 13 | `unknown error` | 500 | app path not found on session create |
+| 19 | `XPath Lookup Error` | 500 | invalid XPath (note the spaces and capitals) |
+| 23 | `no such window` | 400 | bad window handle, bad `appTopLevelWindow` |
+| **100** | `invalid argument` | 400 | negative timeout ms, missing capabilities |
+| **101** | `invalid session id` | 404 | unknown session |
+
+**100 and 101 are not in Selenium's `WebDriverResult` enum** (which uses 61 and 6). WinAppDriver
+emits its own. Match WinAppDriver, not the enum.
+
+### 501 responses are plain text, not JSON
+
+This is the finding that explains a string nobody could account for:
+
+```
+HTTP 501
+Unimplemented Command: css selector locator strategy is not supported
+```
+
+No envelope, no JSON. The client cannot parse it, so it **prepends "Unexpected error. "** — which
+is exactly why `ErrorStrings.UnimplementedCommandLocator` reads
+`"Unexpected error. Unimplemented Command: {0} locator strategy is not supported"`. Emit the bare
+text with HTTP 501 and the client composes the rest. Emitting JSON here would produce a different
+client-side message and fail the test.
+
+Applies to: unsupported locator strategies (`css selector`, `link text`, `partial link text`) and
+unsupported timeout types (`page load`, `script`).
+
+Similarly, `ErrorStrings.XPathLookupError` is `"Invalid XPath expression: {0} (XPathLookupError)"`
+but the **server** sends only `Invalid XPath expression: {expr}`. The client appends
+` (XPathLookupError)` — the `error` string with spaces removed. Do not send the suffix.
+
+### Other measured behaviours
+
+- `FindElements` with no match → **HTTP 200, `"value":[]`**, not an error.
+- Element ids are **dot-separated** (`42.19466560.4.73`), matching the docs. The previous
+  implementation used commas.
+- `window_handle` returns a hex string with the `0x` prefix and uppercase digits: `"0x01BF112C"`.
+- `element/{id}/name` returns the tag name as `"ControlType.Button"`.
+- `element/{id}/size` serialises **height before width**.
+
+### A caution about how these were obtained
+
+The first recording pass reported **every error body as empty**, and it was wrong. PowerShell 7's
+`Invoke-WebRequest` throws on non-2xx, and `$_.Exception.Response` is an `HttpResponseMessage` with
+no `GetResponseStream()`, so the body reader silently produced "". Re-recorded with
+`-SkipHttpErrorCheck`, which returns the response instead of throwing.
+
+An earlier version of this document asserted "unknown session → bare HTTP 404, empty body" on the
+strength of that broken instrument. It is false. **When a measurement says a server returns
+nothing, suspect the client first.**
+
+Canonical error strings also live in `Tests/WebDriverAPI/AppSessionBase/CommonTestSettings.cs`,
+class `ErrorStrings` — but note those are the strings **as the client sees them**, after any
+prefixing. The recordings are what the server sends.
 
 ### Locator strategies
 
