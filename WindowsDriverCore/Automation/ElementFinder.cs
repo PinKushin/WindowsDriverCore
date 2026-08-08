@@ -28,7 +28,7 @@ public class ElementFinder : IElementFinder
         var element = rawRoot.FindFirst(TreeScope.TreeScope_Descendants, condition.Condition);
 
         if (element is null)
-            throw new WebDriverException(ErrorType.UnknownError,
+            throw new WebDriverException(ErrorType.NoSuchElement,
                 "An element could not be located on the page using the given search parameters.");
 
         return _store.Store(element);
@@ -56,19 +56,15 @@ public class ElementFinder : IElementFinder
     public string FindElementInElement(string parentElementId, string usingStrategy, string value)
     {
         var parent = _store.Get(parentElementId);
-        if (parent is null)
-            throw new WebDriverException(ErrorType.UnknownError,
-                "An element command failed because the referenced element is no longer attached to the DOM.");
-
-        if (!parent.IsAlive())
-            throw new WebDriverException(ErrorType.UnknownError,
+        if (parent is null || !parent.IsAlive())
+            throw new WebDriverException(ErrorType.StaleElementReference,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
 
         using var condition = CreateCondition(usingStrategy, value);
         var element = parent.FindFirst(TreeScope.TreeScope_Descendants, condition.Condition);
 
         if (element is null)
-            throw new WebDriverException(ErrorType.UnknownError,
+            throw new WebDriverException(ErrorType.NoSuchElement,
                 "An element could not be located on the page using the given search parameters.");
 
         return _store.Store(element);
@@ -77,12 +73,8 @@ public class ElementFinder : IElementFinder
     public string[] FindElementsInElement(string parentElementId, string usingStrategy, string value)
     {
         var parent = _store.Get(parentElementId);
-        if (parent is null)
-            throw new WebDriverException(ErrorType.UnknownError,
-                "An element command failed because the referenced element is no longer attached to the DOM.");
-
-        if (!parent.IsAlive())
-            throw new WebDriverException(ErrorType.UnknownError,
+        if (parent is null || !parent.IsAlive())
+            throw new WebDriverException(ErrorType.StaleElementReference,
                 "An element command failed because the referenced element is no longer attached to the DOM.");
 
         using var condition = CreateCondition(usingStrategy, value);
@@ -104,12 +96,17 @@ public class ElementFinder : IElementFinder
             "accessibility id" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_AutomationIdPropertyId, value),
             "class name" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_ClassNamePropertyId, value),
             "name" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_NamePropertyId, value),
-            "id" => throw new WebDriverException(ErrorType.InvalidArgument,
-                "RuntimeId lookup not yet supported in raw COM mode"),
+            "id" => ConditionFactory.CreateRuntimeIdCondition(value),
             "tag name" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_ControlTypePropertyId, MapTagNameToControlTypeId(value)),
             "xpath" => throw new WebDriverException(ErrorType.InvalidArgument,
-                "XPath not yet supported in raw COM mode"),
-            "css selector" => ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_ClassNamePropertyId, value),
+                string.Format("Invalid XPath expression: {0} (XPathLookupError)", value)),
+            // Old Appium .NET client sends "css selector" for FindElementByClassName with
+            // a "."-prefixed value (e.g. ".Edit"). WinAppDriver treated this as class name.
+            "css selector" when value.StartsWith(".") =>
+                ConditionFactory.CreatePropertyCondition(UIAPropertyIds.UIA_ClassNamePropertyId, value.Substring(1)),
+            "css selector" =>
+                throw new WebDriverException(ErrorType.InvalidArgument,
+                    "Unexpected error. Unimplemented Command: css selector locator strategy is not supported"),
             "link text" =>
                 throw new WebDriverException(ErrorType.InvalidArgument,
                     "Unexpected error. Unimplemented Command: link text locator strategy is not supported"),

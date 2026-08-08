@@ -24,6 +24,13 @@ public static class ElementRoutes
 
     public static void MapElementRoutes(this WebApplication app)
     {
+        // Helper to register both GET and POST for routes that the old Appium client sends as POST
+        static void DualGetPost(WebApplication a, string pattern, Delegate handler)
+        {
+            a.MapGet(pattern, handler);
+            a.MapPost(pattern, handler);
+        }
+
         app.MapPost("/session/{sessionId}/element/active", (string sessionId, ISessionStore store, IWindowFinder windowFinder, ElementStore elementStore) =>
         {
             var session = store.Get(sessionId);
@@ -148,7 +155,7 @@ public static class ElementRoutes
             return Results.Json(new WebDriverResponse<object?>(null));
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/text", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/text", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -160,7 +167,7 @@ public static class ElementRoutes
             return Results.Json(new WebDriverResponse<string>(text));
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/enabled", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/enabled", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -172,7 +179,7 @@ public static class ElementRoutes
             return Results.Json(new WebDriverResponse<bool>(enabled));
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/displayed", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/displayed", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -184,7 +191,7 @@ public static class ElementRoutes
             return Results.Json(new WebDriverResponse<bool>(displayed));
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/name", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/name", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -196,7 +203,7 @@ public static class ElementRoutes
             return Results.Json(new WebDriverResponse<string>(tagName));
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/attribute/{attributeName}", (string sessionId, string elementId, string attributeName, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/attribute/{attributeName}", (string sessionId, string elementId, string attributeName, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -208,7 +215,7 @@ public static class ElementRoutes
             return Results.Json(new WebDriverResponse<object?>(value));
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/selected", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/selected", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -220,7 +227,8 @@ public static class ElementRoutes
             return Results.Json(new { value = bool.Parse(selected) });
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/location", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        // W3C WebDriver uses /rect for both location and size; old clients may use /location and /size
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/rect", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -228,12 +236,20 @@ public static class ElementRoutes
 
             ValidateWindow(session, windowFinder);
 
-            var coords = interactor.GetCoordinates(elementId);
-            var parts = coords.Split(',');
-            return Results.Json(new { value = new { x = int.Parse(parts[0]), y = int.Parse(parts[1]) } });
+            var json = interactor.GetCoordinates(elementId);
+            var doc = JsonDocument.Parse(json);
+            var x = doc.RootElement.GetProperty("x").GetInt32();
+            var y = doc.RootElement.GetProperty("y").GetInt32();
+
+            var sizeJson = interactor.GetSize(elementId);
+            var sizeDoc = JsonDocument.Parse(sizeJson);
+            var width = sizeDoc.RootElement.GetProperty("width").GetInt32();
+            var height = sizeDoc.RootElement.GetProperty("height").GetInt32();
+
+            return Results.Json(new { value = new { x, y, width, height } });
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/location_in_view", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/location", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -241,12 +257,14 @@ public static class ElementRoutes
 
             ValidateWindow(session, windowFinder);
 
-            var coords = interactor.GetLocationInView(elementId);
-            var parts = coords.Split(',');
-            return Results.Json(new { value = new { x = int.Parse(parts[0]), y = int.Parse(parts[1]) } });
+            var json = interactor.GetCoordinates(elementId);
+            var doc = JsonDocument.Parse(json);
+            var x = doc.RootElement.GetProperty("x").GetInt32();
+            var y = doc.RootElement.GetProperty("y").GetInt32();
+            return Results.Json(new { value = new { x, y } });
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/size", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/location_in_view", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -254,12 +272,29 @@ public static class ElementRoutes
 
             ValidateWindow(session, windowFinder);
 
-            var size = interactor.GetSize(elementId);
-            var parts = size.Split(',');
-            return Results.Json(new { value = new { width = int.Parse(parts[0]), height = int.Parse(parts[1]) } });
+            var json = interactor.GetLocationInView(elementId);
+            var doc = JsonDocument.Parse(json);
+            var x = doc.RootElement.GetProperty("x").GetInt32();
+            var y = doc.RootElement.GetProperty("y").GetInt32();
+            return Results.Json(new { value = new { x, y } });
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/equals/{otherElementId}", (string sessionId, string elementId, string otherElementId, ISessionStore store, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/size", (string sessionId, string elementId, ISessionStore store, IElementInteractor interactor, IWindowFinder windowFinder) =>
+        {
+            var session = store.Get(sessionId);
+            if (session is null)
+                throw new WebDriverException(ErrorType.NoSuchSession, "no such session", 404);
+
+            ValidateWindow(session, windowFinder);
+
+            var json = interactor.GetSize(elementId);
+            var doc = JsonDocument.Parse(json);
+            var width = doc.RootElement.GetProperty("width").GetInt32();
+            var height = doc.RootElement.GetProperty("height").GetInt32();
+            return Results.Json(new { value = new { width, height } });
+        });
+
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/equals/{otherElementId}", (string sessionId, string elementId, string otherElementId, ISessionStore store, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -271,7 +306,7 @@ public static class ElementRoutes
             return Results.Json(new { value = areEqual });
         });
 
-        app.MapGet("/session/{sessionId}/element/{elementId}/screenshot", (string sessionId, string elementId, ISessionStore store, IWindowFinder windowFinder, ElementStore elementStore) =>
+        DualGetPost(app, "/session/{sessionId}/element/{elementId}/screenshot", (string sessionId, string elementId, ISessionStore store, IWindowFinder windowFinder, ElementStore elementStore) =>
         {
             var session = store.Get(sessionId);
             if (session is null)
@@ -309,7 +344,7 @@ public static class ElementRoutes
             }
         });
 
-        app.MapGet("/session/{sessionId}/source", (string sessionId, ISessionStore store, IWindowFinder windowFinder) =>
+        DualGetPost(app, "/session/{sessionId}/source", (string sessionId, ISessionStore store, IWindowFinder windowFinder) =>
         {
             var session = store.Get(sessionId);
             if (session is null)

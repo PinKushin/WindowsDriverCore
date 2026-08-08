@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using WindowsDriverCore.Applications;
@@ -12,6 +13,12 @@ public static class SessionRoutes
 {
     private const int WindowWaitTimeoutMs = 10000;
     private const int WindowPollIntervalMs = 100;
+
+    private static void DualGetPost(WebApplication a, string pattern, Delegate handler)
+    {
+        a.MapGet(pattern, handler);
+        a.MapPost(pattern, handler);
+    }
 
     public static void MapSessionRoutes(this WebApplication app)
     {
@@ -204,6 +211,47 @@ public static class SessionRoutes
             return Results.Json(new WebDriverResponse<string>(title));
         });
 
+        DualGetPost(app, "/session/{sessionId}/orientation", (string sessionId, ISessionStore store, IWindowFinder windowFinder) =>
+        {
+            var session = GetSessionOrThrow(store, sessionId);
+
+            if (!windowFinder.IsWindowValid(session.MainWindowHandle))
+                throw new WebDriverException(ErrorType.UnknownError, "Currently selected window has been closed", 404);
+
+            // Desktop apps are always landscape orientation
+            return Results.Json(new WebDriverResponse<string>("LANDSCAPE"));
+        });
+
+        DualGetPost(app, "/session/{sessionId}/screenshot", (string sessionId, ISessionStore store, IWindowFinder windowFinder) =>
+        {
+            var session = GetSessionOrThrow(store, sessionId);
+
+            if (!windowFinder.IsWindowValid(session.MainWindowHandle))
+                throw new WebDriverException(ErrorType.UnknownError, "Currently selected window has been closed", 404);
+
+            try
+            {
+                Win32.GetWindowRect(session.MainWindowHandle, out var rect);
+                var boundsInt = new System.Drawing.Rectangle(rect.Left, rect.Top, rect.Width, rect.Height);
+
+                if (boundsInt.Width <= 0 || boundsInt.Height <= 0)
+                    throw new WebDriverException(ErrorType.UnknownError, "Window has no visible area");
+
+                using var bmp = new System.Drawing.Bitmap(boundsInt.Width, boundsInt.Height);
+                using var graphics = System.Drawing.Graphics.FromImage(bmp);
+                graphics.CopyFromScreen(boundsInt.Location, System.Drawing.Point.Empty, boundsInt.Size);
+
+                using var ms = new MemoryStream();
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                var base64 = Convert.ToBase64String(ms.ToArray());
+                return Results.Json(new WebDriverResponse<string>(base64));
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                throw new WebDriverException(ErrorType.UnknownError, "Unable to capture screenshot");
+            }
+        });
+
         app.MapGet("/session/{sessionId}/window/handle", (string sessionId, ISessionStore store, IWindowFinder windowFinder) =>
         {
             var session = GetSessionOrThrow(store, sessionId);
@@ -378,23 +426,9 @@ public static class SessionRoutes
             var curW = hasWidth ? (int)(width * dpiScale) : currentRect.Right - currentRect.Left;
             var curH = hasHeight ? (int)(height * dpiScale) : currentRect.Bottom - currentRect.Top;
 
-            Console.WriteLine($"[WindowRect] hwnd={session.MainWindowHandle.ToInt64():X} dpi={dpiScale} before=({currentRect.Left},{currentRect.Top},{currentRect.Right},{currentRect.Bottom}) hasX={hasX} hasY={hasY} hasW={hasWidth} hasH={hasHeight} → MoveWindow({curX},{curY},{curW},{curH})");
-
             if (hasX || hasY || hasWidth || hasHeight)
             {
                 Win32.MoveWindow(session.MainWindowHandle, curX, curY, curW, curH, true);
-
-                if ((hasWidth || hasHeight) && !hasX && !hasY)
-                {
-                    Thread.Sleep(50);
-                    Win32.GetWindowRect(session.MainWindowHandle, out var afterRect);
-                    Console.WriteLine($"[WindowRect] after MoveWindow: ({afterRect.Left},{afterRect.Top},{afterRect.Right},{afterRect.Bottom}) — re-enforcing pos ({currentRect.Left},{currentRect.Top})");
-                    Win32.SetWindowPos(session.MainWindowHandle, IntPtr.Zero, currentRect.Left, currentRect.Top, 0, 0,
-                        Win32.SWP_NOSIZE | Win32.SWP_NOZORDER);
-                    Thread.Sleep(50);
-                    Win32.GetWindowRect(session.MainWindowHandle, out var finalRect);
-                    Console.WriteLine($"[WindowRect] after SetWindowPos: ({finalRect.Left},{finalRect.Top},{finalRect.Right},{finalRect.Bottom})");
-                }
             }
 
             return Results.Json(new WebDriverResponse<object?>(null));
@@ -441,6 +475,29 @@ public static class SessionRoutes
         app.MapPost("/session/{sessionId}/timeout", async (string sessionId, HttpRequest request, ISessionStore store) =>
         {
             await HandleTimeoutRequest(sessionId, request, store);
+        });
+
+        app.MapPost("/session/{sessionId}/keys", async (string sessionId, HttpRequest request, ISessionStore store) =>
+        {
+            var session = GetSessionOrThrow(store, sessionId);
+            request.Body.Position = 0;
+            using var reader = new StreamReader(request.Body);
+            var bodyStr = await reader.ReadToEndAsync();
+            if (string.IsNullOrEmpty(bodyStr))
+                return Results.Json(new WebDriverResponse<object?>(null));
+
+            var body = JsonSerializer.Deserialize<JsonElement>(bodyStr);
+            var keySequence = new List<string>();
+            if (body.TryGetProperty("value", out var valueProp) && valueProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in valueProp.EnumerateArray())
+                {
+                    keySequence.Add(item.GetString() ?? "");
+                }
+            }
+
+            KeyboardSimulator.SendKeySequence(keySequence);
+            return Results.Json(new WebDriverResponse<object?>(null));
         });
     }
 

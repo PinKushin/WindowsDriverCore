@@ -47,9 +47,10 @@ app.Use(async (context, next) =>
     Console.WriteLine($"<-- {context.Response.StatusCode}");
 });
 
-app.UseExceptionHandler(error =>
+app.UseExceptionHandler(new ExceptionHandlerOptions
 {
-    error.Run(async context =>
+    AllowStatusCode404Response = true,
+    ExceptionHandler = async context =>
     {
         var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
 
@@ -60,6 +61,35 @@ app.UseExceptionHandler(error =>
             var body = new ErrorResponse(new WebDriverError(webDriverEx.ErrorCode, webDriverEx.Message, ""));
             await context.Response.WriteAsJsonAsync(body);
         }
+        else if (exception is System.Runtime.InteropServices.COMException comEx)
+        {
+            // 0x80040200 = UIA_E_ELEMENTNOTAVAILABLE (stale element)
+            // 0x80040201 = UIA_E_ELEMENTNOTENABLED
+            var hr = unchecked((uint)comEx.ErrorCode);
+            string errorCode;
+            string message;
+
+            switch (hr)
+            {
+                case 0x80040200:
+                    errorCode = ErrorType.StaleElementReference;
+                    message = "An element command failed because the referenced element is no longer attached to the DOM.";
+                    break;
+                case 0x80040201:
+                    errorCode = ErrorType.ElementNotVisible;
+                    message = "Element is not enabled";
+                    break;
+                default:
+                    errorCode = ErrorType.UnknownError;
+                    message = $"An unknown error occurred: 0x{hr:X8}";
+                    break;
+            }
+
+            context.Response.StatusCode = ErrorType.GetHttpStatus(errorCode);
+            context.Response.ContentType = "application/json";
+            var body = new ErrorResponse(new WebDriverError(errorCode, message, ""));
+            await context.Response.WriteAsJsonAsync(body);
+        }
         else
         {
             context.Response.StatusCode = 500;
@@ -67,7 +97,7 @@ app.UseExceptionHandler(error =>
             var body = new ErrorResponse(new WebDriverError(ErrorType.UnknownError, exception?.Message ?? "Unknown error", ""));
             await context.Response.WriteAsJsonAsync(body);
         }
-    });
+    }
 });
 
 app.MapGet("/", () => "Hello World!");

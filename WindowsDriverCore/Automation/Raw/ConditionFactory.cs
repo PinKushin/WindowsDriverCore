@@ -64,6 +64,20 @@ public static class ConditionFactory
         return new RawCondition(cond);
     }
 
+    public static RawCondition CreateRuntimeIdCondition(string runtimeIdStr)
+    {
+        EnsureInitialized();
+        var parts = runtimeIdStr.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var ids = new int[parts.Length];
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (!int.TryParse(parts[i].Trim(), out ids[i]))
+                throw new ArgumentException($"Invalid RuntimeId format: {runtimeIdStr}");
+        }
+        var cond = _automation!.CreatePropertyCondition(UIAPropertyIds.UIA_RuntimeIdPropertyId, ids);
+        return new RawCondition(cond);
+    }
+
     private static void EnsureInitialized()
     {
         if (_automation is null)

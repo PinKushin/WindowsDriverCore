@@ -1,5 +1,15 @@
 # WindowsDriverCore — Memory Index
 
+> **Start with [`docs/PROJECT-KNOWLEDGE.md`](../PROJECT-KNOWLEDGE.md).** As of 2026-08-08 every
+> entry below is consolidated there — the protocol contract, compatibility floor, measured test
+> results, UIA/COM knowledge, Win11 app drift, and the defects and dead theories not to repeat.
+> That file is the one to read before writing code, and it is mirrored outside the repo so it
+> survives the rewrite.
+>
+> The entries below are kept as the audit trail: they show what was believed when, and several
+> record corrections to their own earlier claims. Useful for "why did we conclude that?", not as
+> the current specification. Where an entry and `PROJECT-KNOWLEDGE.md` disagree, the latter wins.
+
 | File | Topic | Date |
 |------|-------|------|
 | [001-intptr-com-migration.md](001-intptr-com-migration.md) | Use IntPtr everywhere for COM out params, not just hwnd | 2026-08-02 |
@@ -14,3 +24,7 @@
 | [010-location-size-response-format.md](010-location-size-response-format.md) | JSON serialization fix, /rect response, Results.Json vs WebDriverResponse | 2026-08-02 |
 | [011-click-semantics-and-the-coordinate-trap.md](011-click-semantics-and-the-coordinate-trap.md) | Why pattern-first Click is validated field evidence; TogglePattern missing; SetFocus fallback fails silently; MAUI needs a GUARDED mouse fallback | 2026-08-06 |
 | [012-field-notes-from-driving-a-real-maui-app.md](012-field-notes-from-driving-a-real-maui-app.md) | Phantom elements with null ids, cached-snapshot misses (#1079 reproduced), WinAppDriver DOES auto-scroll inconsistently, MAUI Picker popups are separate windows, implicit wait charged in full for absent elements, GetText platform divergence | 2026-08-06 |
+| [013-architecture-audit.md](013-architecture-audit.md) | Full-source audit: shutdown cleanup never runs (DI bug), Close() kills all same-named processes, ClickAt ignores coordinates, /keys injects nothing (INPUT struct is 32 bytes, needs 40), /window/handles self-inconsistent, measured DRY/SOLID violations, PowerShell command injection, why NOT to restart | 2026-08-08 |
+| [016-win11-app-drift-catalogue.md](016-win11-app-drift-catalogue.md) | Every Win11 difference vs what the WinAppDriver suite expects — Alarms dialog renames, Calculator header text, Notepad RichEditD2DPT, legacy Edge is gone. Kept because the WinAppDriver tree is now pristine | 2026-08-08 |
+| [015-winappdriver-protocol-contract.md](015-winappdriver-protocol-contract.md) | THE SPEC: full 60-route JWP table, error envelope with numeric status, locator semantics (tag name = LocalizedControlType not ControlType id), capabilities, CLI forms. window_handle is missing and causes per-test app relaunch | 2026-08-08 |
+| [014-compatibility-and-deployment-targets.md](014-compatibility-and-deployment-targets.md) | Floor is Win10 1607 / Server 2016 — same as WinAppDriver, .NET is not the limiter. Real gaps: no /wd/hub, no CLI args, loopback-only, Desktop Runtime prerequisite. GitHub runners are 2022/2025/11-arm; windows-2019 is gone | 2026-08-08 |

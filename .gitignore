@@ -364,3 +364,7 @@ FodyWeavers.xsd
 
 # Build tools
 vs_BuildTools.exe
+# Local run artifacts (server logs, test result dumps, decompiler output)
+server-*.txt
+test-results*.txt
+winappdriver-decompiled/

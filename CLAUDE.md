@@ -48,6 +48,27 @@ Routes/
 - **UWP launching**: `IApplicationActivationManager` COM interface, not shell: protocol
 - **Process kill**: 5-step cascade: WM_CLOSE → taskkill /F /T → bottom-up child kill → Process.Kill(entireProcessTree). Explorer special-cased.
 - **DPI awareness**: `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` at startup
+- **Dual protocol support**: All element property endpoints accept both GET (W3C) and POST (JSON Wire Protocol) via `DualGetPost` helper. The old Appium client (Selenium 3.8) sends POST; modern clients send GET.
+- **W3C `/rect` endpoint**: Returns `{x, y, width, height}` — the W3C equivalent of both `/location` and `/size`. Required by Selenium 3.8 client.
+- **COM exception mapping**: `UIA_E_ELEMENTNOTAVAILABLE` (0x80040200) → stale element reference (404); `UIA_E_ELEMENTNOTENABLED` (0x80040201) → element not visible (500). Exception handler uses `AllowStatusCode404Response = true`.
+- **CSS selector fallback**: Old Appium client sends `"css selector"` for `FindElementByClassName` due to a bug (appium/dotnet-client#265). We map `css selector` with `.`-prefixed values to class name search.
+
+## Test status
+
+**Score: 80 / 290 passed (27.6%)**
+
+### Passing test categories
+- Calculator element operations (click, text, enabled, displayed, attribute, tag name, location, size)
+- Session management (create, delete, capabilities)
+- Window operations (rect, maximize, minimize, restore)
+- Error handling (no such window, no such element, unsupported locators)
+
+### Known failure blocks
+- **Alarms app UI changed on Win11** (~30 tests): `AlarmClockBase.TestInit()` fails — `NavigationViewItem` replaced `ListViewItem`
+- **CalculatorBase.GetStaleElement()** (~10 tests): Calculator UI changes on Win11 break stale element creation
+- **SendKeys client crash** (~10 tests): `session.Keyboard.SendKeys()` crashes in old Appium driver — client-side bug, not fixable server-side
+- **Actions/Pen/Touch** (~30 tests): Not implemented, low ROI
+- **location_in_view** (~6 tests): Selenium 3.8 base `RemoteWebElement` not overridden by Appium driver — Newtonsoft.Json `JObject` cast issue
 
 ## Commands
 
@@ -60,6 +81,19 @@ dotnet test WindowsDriverCore.Tests/WindowsDriverCore.Tests.csproj
 
 # Run server
 dotnet run --project WindowsDriverCore/WindowsDriverCore.csproj
+
+# Run WinAppDriver compatibility tests (requires server running)
+& "F:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\bin\Debug\WebDriverAPI.dll"
+
+# Run specific WinAppDriver tests
+& "F:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\bin\Debug\WebDriverAPI.dll" /Tests:GetElementLocation
+
+# Rebuild WinAppDriver tests
+& "F:\VisualStudio2026\MSBuild\Current\Bin\MSBuild.exe" "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\WebDriverAPI.csproj"
+
+# Kill orphaned Calculator/Alarms windows
+Get-Process Calculator -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process "Microsoft.WindowsAlarms" -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
 ## IUIAutomation COM reference (for raw COM migration)

@@ -7,29 +7,32 @@ namespace WindowsDriverCore.Tests;
 [TestClass]
 public class Win32SmokeTests
 {
-    private readonly HttpClient _http = new() { BaseAddress = new Uri("http://127.0.0.1:4723") };
-    private string? _sessionId;
+    private static readonly HttpClient _http = new() { BaseAddress = new Uri("http://127.0.0.1:4723") };
+    private static string? _sessionId;
+    private static string? _testAppElementId;
+
     private static readonly string TestAppPath = Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory, "..", "..", "..", "..",
         "TestApp", "bin", "Debug", "net10.0-windows", "TestApp.exe"));
 
-    [TestCleanup]
-    public async Task Cleanup()
+    [ClassInitialize]
+    public static async Task ClassSetup(TestContext context)
+    {
+        var body = new { capabilities = new { alwaysMatch = new { app = TestAppPath } } };
+        var response = await _http.PostAsJsonAsync("/session", body);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        _sessionId = json.GetProperty("value").GetProperty("sessionId").GetString();
+    }
+
+    [ClassCleanup]
+    public static async Task ClassTeardown()
     {
         if (_sessionId is not null)
         {
             try { await _http.DeleteAsync($"/session/{_sessionId}"); } catch { }
             _sessionId = null;
         }
-    }
-
-    private async Task CreateSession(string app)
-    {
-        var body = new { capabilities = new { alwaysMatch = new { app } } };
-        var response = await _http.PostAsJsonAsync("/session", body);
-        response.EnsureSuccessStatusCode();
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        _sessionId = json.GetProperty("value").GetProperty("sessionId").GetString();
     }
 
     private async Task<JsonElement> Get(string path)
@@ -57,7 +60,6 @@ public class Win32SmokeTests
     [TestMethod]
     public async Task CreateSession_TestApp()
     {
-        await CreateSession(TestAppPath);
         Assert.IsNotNull(_sessionId);
 
         var title = await Get("/title");
@@ -67,7 +69,6 @@ public class Win32SmokeTests
     [TestMethod]
     public async Task FindElement_ByClassName()
     {
-        await CreateSession(TestAppPath);
         var elementId = await FindElement("class name", "Edit");
         Assert.IsFalse(string.IsNullOrEmpty(elementId));
     }
@@ -75,7 +76,6 @@ public class Win32SmokeTests
     [TestMethod]
     public async Task SendKeys_And_GetText()
     {
-        await CreateSession(TestAppPath);
         var elementId = await FindElement("class name", "Edit");
 
         await Post($"/element/{elementId}/value", new { text = "Hello from WindowsDriverCore" });
@@ -87,7 +87,6 @@ public class Win32SmokeTests
     [TestMethod]
     public async Task GetAttribute_NativeWindowHandle()
     {
-        await CreateSession(TestAppPath);
         var elementId = await FindElement("class name", "Edit");
 
         var attrResult = await Get($"/element/{elementId}/attribute/NativeWindowHandle");
@@ -99,8 +98,6 @@ public class Win32SmokeTests
     [TestMethod]
     public async Task Window_Size()
     {
-        await CreateSession(TestAppPath);
-
         var rect = await Get("/window/rect");
         var value = rect.GetProperty("value");
         Assert.IsTrue(value.GetProperty("width").GetInt32() > 0);
@@ -110,8 +107,6 @@ public class Win32SmokeTests
     [TestMethod]
     public async Task Window_Position()
     {
-        await CreateSession(TestAppPath);
-
         var rect = await Get("/window/rect");
         var value = rect.GetProperty("value");
         Assert.IsTrue(value.TryGetProperty("x", out _));
@@ -121,8 +116,6 @@ public class Win32SmokeTests
     [TestMethod]
     public async Task Window_Maximize_Restore()
     {
-        await CreateSession(TestAppPath);
-
         var originalRect = await Get("/window/rect");
         var origW = originalRect.GetProperty("value").GetProperty("width").GetInt32();
         var origH = originalRect.GetProperty("value").GetProperty("height").GetInt32();
@@ -143,13 +136,17 @@ public class Win32SmokeTests
     }
 
     [TestMethod]
-    public async Task DeleteSession_TestApp()
+    public async Task DeleteSession_ViaApi()
     {
-        await CreateSession(TestAppPath);
         Assert.IsNotNull(_sessionId);
-
         var response = await _http.DeleteAsync($"/session/{_sessionId}");
         response.EnsureSuccessStatusCode();
-        _sessionId = null;
+
+        // Recreate session so ClassCleanup doesn't fail
+        var body = new { capabilities = new { alwaysMatch = new { app = TestAppPath } } };
+        var createResponse = await _http.PostAsJsonAsync("/session", body);
+        createResponse.EnsureSuccessStatusCode();
+        var json = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        _sessionId = json.GetProperty("value").GetProperty("sessionId").GetString();
     }
 }
