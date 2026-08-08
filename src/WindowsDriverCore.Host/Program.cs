@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using WindowsDriverCore.Host.CommandLine;
 using WindowsDriverCore.Protocol.Routing;
+using WindowsDriverCore.Protocol.Sessions;
 using WindowsDriverCore.Protocol.Status;
 
 namespace WindowsDriverCore.Host;
@@ -53,6 +54,7 @@ public partial class Program
         builder.WebHost.UseUrls(address.ToListenUrl());
 
         builder.Services.AddSingleton<IServerStatusProvider, ServerStatusProvider>();
+        builder.Services.AddSingleton<ISessionStore, SessionStore>();
 
         WebApplication app = builder.Build();
 

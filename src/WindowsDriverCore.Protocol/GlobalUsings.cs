@@ -5,4 +5,5 @@
 // list stays exactly as large as the code needs. Entries are added as the types
 // that need them arrive, not in anticipation.
 global using System;
+global using System.Threading;
 global using System.Threading.Tasks;

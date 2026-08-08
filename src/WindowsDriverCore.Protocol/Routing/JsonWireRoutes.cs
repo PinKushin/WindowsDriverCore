@@ -26,6 +26,8 @@ public static class JsonWireRoutes
         app.MapGet("/status", (IServerStatusProvider status) =>
             Results.Json(status.GetStatus()));
 
+        app.MapSessionRoutes();
+
         // Anything not matched above. WinAppDriver answers an unrecognised route
         // with status 9 and a message naming the method and path — not with an
         // empty 404 — so a client sees what it asked for.
