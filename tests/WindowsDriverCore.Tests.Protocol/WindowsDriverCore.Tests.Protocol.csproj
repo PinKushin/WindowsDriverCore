@@ -11,4 +11,8 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="CsCheck" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The recordings are the protocol contract; tests read them at runtime. -->
+    <Content Include="Recordings\winappdriver-responses.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
