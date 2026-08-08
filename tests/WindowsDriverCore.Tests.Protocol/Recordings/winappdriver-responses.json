@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-08-08T17:27:36.1177881-04:00",
+  "recordedAt": "2026-08-08T17:38:58.7637768-04:00",
   "winAppDriverVersion": "1.2.2009.02003",
   "os": "10.0.26200.0",
   "note": "Raw responses from real WinAppDriver. This is the contract; do not edit by hand.",
@@ -323,6 +323,102 @@
       "requestBody": null,
       "httpStatus": 200,
       "responseBody": "{\"status\":0}"
+    },
+    {
+      "name": "error.element.clickDisabled.ClearMemoryButton",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/42.37882722.4.17/click",
+      "requestBody": "{}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "error.element.sendKeysDisabled.ClearMemoryButton",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/42.37882722.4.17/value",
+      "requestBody": "{\"value\":[\"x\"]}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "error.element.staleAfterModeSwitch.text",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.37882722.4.69/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Five\"}"
+    },
+    {
+      "name": "error.element.staleAfterModeSwitch.click",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/42.37882722.4.69/click",
+      "requestBody": "{}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":105,\"value\":{\"error\":\"element not interactable\",\"message\":\"An element command could not be completed because the element is not pointer- or keyboard interactable.\"}}"
+    },
+    {
+      "name": "error.element.afterWindowClosed.text",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.63049368.4.117/text",
+      "requestBody": null,
+      "httpStatus": 400,
+      "responseBody": "{\"status\":23,\"value\":{\"error\":\"no such window\",\"message\":\"Currently selected window has been closed\"}}"
+    },
+    {
+      "name": "error.element.afterWindowClosed.click",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/42.63049368.4.117/click",
+      "requestBody": "{}",
+      "httpStatus": 400,
+      "responseBody": "{\"status\":23,\"value\":{\"error\":\"no such window\",\"message\":\"Currently selected window has been closed\"}}"
+    },
+    {
+      "name": "error.window.afterWindowClosed.handle",
+      "method": "GET",
+      "path": "/session/{sessionId}/window_handle",
+      "requestBody": null,
+      "httpStatus": 400,
+      "responseBody": "{\"status\":23,\"value\":{\"error\":\"no such window\",\"message\":\"Currently selected window has been closed\"}}"
+    },
+    {
+      "name": "stale.before.text",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.21630982.4.142/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"5\"}"
+    },
+    {
+      "name": "error.element.stale.text",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.21630982.4.142/text",
+      "requestBody": null,
+      "httpStatus": 400,
+      "responseBody": "{\"status\":10,\"value\":{\"error\":\"stale element reference\",\"message\":\"An element command failed because the referenced element is no longer attached to the DOM.\"}}"
+    },
+    {
+      "name": "error.element.stale.click",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/42.21630982.4.142/click",
+      "requestBody": "{}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "error.element.stale.enabled",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.21630982.4.142/enabled",
+      "requestBody": null,
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "error.element.stale.location",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/42.21630982.4.142/location",
+      "requestBody": null,
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
     }
   ]
 }

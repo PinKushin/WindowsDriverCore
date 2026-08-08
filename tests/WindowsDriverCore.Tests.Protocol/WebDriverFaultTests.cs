@@ -39,6 +39,14 @@ public sealed class WebDriverFaultTests
         ("error.timeouts.negativeMs",           WebDriverFault.InvalidArgument),
         ("error.session.badCapabilities",       WebDriverFault.InvalidArgument),
         ("error.invalidSessionId",              WebDriverFault.InvalidSessionId),
+        ("error.element.stale.text",             WebDriverFault.StaleElementReference),
+        ("error.element.stale.click",            WebDriverFault.NoSuchElement),
+        ("error.element.stale.enabled",          WebDriverFault.NoSuchElement),
+        ("error.element.stale.location",         WebDriverFault.NoSuchElement),
+        ("error.element.staleAfterModeSwitch.click", WebDriverFault.ElementNotInteractable),
+        ("error.element.afterWindowClosed.text",  WebDriverFault.NoSuchWindow),
+        ("error.element.afterWindowClosed.click", WebDriverFault.NoSuchWindow),
+        ("error.window.afterWindowClosed.handle", WebDriverFault.NoSuchWindow),
     ];
 
     private static IEnumerable<TestCaseData> MeasuredFaultCases() =>
@@ -76,6 +84,8 @@ public sealed class WebDriverFaultTests
             WebDriverFault.NoSuchWindow,
             WebDriverFault.InvalidArgument,
             WebDriverFault.InvalidSessionId,
+            WebDriverFault.StaleElementReference,
+            WebDriverFault.ElementNotInteractable,
         ];
 
         distinct.Select(f => f.Status).Distinct().Count().ShouldBe(distinct.Length);
@@ -111,26 +121,41 @@ public sealed class WebDriverFaultTests
     public void EveryRecordedErrorResponse_IsCoveredByTheFaultTable()
     {
         // Guards against the table silently falling behind the recordings when a
-        // future recording pass adds a condition we do not yet map.
+        // future recording pass adds a condition nothing maps.
         //
-        // Two known gaps are excluded deliberately rather than silently: the
-        // recording pass could not trigger a genuine stale element or a
-        // not-interactable element, so those faults are unmeasured and must not
-        // be invented. Capture them, then delete them from this list.
-        string[] notYetRecorded =
+        // Everything excluded below is excluded for a stated reason, not because
+        // it is unmeasured. Three of them turned out not to be faults at all once
+        // measured, which is why they still carry "error." in their recording
+        // names — the names record what was expected, the responses record what
+        // happened.
+        string[] notMappedDeliberately =
         [
+            // HTTP 501 with a plain-text body and no JSON envelope, so there is
+            // no status/error pair to map. Handled as its own response kind.
             "error.locator.cssSelector",
             "error.locator.linkText",
             "error.locator.partialLinkText",
             "error.timeouts.pageLoad",
             "error.timeouts.script",
+
+            // Not an error at all: FindElements with no match is 200 + [].
             "error.elements.noSuchElement",
+
+            // Succeeds with HTTP 200. Named "error." only because that is what
+            // the recording pass expected before measuring; clicking a disabled
+            // element is not a fault in WinAppDriver.
+            "error.element.clickDisabled.ClearMemoryButton",
+            "error.element.sendKeysDisabled.ClearMemoryButton",
+
+            // Returned 200 with the text intact: switching Calculator modes does
+            // not destroy the keypad node, so this is not a fault case.
+            "error.element.staleAfterModeSwitch.text",
         ];
 
         IEnumerable<string> recordedErrorNames = RecordedResponses.All
             .Where(r => r.Name.StartsWith("error.", StringComparison.Ordinal))
             .Select(r => r.Name)
-            .Where(name => !notYetRecorded.Contains(name));
+            .Where(name => !notMappedDeliberately.Contains(name));
 
         IEnumerable<string> mapped = MeasuredFaults.Select(pair => pair.Recording);
 

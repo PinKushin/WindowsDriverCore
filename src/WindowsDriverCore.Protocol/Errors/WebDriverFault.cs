@@ -29,9 +29,41 @@ public sealed record WebDriverFault(int Status, string Error, int HttpStatus)
     public static WebDriverFault NoSuchElement { get; } =
         new(7, "no such element", 404);
 
+    /// <summary>
+    /// The element was found once but has since been removed from the UIA tree.
+    /// </summary>
+    /// <remarks>
+    /// Reported on the **first** touch after the element dies, and only that one.
+    /// WinAppDriver then evicts the element, so every subsequent request for the
+    /// same id is <see cref="NoSuchElement"/> instead. Measured by reordering the
+    /// probe sequence: whichever endpoint is called first reports 10, and it is
+    /// not a property of the endpoint.
+    ///
+    /// Stale detection is therefore destructive, and matching it means removing
+    /// the element from the store when staleness is detected — which also fixes
+    /// the RCW leak the previous implementation had by never evicting anything.
+    /// </remarks>
+    public static WebDriverFault StaleElementReference { get; } =
+        new(10, "stale element reference", 400);
+
     /// <summary>The route is not one this server serves.</summary>
     public static WebDriverFault UnknownCommand { get; } =
         new(9, "unknown command", 404);
+
+    /// <summary>
+    /// The element exists but cannot receive pointer or keyboard input.
+    /// </summary>
+    /// <remarks>
+    /// WinAppDriver uses 105. Selenium's enum has
+    /// <c>ElementNotInteractable = 60</c>.
+    ///
+    /// Note what this is *not*: clicking a **disabled** element returns HTTP 200
+    /// success, not this fault. That was verified against a disabled Calculator
+    /// memory button, and contradicts the assumption the previous implementation
+    /// carried that disabled elements produce an error.
+    /// </remarks>
+    public static WebDriverFault ElementNotInteractable { get; } =
+        new(105, "element not interactable", 400);
 
     /// <summary>A failure with no more specific mapping.</summary>
     public static WebDriverFault UnknownError { get; } =
