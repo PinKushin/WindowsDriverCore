@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Fast, no desktop, no server. Test doubles for every collaborator. -->
   <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsDriverCore.Host\WindowsDriverCore.Host.csproj" />
     <ProjectReference Include="..\..\src\WindowsDriverCore.Protocol\WindowsDriverCore.Protocol.csproj" />
     <ProjectReference Include="..\..\src\WindowsDriverCore.Automation\WindowsDriverCore.Automation.csproj" />
     <ProjectReference Include="..\..\src\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />

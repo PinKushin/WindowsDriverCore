@@ -8,7 +8,15 @@
          build; test projects have no public API to document, so the resulting
          "missing XML comment" noise is suppressed here rather than turned off
          globally. -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- CS1591: test projects have no public API to document, so the
+         solution-wide GenerateDocumentationFile (needed for IDE0005) would
+         otherwise demand XML comments on every fixture.
+
+         CA1707: forbids underscores in member names. Test methods here are named
+         {Method}_{Scenario}_{Expected} deliberately — that convention is what
+         makes a failing test name state what broke without opening the file.
+         Scoped to tests/ only; production naming stays under the rule. -->
+    <NoWarn>$(NoWarn);CS1591;CA1707</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
