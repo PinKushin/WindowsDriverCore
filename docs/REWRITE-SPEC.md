@@ -191,6 +191,23 @@ The Alarms fixture repair (`CancelButton` → `CloseButton`, `AlarmSaveButton` �
 a separate, clearly-labelled harness fix — it unblocks ~167 tests that currently cannot be measured
 at all. Track it as a fixture patch, not as a suite modification.
 
+### Mutation testing is a ratchet, not a gate
+
+`stryker-config.json` starts at `break: 0` — Stryker reports and never fails the build. The
+80/60 high/low values only colour the report.
+
+**These are not the numbers to aim at; they are the numbers we currently have.** Thresholds get
+raised deliberately, at a milestone boundary, to just under whatever the suite actually scores at
+that point. They are never lowered. Copying another project's mature thresholds (TcgDex sits at
+95/90/85) into a greenfield tree fails the build on day one against code that barely exists, which
+teaches everyone to ignore the tool.
+
+Mutation testing is also close to meaningless until there is real logic to mutate — expect the
+first useful run around milestone 3, once the error mapper and locator resolution exist. Read the
+**surviving mutants**, not the score: a survivor is a change no test noticed. Ignore mutants that
+are equivalent by construction, and do not write change-detector tests to kill one. Killing a
+mutant is not the goal; noticing a real change is.
+
 ### Known ground truth
 
 Measured 2026-08-08 against WinAppDriver 1.2.2009.02003 on Win11 26200:

@@ -9,9 +9,9 @@
     "target-framework": "net10.0-windows",
     "reporters": ["html", "progress", "cleartext"],
     "thresholds": {
-      "high": 95,
-      "low": 90,
-      "break": 85
+      "high": 80,
+      "low": 60,
+      "break": 0
     },
     "mutate": [
       "**/*.cs",
