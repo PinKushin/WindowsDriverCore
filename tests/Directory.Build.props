@@ -20,8 +20,13 @@
          CA1062: demands a null guard on every parameter of an externally visible
          method. Test fixtures are public only because the runner needs to reach
          them, not because they are an API anyone calls; guarding NUnit-supplied
-         TestCaseSource arguments would be noise that hides real findings. -->
-    <NoWarn>$(NoWarn);CS1591;CA1707;CA1062</NoWarn>
+         TestCaseSource arguments would be noise that hides real findings.
+
+         CA2007: requires ConfigureAwait on every await. That matters in a
+         library, which cannot know its caller's synchronization context. A test
+         runs on the test runner's context and there is nothing to configure, so
+         the rule produces one finding per await and hides real ones. -->
+    <NoWarn>$(NoWarn);CS1591;CA1707;CA1062;CA2007</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

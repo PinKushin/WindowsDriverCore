@@ -153,4 +153,53 @@ public sealed class ServerAddressTests
     {
         Should.Throw<FormatException>(() => ServerAddress.Parse(["10.0.0.10", "4723", "extra"]));
     }
+
+    [Test]
+    public void Parse_StopsAtTheFirstSwitch_LeavingHostBuilderArgumentsAlone()
+    {
+        // WinAppDriver's arguments are positional, but the same array also reaches
+        // the ASP.NET host builder, which owns --key value switches. Treating a
+        // switch as a positional argument makes "WindowsDriverCore.exe 4725
+        // --environment Development" fail with "got 3", which is how this was
+        // found: WebApplicationFactory boots the entry point with its own
+        // switches appended.
+        ServerAddress address = ServerAddress.Parse(["4725", "--environment", "Development"]);
+
+        address.Host.ShouldBe("127.0.0.1");
+        address.Port.ShouldBe(4725);
+    }
+
+    [Test]
+    public void Parse_NegativeNumber_IsAPositionalArgument_NotASwitch()
+    {
+        // "-1" starts with a dash but is a (bad) port, not a host-builder switch.
+        // Treating it as a switch would make the port argument vanish and bind
+        // the default port silently, which is worse than rejecting it. The
+        // rejection case above covers the message; this pins why it still reaches
+        // the port parser at all.
+        Should.Throw<FormatException>(() => ServerAddress.Parse(["-1"]))
+            .Message.ShouldContain("not a valid port number");
+    }
+
+    [Test]
+    public void Parse_OnlySwitches_UsesDefaults()
+    {
+        ServerAddress address = ServerAddress.Parse(["--environment", "Development"]);
+
+        address.Host.ShouldBe(ServerAddress.DefaultHost);
+        address.Port.ShouldBe(ServerAddress.DefaultPort);
+        address.BasePath.ShouldBeNull();
+    }
+
+    [Test]
+    public void Parse_SwitchBeforePositional_DoesNotConsumeThePositional()
+    {
+        // The control: stopping at the first switch must not silently swallow
+        // arguments after it. A parser that filtered switches out rather than
+        // stopping would read "4725" here and pass the test above for the wrong
+        // reason.
+        ServerAddress address = ServerAddress.Parse(["--environment", "Development", "4725"]);
+
+        address.Port.ShouldBe(ServerAddress.DefaultPort);
+    }
 }

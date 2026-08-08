@@ -41,15 +41,52 @@ public sealed record ServerAddress(string Host, int Port, string? BasePath)
     {
         ArgumentNullException.ThrowIfNull(args);
 
-        return args.Length switch
+        string[] positional = LeadingPositionalArguments(args);
+
+        return positional.Length switch
         {
             0 => new ServerAddress(DefaultHost, DefaultPort, BasePath: null),
-            1 => FromPortSpecification(DefaultHost, args[0]),
-            2 => FromPortSpecification(args[0], args[1]),
+            1 => FromPortSpecification(DefaultHost, positional[0]),
+            2 => FromPortSpecification(positional[0], positional[1]),
             _ => throw new FormatException(
-                $"Expected at most two arguments ([host] [port[/base/path]]), got {args.Length}."),
+                $"Expected at most two arguments ([host] [port[/base/path]]), got {positional.Length}."),
         };
     }
+
+    /// <summary>
+    /// Takes the leading arguments up to the first switch.
+    /// </summary>
+    /// <remarks>
+    /// WinAppDriver's arguments are positional, but the same array is also handed
+    /// to the ASP.NET host builder, which owns <c>--key value</c> switches. This
+    /// stops at the first switch rather than filtering switches out, because
+    /// filtering would treat the value of a switch as positional — a
+    /// <c>--contentRoot C:\x</c> pair would offer <c>C:\x</c> as a host name.
+    /// </remarks>
+    private static string[] LeadingPositionalArguments(string[] args)
+    {
+        int count = 0;
+        while (count < args.Length && !IsSwitch(args[count]))
+        {
+            count++;
+        }
+
+        return args[..count];
+    }
+
+    /// <summary>
+    /// Whether an argument belongs to the host builder rather than to us.
+    /// </summary>
+    /// <remarks>
+    /// A leading <c>-</c> followed by a digit is a negative number, not a switch.
+    /// Without that distinction <c>-1</c> reads as a switch, the port argument
+    /// disappears, and the server silently binds the default port instead of
+    /// rejecting an invalid one — the failure mode this whole project keeps
+    /// finding in the code it replaces.
+    /// </remarks>
+    private static bool IsSwitch(string argument) =>
+        argument.StartsWith("--", StringComparison.Ordinal)
+        || (argument.StartsWith('-') && argument.Length > 1 && !char.IsDigit(argument[1]));
 
     /// <summary>
     /// The origin Kestrel binds. Excludes <see cref="BasePath"/>, which is applied
