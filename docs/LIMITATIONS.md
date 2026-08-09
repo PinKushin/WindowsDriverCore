@@ -87,7 +87,18 @@ vanishes, `platformName` survives.
 
 ## What the tests do not prove
 
-**The founding hypothesis is still unproven, and now measurably so.**
+**The founding hypothesis was aimed at the wrong target.** Both issues were read
+on 2026-08-08 — see `docs/FOUNDING-PREMISE.md`. #857 is not fixable by any UIA
+client, because Inspect.exe cannot see the elements either. #1079 is a
+deterministic `FindElement`/`FindElements` disagreement over the same XPath, not
+random emptiness and not a caching problem. The experiment below therefore tested
+a condition unrelated to either issue, which is why it measured nothing.
+
+The real #1079 experiment is available the moment XPath is implemented: run one
+descendant-axis expression through both endpoints on both drivers, and see
+whether they agree. That has an obvious control and a sharp prediction.
+
+**The old framing, kept because the measurement is still valid on its own terms:**
 
 The control exists — `FindStabilityComparisonTests` runs the same manipulation
 through this driver and through real WinAppDriver. Measured 2026-08-08, 300
