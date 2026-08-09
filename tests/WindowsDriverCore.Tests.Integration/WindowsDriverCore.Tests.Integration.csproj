@@ -4,5 +4,6 @@
        Requires a desktop session. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\WindowsDriverCore.Host\WindowsDriverCore.Host.csproj" />
+    <ProjectReference Include="..\..\src\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
   </ItemGroup>
 </Project>

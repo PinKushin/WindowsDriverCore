@@ -9,6 +9,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The integration suite is the only coverage this project has, and it
+         needs to reach IsPackagedApplication, which is internal because nothing
+         outside the launcher should branch on it. -->
+    <InternalsVisibleTo Include="WindowsDriverCore.Tests.Integration" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="System.Drawing.Common" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
