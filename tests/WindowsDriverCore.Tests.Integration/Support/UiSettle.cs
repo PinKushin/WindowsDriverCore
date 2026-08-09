@@ -94,6 +94,8 @@ internal static class UiSettle
         Assert.Fail(
             $"Element {elementId} never settled in {elapsed.Elapsed.TotalSeconds:F1}s " +
             $"across {observations} observations. Last bounds {previous}. " +
-            "The window is still moving, or the element is not being laid out.");
+            "Either the element is not being laid out, or something kept moving the " +
+            "window — including a person using the machine, which is a permanent " +
+            "hazard for tests that drive a real desktop and not a driver defect.");
     }
 }

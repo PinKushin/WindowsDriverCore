@@ -212,8 +212,20 @@ first run after a build, never on a warm re-run. It is now a 30-second deadline,
 and the failure message reports elapsed time and observation count so a
 recurrence is diagnosable rather than anonymous.
 
-**Not claimed as fixed.** The cause is plausible and unconfirmed. Run the suite
-with `--logger trx` so the next occurrence names itself.
+**A second candidate, from the repository owner: physical interference.** The
+tests that could have failed that way all assert on window geometry, and a person
+nudging or dragging the Calculator window mid-run produces exactly the observed
+symptom — bounds that never settle, or a before/after comparison that disagrees.
+Neither candidate is confirmed and neither excludes the other.
+
+**Not claimed as fixed.** Run the suite with `--logger trx` so the next
+occurrence names itself.
+
+**Interference is a permanent property of these tests, not a bug to close.** Any
+test driving a real desktop shares the machine with whoever is using it. The
+answer is not retries — a retry turns a real failure into a probabilistic pass —
+but diagnosability: a geometry test that fails should say what moved, so a
+human-caused failure is recognisable rather than filed as a driver defect.
 
 **Splash-screen handling is partial.** The window search prefers a titled window,
 which avoids the common case WinAppDriver is documented as failing. A splash

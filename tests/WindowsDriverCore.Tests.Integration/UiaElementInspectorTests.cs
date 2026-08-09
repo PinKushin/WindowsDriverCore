@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
@@ -40,6 +41,30 @@ public sealed class UiaElementInspectorTests
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(
         nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint hWnd, out WindowRect rect);
+
+    /// <summary>
+    /// Win32 <c>RECT</c>, as <c>GetWindowRect</c> fills it.
+    /// </summary>
+    /// <remarks>
+    /// All four fields are written by the P/Invoke, which the analyser cannot
+    /// see; <c>Right</c> and <c>Bottom</c> are unread here but must be declared
+    /// or the struct is the wrong size and the call writes past it.
+    /// </remarks>
+    [SuppressMessage("Minor Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Layout must match Win32 RECT even where fields are unread.")]
+    [SuppressMessage("Major Code Smell", "S3459:Unassigned members should be removed",
+        Justification = "GetWindowRect assigns every field through the P/Invoke.")]
+    private struct WindowRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 
     [OneTimeSetUp]
     public void LaunchCalculator()
@@ -84,6 +109,10 @@ public sealed class UiaElementInspectorTests
             }
         }
     }
+
+    private void MoveWindowTo(int x, int y) =>
+        SetWindowPos(_window, 0, x, y, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate)
+            .ShouldBeTrue("the window must actually move or this measures nothing");
 
     private string Find(string automationId)
     {
@@ -148,26 +177,57 @@ public sealed class UiaElementInspectorTests
         // the primary display, and is exactly the mistake the recordings caught.
         string element = Find("num5Button");
 
+        // Park the window at a known place first, so the displacement below is a
+        // difference between two SetWindowPos calls rather than between a
+        // SetWindowPos argument and a GetWindowRect reading.
+        //
+        // Those two disagree. Measured on this machine: setting x to
+        // GetWindowRect's Left + 120 produced a reported Left 175 greater — a
+        // constant 55px offset, because GetWindowRect reports the frame
+        // including the invisible resize border while SetWindowPos positions
+        // something else. Taking a delta between two identical operations
+        // cancels the offset; predicting an absolute value does not.
+        MoveWindowTo(240, 160);
+        UiSettle.UntilBoundsAreStable(_inspector, _window, element);
+
+        GetWindowRect(_window, out WindowRect windowBefore).ShouldBeTrue();
         ElementBounds screenBefore = _inspector.ScreenBounds(_window, element).Value;
         ElementBounds relativeBefore = _inspector.WindowRelativeBounds(_window, element).Value;
 
-        SetWindowPos(
-            _window, 0, screenBefore.X + 120, screenBefore.Y + 80, 0, 0,
-            SwpNoSize | SwpNoZOrder | SwpNoActivate)
-            .ShouldBeTrue("the window must actually move or this measures nothing");
+        MoveWindowTo(240 + 120, 160 + 80);
 
         ElementBounds screenAfter = _inspector.ScreenBounds(_window, element).Value;
         ElementBounds relativeAfter = _inspector.WindowRelativeBounds(_window, element).Value;
 
+        // Two checks, and deliberately in two coordinate systems that are never
+        // mixed.
+        //
+        // Interference, in Win32 space: did the window end up where SetWindowPos
+        // was told to put it? This test shares a desktop with whoever is using
+        // the machine, and a window dragged mid-test would otherwise fail below
+        // with a message about coordinate spaces that says nothing about the
+        // real cause. See docs/LIMITATIONS.md — the answer is diagnosability,
+        // never a retry.
+        GetWindowRect(_window, out WindowRect windowAfter).ShouldBeTrue();
+        (windowAfter.Left - windowBefore.Left).ShouldBe(
+            120,
+            "the window did not move as instructed — something else moved it, " +
+            "possibly a person using the machine");
+        (windowAfter.Top - windowBefore.Top).ShouldBe(80, "same, vertically");
+
+
+        // The claim under test, in UIA space only. An earlier version compared
+        // the Win32 displacement against the UIA one and expected them equal;
+        // they were 120 and 175 on this machine. Mixing GetWindowRect with UIA
+        // bounding rectangles is exactly the coordinate mismatch the production
+        // code avoids by taking both rectangles from UIA, and the test had
+        // reintroduced it.
         int movedBy = screenAfter.X - screenBefore.X;
         movedBy.ShouldNotBe(0, "the manipulation must have an effect to be a manipulation");
 
         // The bystander: the element did not move within its window.
         relativeAfter.X.ShouldBe(relativeBefore.X);
         relativeAfter.Y.ShouldBe(relativeBefore.Y);
-
-        // And the subject did.
-        (screenAfter.Y - screenBefore.Y).ShouldNotBe(0);
 
         // Size is a difference, so it survives the move in either space.
         relativeAfter.Width.ShouldBe(screenBefore.Width);
