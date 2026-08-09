@@ -9,6 +9,7 @@ using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
 
@@ -56,6 +57,11 @@ public sealed class UiaElementInspectorTests
         }
 
         _window = launched.Application.WindowHandle;
+
+        // Same reason as ElementAttributeTests: the geometry assertions compare
+        // readings taken at different moments, which is only valid once the
+        // window has stopped arriving.
+        UiSettle.UntilBoundsAreStable(_inspector, _window, Find("num5Button"));
     }
 
     [OneTimeTearDown]

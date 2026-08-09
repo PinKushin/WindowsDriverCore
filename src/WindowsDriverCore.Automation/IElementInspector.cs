@@ -93,6 +93,20 @@ public interface IElementInspector
     /// </remarks>
     ElementRead<string> Text(nint window, string elementId);
 
+    /// <summary>An arbitrary UI Automation property, rendered as a string.</summary>
+    /// <param name="window">The session's window.</param>
+    /// <param name="elementId">The element id.</param>
+    /// <param name="name">The attribute name the client sent.</param>
+    /// <returns>The rendered value, which may be null.</returns>
+    /// <remarks>
+    /// An open surface rather than a fixed list: plain property names, pattern
+    /// availability flags (<c>IsInvokePatternAvailable</c>) and pattern-qualified
+    /// names (<c>Value.Value</c>) all work, all measured. An unknown name answers
+    /// null, indistinguishable from an unset property — which is WinAppDriver's
+    /// behaviour and not a shortcut taken here.
+    /// </remarks>
+    ElementRead<string?> Attribute(nint window, string elementId, string name);
+
     /// <summary>Whether the element is enabled.</summary>
     /// <param name="window">The session's window.</param>
     /// <param name="elementId">The element id.</param>

@@ -31,6 +31,22 @@ public sealed class UiaElementInspector : IElementInspector
         Read(window, elementId, TextOf);
 
     /// <inheritdoc />
+    public ElementRead<string?> Attribute(nint window, string elementId, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        // An unknown name is resolved before the element is, so a bad attribute
+        // on a live element and a good attribute on a dead one stay
+        // distinguishable — the first is null with status 0, the second is a
+        // stale reference.
+        return UiaProperties.TryGetId(name, out int propertyId)
+            ? Read(window, elementId, element =>
+                UiaAttributeRenderer.Render(
+                    propertyId, element.GetCurrentPropertyValue(propertyId)))
+            : Read(window, elementId, static _ => (string?)null);
+    }
+
+    /// <inheritdoc />
     public ElementRead<bool> IsEnabled(nint window, string elementId) =>
         Read(window, elementId, static element => element.CurrentIsEnabled != 0);
 

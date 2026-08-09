@@ -180,6 +180,64 @@ public sealed class ElementPropertyRouteTests : IDisposable
     }
 
     [Test]
+    public async Task Attribute_ReturnsTheRenderedValue()
+    {
+        _inspector.Attribute(Window, ElementId, "Name")
+            .Returns(ElementRead.Success<string?>("Five"));
+
+        JsonElement body = await BodyOf(await Get("attribute/Name"));
+
+        body.GetProperty("status").GetInt32().ShouldBe(0);
+        body.GetProperty("value").GetString().ShouldBe("Five");
+    }
+
+    [Test]
+    public async Task Attribute_WithADottedPatternName_ReachesTheInspectorIntact()
+    {
+        // The dot is a route-value character, and a route template that split on
+        // it would deliver "SelectionItem" here. Measured names include
+        // Value.Value and SelectionItem.IsSelected.
+        _inspector.Attribute(Window, ElementId, "SelectionItem.IsSelected")
+            .Returns(ElementRead.Success<string?>("False"));
+
+        JsonElement body = await BodyOf(await Get("attribute/SelectionItem.IsSelected"));
+
+        body.GetProperty("value").GetString().ShouldBe("False");
+    }
+
+    [Test]
+    public async Task Attribute_ThatIsUnknown_IsNull_WithStatusZero()
+    {
+        // Not an error. A caller cannot distinguish this from an unset property,
+        // which is WinAppDriver's behaviour and is measured.
+        _inspector.Attribute(Window, ElementId, "InvalidAttributeName")
+            .Returns(ElementRead.Success<string?>(null));
+
+        HttpResponseMessage response = await Get("attribute/InvalidAttributeName");
+        JsonElement body = await BodyOf(response);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        body.GetProperty("status").GetInt32().ShouldBe(0);
+        body.GetProperty("value").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Test]
+    public async Task Attribute_WithNoName_IsInvalidArgument_NotAnUnknownCommand()
+    {
+        // The distinction that routing gets wrong by default: without an
+        // explicit optional-name route this falls through to the fallback and
+        // answers status 9. Measured, WinAppDriver answers 400 with status 100
+        // and a message naming the argument.
+        HttpResponseMessage response = await Get("attribute/");
+        JsonElement body = await BodyOf(response);
+
+        ((int)response.StatusCode).ShouldBe(400);
+        body.GetProperty("status").GetInt32().ShouldBe(100);
+        body.GetProperty("value").GetProperty("message").GetString()
+            .ShouldBe("Attribute command takes exactly one argument namely the attribute name");
+    }
+
+    [Test]
     public async Task Rect_IsNotImplemented()
     {
         // W3C only. WinAppDriver answers 501 with a plain-text body, and the

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
 
@@ -38,6 +39,8 @@ public static class ElementPropertyRoutes
         MapRead(app, "location_in_view", ReadLocation);
         MapRead(app, "size", ReadSize);
 
+        MapAttribute(app);
+
         // W3C's replacement for location + size, which WinAppDriver never
         // implemented. Reported the way it reports every unimplemented command:
         // 501 with a plain-text body the client cannot parse, which is what
@@ -49,6 +52,49 @@ public static class ElementPropertyRoutes
             .RequiresSession();
 
         return app;
+    }
+
+    private const string MissingAttributeNameMessage =
+        "Attribute command takes exactly one argument namely the attribute name";
+
+    /// <summary>
+    /// Maps <c>GET /element/{id}/attribute/{name}</c>.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="MapRead{T}"/> because of the extra route value
+    /// and the one case that is a fault rather than a null: an <b>empty</b>
+    /// attribute name answers 400 with status 100, while an <b>unknown</b> one
+    /// answers 200 with null. Measured, and the distinction is easy to lose —
+    /// routing would otherwise send a trailing-slash request to the
+    /// unknown-command fallback and answer status 9.
+    /// </remarks>
+    private static void MapAttribute(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/session/{sessionId}/element/{elementId}/attribute/{name?}",
+            static (
+                HttpContext context,
+                IElementInspector inspector,
+                IElementRegistry registry,
+                string elementId,
+                string? name) =>
+            {
+                if (string.IsNullOrEmpty(name))
+                {
+                    return Results.Json(
+                        JsonWireResponse.ForFault(
+                            WebDriverFault.InvalidArgument, MissingAttributeNameMessage),
+                        statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+                }
+
+                DriverSession session = context.GetSession();
+                ElementRead<string?> result = inspector.Attribute(
+                    session.WindowHandle, elementId, name);
+
+                return result.Outcome == ElementReadOutcome.Read
+                    ? Results.Json(JsonWireResponse.ForSession(session.Id, result.Value))
+                    : ElementFault.For(result.Outcome, session.Id, elementId, registry);
+            })
+            .RequiresSession();
     }
 
     /// <summary>
