@@ -1,3 +1,4 @@
+using WindowsDriverCore.Automation;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -77,7 +78,10 @@ public static class SessionRoutes
                     .ToList())));
 
         app.MapDelete("/session/{sessionId}",
-            (string sessionId, ISessionStore sessions, IElementRegistry elements) =>
+            (string sessionId,
+             ISessionStore sessions,
+             IElementRegistry elements,
+             IElementHandleCache handles) =>
         {
             // Remove returns the session so teardown does not need a second
             // lookup, which could race another request deleting the same id.
@@ -97,6 +101,7 @@ public static class SessionRoutes
             // later session with a colliding runtime id read "stale" for an
             // element it never saw.
             elements.Forget(sessionId);
+            handles.Forget(removed.WindowHandle);
 
             // Shutting the application down belongs here and is not implemented
             // yet — the launcher arrives with POST /session. Removing the session

@@ -31,11 +31,15 @@ public enum ElementLookupOutcome
 /// </remarks>
 public sealed class ElementLookupResult : IDisposable
 {
+    private readonly bool _owned;
+
     private IUIAutomationElement? _element;
 
-    private ElementLookupResult(IUIAutomationElement? element, ElementLookupOutcome outcome)
+    private ElementLookupResult(
+        IUIAutomationElement? element, ElementLookupOutcome outcome, bool owned)
     {
         _element = element;
+        _owned = owned;
         Outcome = outcome;
     }
 
@@ -53,7 +57,24 @@ public sealed class ElementLookupResult : IDisposable
     {
         ArgumentNullException.ThrowIfNull(element);
 
-        return new ElementLookupResult(element, ElementLookupOutcome.Resolved);
+        return new ElementLookupResult(element, ElementLookupOutcome.Resolved, owned: true);
+    }
+
+    /// <summary>An element owned by someone else, typically a cache.</summary>
+    /// <param name="element">The element, whose lifetime stays with its owner.</param>
+    /// <returns>The result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="element"/> is null.</exception>
+    /// <remarks>
+    /// Disposing this releases nothing. Without the distinction a cached handle
+    /// would be released by its first user and every later use would be a call
+    /// on a dead runtime callable wrapper — the mirror image of the leak that
+    /// made the previous implementation grow a wrapper per find.
+    /// </remarks>
+    public static ElementLookupResult Borrowed(IUIAutomationElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        return new ElementLookupResult(element, ElementLookupOutcome.Resolved, owned: false);
     }
 
     /// <summary>A lookup that found nothing.</summary>
@@ -70,18 +91,36 @@ public sealed class ElementLookupResult : IDisposable
                 nameof(outcome), outcome, "A resolved lookup must carry an element.");
         }
 
-        return new ElementLookupResult(null, outcome);
+        return new ElementLookupResult(null, outcome, owned: false);
     }
 
     /// <summary>Releases the element.</summary>
     public void Dispose()
     {
-        if (_element is not null)
+        if (_owned && _element is not null)
         {
             Marshal.ReleaseComObject(_element);
-            _element = null;
         }
+
+        _element = null;
     }
+}
+
+/// <summary>
+/// Releases element handles a driver is holding.
+/// </summary>
+/// <remarks>
+/// Separate from <see cref="IElementResolver"/> because most resolvers hold
+/// nothing and should not be asked to implement this. The protocol layer calls
+/// it when a session ends: every handle keeps a provider object alive inside the
+/// application under test, and a driver that outlives many sessions would
+/// otherwise pin objects in applications that have closed.
+/// </remarks>
+public interface IElementHandleCache
+{
+    /// <summary>Releases every handle held for a window.</summary>
+    /// <param name="searchRoot">The window whose session is ending.</param>
+    void Forget(nint searchRoot);
 }
 
 /// <summary>

@@ -67,13 +67,24 @@ question is closed on those grounds — see `PROJECT-KNOWLEDGE.md`.
 together would otherwise be three calls each. It is simply not the win it was
 predicted to be for runtime ids alone.
 
-**Resolution costs a full tree walk per element command.** Every property route
-resolves the id by enumerating descendants and comparing, for the same reason
-find-by-id does: UIA rejects RuntimeId in a property condition. That is one walk
-per HTTP request — the same price a client pays for each of seven property calls
-anyway — but it means a property read costs about what a find costs, and FlaUI,
-which holds the element, will not. Measure before fixing; the last two
-performance theories on this project were both wrong.
+**FIXED — resolution no longer walks the tree on every element command.**
+`CachingElementResolver` keeps the live element it resolved, keyed by window and
+id, and verifies the handle's runtime id on every use before trusting it.
+
+| Property read, num5Button, 20 samples | |
+|---|---|
+| Walking the tree per command | 19.40 ms |
+| Cached handle | 0.45 ms |
+| | **43.5x** |
+
+It is an optimisation and nothing more: a miss, an eviction, or a handle whose
+identity check fails all fall through to the walk, which is correct on its own.
+Bounded at 256 handles with LRU eviction, because each one keeps a provider
+object alive inside the application under test, and released on `DELETE /session`.
+
+The reason this was not done sooner was a rule against holding elements between
+calls, which `HeldElementLivenessTests` refuted — see `PROJECT-KNOWLEDGE.md` §0.
+Remaining cost is the initial find, which is a genuine search.
 
 **The remaining performance work, in order:**
 
