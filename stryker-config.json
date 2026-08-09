@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-net/master/src/Stryker.Core/Stryker.Core/Schemas/stryker-config-schema.json",
+  "stryker-config": {
+    "solution": "WindowsDriverCore.slnx",
+    "test-projects": [
+      "tests/WindowsDriverCore.Tests.Unit/WindowsDriverCore.Tests.Unit.csproj",
+      "tests/WindowsDriverCore.Tests.Protocol/WindowsDriverCore.Tests.Protocol.csproj"
+    ],
+    "target-framework": "net10.0-windows",
+    "reporters": ["html", "progress", "cleartext"],
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 0
+    },
+    "mutate": [
+      "**/*.cs",
+      "!**/GlobalUsings.cs",
+      "!src/WindowsDriverCore.Platform/**/*Interop*.cs"
+    ]
+  }
+}

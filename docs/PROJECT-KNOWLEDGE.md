@@ -12,31 +12,154 @@ in the reasoning.
 
 ---
 
+## 0. The one lesson, if you read nothing else
+
+**Five load-bearing claims in this repository turned out to be wrong. Every one
+was inherited from an earlier session and repeated without being checked.**
+
+**None of them were the user's.** The project `CLAUDE.md` was written by earlier
+AI sessions, so its technical assertions carry no more authority than any other
+file here — the user confirmed this explicitly on 2026-08-08 about the caching
+rule below. Its *process* rules (test-first, no `var`, zero warnings, branching)
+are a different matter and stand.
+
+| Claim | Reality | Cost |
+|---|---|---|
+| "#857: elements are absent from the tree WinAppDriver searches" | They are absent from the UIA tree entirely. Inspect.exe cannot see them either. Not fixable by any client. | The project claimed a fix it cannot deliver |
+| "#1079: FindElements randomly returns empty" | Deterministic `FindElement`/`FindElements` disagreement over the same XPath | An experiment was built against a condition unrelated to the bug |
+| "Both come from the managed wrapper's cached view" | Appears in neither issue. Inference presented as fact — and the entire justification for the architecture | Two weeks of confident repetition |
+| "The Alarms fixture fails because X" | Four successive wrong answers before measurement found a renamed control | A day |
+| "Never hold an element between calls — it is a snapshot that drifts" | A held `IUIAutomationElement` is a **live proxy**. Properties come from the provider on every read, its runtime id survives tree changes, and a destroyed element throws `UIA_E_ELEMENTNOTAVAILABLE` instead of answering. Measured in `HeldElementLivenessTests` | A full tree walk on **every** element command, and the belief that FlaUI had a structural speed advantage here |
+
+A sixth was caught going the other way: overstating WinAppDriver's fault for
+something that was really a consequence of building custom MAUI controls out of
+primitives. **Overstating in the project's favour is the failure mode to watch
+for most**, because nothing in the repo pushes back on it.
+
+Every correct answer this project has came from running something: recording real
+responses, walking a live UIA tree, driving a real app step by step. Every wrong
+one came from reading a summary and reasoning forward.
+
+**A claim written in this repository is not evidence.** The recordings, the
+measured numbers and `LIMITATIONS.md` were produced by running something.
+Treat everything else as a hypothesis until it has been — `CLAUDE.md` included.
+
+The fifth entry shows the shape this takes when it survives longest: a rule
+phrased as an engineering principle, in the file that reads most like authority,
+justified by two of the other wrong claims. It cost a tree walk per command and
+was refuted by one experiment that took minutes to write. **Doctrine is the
+easiest kind of claim to inherit, because it does not look like a claim.**
+
+---
+
 ## 1. What this project is
 
-An open-source replacement for WinAppDriver, which Microsoft archived in June 2025. It speaks the
-protocol Appium/Selenium clients expect and drives Windows apps through `IUIAutomation` COM.
+**The WinAppDriver API, implemented on raw `IUIAutomation` COM, built to FlaUI's standard of
+capability.**
 
-The founding motivation was two WinAppDriver bugs:
+- **FlaUI reaches UIA properly** — pattern-aware, and explicit about the difference between
+  invoking a pattern and dispatching real mouse input.
+- **But it is a .NET library.** No Appium suite, no Python test, nothing speaking WebDriver can
+  drive it. Reaching for FlaUI means leaving the protocol behind.
+- **WinAppDriver has the API every existing suite already speaks** — and an implementation that is
+  weak, and archived since June 2025.
 
-- **#857** — elements exist on screen but are absent from the UIA tree `FindElement` searches;
-  ListView items get orphaned.
-- **#1079** — `FindElements` randomly returns empty.
+So: serve WinAppDriver's protocol over a UIA layer as capable as FlaUI's. An existing suite points
+at it unchanged and stops hitting the ceiling.
 
-Both are believed to come from the *managed wrapper's cached view* of the tree, not from UIA
-itself. Querying the live tree with raw COM should make the whole class not exist. This is the
-project's reason to be, and **it is still unimplemented** — do not lose sight of it while chasing
-protocol parity.
+This is why the only dependency is `Interop.UIAutomationClient` — FlaUI's own interop layer, the
+raw COM surface — and deliberately **not** `FlaUI.Core`. A peer, not a wrapper. Taking the wrapper
+would inherit its abstractions and defeat the point; taking its interop layer is just using the
+COM definitions someone already wrote correctly.
 
-**Direction from the user:** cheat-tool-level control. Raw COM, no managed wrappers hiding
-behaviour, no hidden retries, no hidden caching, no hidden exception translation. Own the COM
-pointers, the tree traversal, and the caching strategy. `unsafe` where it genuinely pays.
+**Protocol compatibility is the floor, not the ceiling.** Where WinAppDriver's behaviour is a
+defect rather than a contract, match the protocol and fix the behaviour. Where a capability has no
+expression in the protocol, add a vendor extension rather than silently choosing for the caller.
 
-**FlaUI is not the answer** and this was settled with evidence: `Interop.UIAutomationClient` — the
-only dependency — is authored by *Roemer*, FlaUI's author. It **is** FlaUI's interop layer. Adding
-`FlaUI.UIA3` on top means wrapping a wrapper to fix wrapper bugs. The one useful idea from FlaUI is
-that it draws a clear distinction between a pattern invoke and a real mouse click; take the idea,
-not the dependency.
+The founding motivation was two WinAppDriver bugs. **Both were misdescribed in this repository
+for two weeks — read `docs/FOUNDING-PREMISE.md` before relying on anything about them.**
+
+- **#857** — elements visible on screen are absent from the UIA tree. **Inspect.exe cannot see them
+  either**, which means the application's UIA provider has not published them and *no* client can
+  find them. **This driver does not fix #857 and cannot.**
+- **#1079** — not random emptiness. `FindElement` succeeds and `FindElements` returns empty for the
+  *same XPath*, deterministically. That is a defect in WinAppDriver's own XPath evaluation, which
+  has separate singular and plural paths. Real, probably fixable, and untouched here because XPath
+  is not implemented.
+
+The "managed wrapper's cached view" explanation appears in neither issue. It was inference,
+repeated as fact in every document here. Querying live remains the right default — it is simpler,
+measurably faster, and avoids a class of staleness — but it was adopted for a reason that turned
+out to be unsupported.
+
+### As close to the metal as possible
+
+Standing direction, and it decides arguments rather than flavouring them. Nothing sits between
+this code and the API it drives unless it is pulling its weight.
+
+- **Raw COM interfaces, not managed wrappers.** A wrapper's behaviour becomes this driver's
+  behaviour and its bugs become ours to explain.
+- **Own COM lifetime explicitly** — deterministic release, not finalizer roulette.
+- **No hidden behaviour**: no implicit retries, no caching the caller did not ask for, no exception
+  translation that loses the original. Where the driver decides something for the caller, the
+  decision is documented and, where it matters, selectable.
+- **Round trips are the cost that matters**, not codegen — this is cross-process COM. If a find
+  shows up in a benchmark the answers are `IUIAutomationCacheRequest`, to fetch more per trip, and
+  holding the element the caller already has an id for. **Not** a retained *result set* or a cached
+  *property snapshot* — those do go stale. A live element reference does not; see §0.
+- **`unsafe` where it genuinely pays**, which so far means `Platform`, because that is what the
+  P/Invoke source generator emits.
+
+**FlaUI is the capability benchmark, not a dependency.** `Interop.UIAutomationClient` — the only
+dependency here — is authored by *Roemer*, FlaUI's author, and **is** FlaUI's interop layer, so the
+raw COM definitions are already shared. Taking `FlaUI.Core` on top would inherit its object model
+and abstractions, which is the opposite of the point: this project needs to own tree traversal,
+COM lifetime and activation strategy in order to expose them through a protocol.
+
+What to take from FlaUI is the *standard* — pattern awareness, and an explicit distinction between
+invoking a pattern and dispatching real mouse input. What not to take is the wrapper.
+
+It is also the natural benchmark subject: in-process, no transport, so it measures the floor of
+what this work costs. See H3 in `REWRITE-SPEC.md`.
+
+### Why C# rather than C, and how to settle it if it comes up again
+
+The temptation is real — there is no UI here, and the original WinAppDriver was C++. But the one
+measurement available already argues against it:
+
+**WinAppDriver *is* native C++, and it is the thing taking ~1070 ms per find against this C#
+implementation's ~33 ms.** Native did not save it. The gap is architectural — what it does per
+call — not language.
+
+That matches the shape of the workload. A UIA `FindAll` is an RPC into the target application's
+provider process; the provider does the tree walk while this process waits. Marshalling overhead on
+the client side is noise beside a cross-process round trip, and marshalling is most of what C would
+buy back.
+
+Against that, C# is carrying real weight on a component that **takes HTTP input from the network
+and launches processes with it**: Kestrel, `System.Text.Json`, and memory safety on exactly the
+surface where it matters. The previous implementation shipped a command-injection vector through
+`Process.Start`; that class of defect is cheaper to avoid than to audit for.
+
+Where C# could genuinely cost: per-call interop marshalling, GC pause consistency (latency tails
+rather than throughput), and JIT warmup — the last irrelevant for a long-running server.
+
+**If a shim is ever warranted, it is C, not Zig.** Zig is the better language on safety — bounds
+checks, defined overflow, explicit allocators — but the thing being shimmed is COM, and Zig has no
+COM support. `@cImport` chokes on the vtable macros in `UIAutomationClient.h`, so every interface
+would be a hand-written `extern struct` of function pointers. A wrong slot ordinal there is silent
+memory corruption, which is worse than anything the bounds checking buys back. C inherits the
+correct vtable layout from the header for free. Getting COM right is the hard part; memory safety
+in a small flat-buffer shim is the easy part.
+
+And the shim's interface should be *"find, and return N elements' properties as one flat buffer"* —
+one P/Invoke, one allocation, no RCWs. Not "wrap COM in another language". Note that is the same
+idea as a cache request, one layer down, which is why the managed version comes first.
+
+**Do not re-argue this. Measure it.** Instrument a find to separate time spent inside the UIA call
+from time spent in managed code. If UIA is 95%+ of it, the question is closed and a rewrite would
+be buying the remainder. If the managed side turns out to be material, that is a real finding, and
+a C shim for the hot path becomes worth costing — not a whole-project rewrite.
 
 **Native AOT is out.** `Marshal.ReleaseComObject` and built-in COM interop are unsupported under
 AOT; getting there means a `ComWrappers` rewrite. JIT is also right on merit — this workload is
@@ -137,22 +260,150 @@ Only `AlarmClockBase` calls it; `CalculatorBase` checks `session == null` instea
 relaunches once per test *class* by design — 35 of 43 classes have
 `[ClassCleanup] → TearDown() → session.Quit()`.
 
-### Error envelope
+### Response envelopes — recorded, not inferred
+
+**All of this is measured** from WinAppDriver 1.2.2009.02003 on Win11 26200 and checked in at
+`tests/WindowsDriverCore.Tests.Protocol/Recordings/winappdriver-responses.json` (40 records).
+That file is the contract. Do not hand-edit it; re-record it.
+
+**Success** carries `sessionId`; **errors do not**:
 
 ```json
-{"status":23,"value":{"error":"no such window","message":"Currently selected window has been closed"}}
+{"sessionId":"…","status":0,"value":{"ELEMENT":"42.19466560.4.73"}}
+{"status":7,"value":{"error":"no such element","message":"An element could not be located on the page using the given search parameters."}}
 ```
 
-Numeric top-level `status` plus `value.error` and `value.message`. Measured live against
-WinAppDriver 1.2.2009.02003:
+`GET /status` is unwrapped — no `value`, no `status`:
+```json
+{"build":{"revision":"2003","time":"…","version":"1.2.2009"},"os":{"arch":"amd64","name":"windows","version":"10.0.26200"}}
+```
 
-- unknown session → **bare HTTP 404, empty body**, no JSON at all
-- unknown route → same
-- `GET /status` → `{"build":{...},"os":{...}}`, **not** wrapped in `value`
+**Status codes actually emitted**, with their HTTP status:
 
-Canonical error strings are in `Tests/WebDriverAPI/AppSessionBase/CommonTestSettings.cs`, class
-`ErrorStrings`. Use that file verbatim; do not reverse-engineer strings from failures the way the
-last implementation did.
+| `status` | `error` | HTTP | Trigger |
+|---|---|---|---|
+| 0 | — | 200 | success |
+| 7 | `no such element` | 404 | find miss, malformed tag name, unknown element id |
+| 9 | `unknown command` | 404 | unrecognised route |
+| 13 | `unknown error` | 500 | app path not found on session create |
+| 19 | `XPath Lookup Error` | 500 | invalid XPath (note the spaces and capitals) |
+| 23 | `no such window` | 400 | bad window handle, bad `appTopLevelWindow` |
+| **100** | `invalid argument` | 400 | negative timeout ms, missing capabilities |
+| **101** | `invalid session id` | 404 | unknown session |
+
+**100 and 101 are not in Selenium's `WebDriverResult` enum** (which uses 61 and 6). WinAppDriver
+emits its own. Match WinAppDriver, not the enum.
+
+### 501 responses are plain text, not JSON
+
+This is the finding that explains a string nobody could account for:
+
+```
+HTTP 501
+Unimplemented Command: css selector locator strategy is not supported
+```
+
+No envelope, no JSON. The client cannot parse it, so it **prepends "Unexpected error. "** — which
+is exactly why `ErrorStrings.UnimplementedCommandLocator` reads
+`"Unexpected error. Unimplemented Command: {0} locator strategy is not supported"`. Emit the bare
+text with HTTP 501 and the client composes the rest. Emitting JSON here would produce a different
+client-side message and fail the test.
+
+Applies to: unsupported locator strategies (`css selector`, `link text`, `partial link text`) and
+unsupported timeout types (`page load`, `script`).
+
+Similarly, `ErrorStrings.XPathLookupError` is `"Invalid XPath expression: {0} (XPathLookupError)"`
+but the **server** sends only `Invalid XPath expression: {expr}`. The client appends
+` (XPathLookupError)` — the `error` string with spaces removed. Do not send the suffix.
+
+### Other measured behaviours
+
+- `FindElements` with no match → **HTTP 200, `"value":[]`**, not an error.
+- Element ids are **dot-separated** (`42.19466560.4.73`), matching the docs. The previous
+  implementation used commas.
+- `window_handle` returns a hex string with the `0x` prefix and uppercase digits: `"0x01BF112C"`.
+- `element/{id}/name` returns the tag name as `"ControlType.Button"`.
+- `element/{id}/size` serialises **height before width**.
+- `element/{id}/rect` is **501**. It is W3C-only; WinAppDriver does not implement it.
+- `element/{id}/clear` on an element with no ValuePattern returns **200**, not an error.
+
+### Element geometry uses two different coordinate spaces
+
+Measured on one element, read back to back, 2026-08-08:
+
+| Reading | Value |
+|---|---|
+| `/location` and `/location_in_view` | `{x: 203, y: 419}` |
+| `/size` | `{width: 97, height: 35}` |
+| `/attribute/BoundingRectangle` | `Left:257 Top:616 Width:97 Height:35` |
+| `/attribute/ClickablePoint` | `305,633` |
+| `/window/current/position` | `{x: 54, y: 197}` |
+
+`257 − 203 = 54` and `616 − 419 = 197` — exactly the window origin. So
+**`/location` is relative to the session window**, while `BoundingRectangle`,
+`ClickablePoint` and all synthesized input are in **screen** coordinates. `/size`
+is unaffected, being a difference.
+
+This matters for the click ladder: feeding `/location` to `SendInput` is off by
+the window origin, and is invisible on a window at the top-left of the primary
+display. A guard written against the wrong space passes while the click lands
+somewhere else.
+
+The first attempt to explain the disagreement guessed DPI scaling. The ratios did
+not match (`257/203 = 1.27` against `616/419 = 1.47`), and asking the window where
+it was settled it in a single request. Cheaper than the theory.
+
+### `/text` is ValuePattern first, then Selection, then Name
+
+Calculator cannot show this — every element there has a Name and no ValuePattern,
+so "value if available" and "always name" predict the same answer. Settings'
+search box has both, and starts empty:
+
+| Subject | Name | Value | `/text` |
+|---|---|---|---|
+| Settings search box (Edit) | `Search box, Find a setting` | *(empty)* | `""` |
+| …after typing `printers` | unchanged | `printers` | `printers` |
+| Settings minimize button (control) | `Minimize Settings` | no ValuePattern | `Minimize Settings` |
+
+An **empty** value beating a non-empty Name is the decisive part: the rule keys on
+pattern availability, not on whether the string is empty. The button in the same
+window at the same moment is the control that rules out a session-wide or
+window-wide explanation.
+
+The Selection rung — a List returning its selected item's value — comes from
+Microsoft's own `ElementText.GetElementText` (`MinuteLoopingSelector.Text == "00"`),
+not from a measurement here.
+
+Note a divergence between two routes reading the same property: `/text` returns
+`""` for an empty value, while `/attribute/Value.Value` returns `null`.
+
+### `/attribute/{name}` is an open UIA surface, not a fixed list
+
+28 names measured. Strings verbatim; booleans as `"True"`/`"False"`; integers as
+decimal strings; `RuntimeId` dot-separated; `ClickablePoint` as `"305,633"`;
+`BoundingRectangle` as `"Left:257 Top:616 Width:97 Height:35"`; `ControlType` as
+`"ControlType.Button"` and `LocalizedControlType` as `"button"`; pattern
+availability as `Is{Pattern}PatternAvailable`; pattern-qualified names work
+(`SelectionItem.IsSelected`, `Value.Value`, `Value.IsReadOnly`).
+
+An **unset** property and an **unknown** attribute name both return `null` with
+HTTP 200 — indistinguishable to a caller. An **empty** attribute name is 400,
+status 100, `"Attribute command takes exactly one argument namely the attribute name"`.
+
+### A caution about how these were obtained
+
+The first recording pass reported **every error body as empty**, and it was wrong. PowerShell 7's
+`Invoke-WebRequest` throws on non-2xx, and `$_.Exception.Response` is an `HttpResponseMessage` with
+no `GetResponseStream()`, so the body reader silently produced "". Re-recorded with
+`-SkipHttpErrorCheck`, which returns the response instead of throwing.
+
+An earlier version of this document asserted "unknown session → bare HTTP 404, empty body" on the
+strength of that broken instrument. It is false. **When a measurement says a server returns
+nothing, suspect the client first.**
+
+Canonical error strings also live in `Tests/WebDriverAPI/AppSessionBase/CommonTestSettings.cs`,
+class `ErrorStrings` — but note those are the strings **as the client sees them**, after any
+prefixing. The recordings are what the server sends.
 
 ### Locator strategies
 
@@ -162,13 +413,26 @@ last implementation did.
 | FindElementByClassName | `class name` | ClassName |
 | FindElementById | `id` | RuntimeId |
 | FindElementByName | `name` | Name |
-| FindElementByTagName | `tag name` | **LocalizedControlType, upper camel case** |
+| FindElementByTagName | `tag name` | **ControlType programmatic name, case-sensitive, unprefixed** |
 | FindElementByXPath | `xpath` | Any |
 
 Two traps:
 
-1. `tag name` matches **LocalizedControlType** (a localized string), *not* `UIA_ControlTypePropertyId`
-   integers. The old code mapped to control-type ids — wrong property entirely.
+1. `tag name` matches the **ControlType** enum's programmatic name — `Button`,
+   `ListItem`, `Text` — case-sensitively and *without* the `ControlType.` prefix.
+   Measured 2026-08-08: `Button` 200 / `button` 404, `ListItem` 200 / `list item`
+   404, `ControlType.Button` 404.
+
+   An earlier version of this table said LocalizedControlType, and this file
+   argued for it. **It was wrong, and the reason it survived is instructive:**
+   the example used to justify it was `"Button"`, an input where the two
+   hypotheses predict the same observation, because a Button's localized type
+   differs from its programmatic name only by case. `ListItem` versus
+   `list item` is the input where they differ, and it takes one request to
+   settle. A confidently-worded comment is not a measurement.
+
+   The prefixed form is real, but it belongs to a different route — `/name`
+   returns `ControlType.Button`. Locator unprefixed, tag-name response prefixed.
 2. An unknown tag name **must throw**. The old code fell back to `UIA_CustomControlTypeId`, which
    can silently succeed. `Element.cs:142` (`FindElementError_NoSuchElementByTagName`) and `:156`
    (`…ByTagNameMalformed`) both require an exception. This is part of the 23
@@ -336,6 +600,20 @@ stream → `ObjectDisposedException: Cannot access a closed Stream`.
 
 ### Click semantics — the single most valuable behavioural difference
 
+**Read `docs/CLICK-SEMANTICS.md` first.** It is the design requirement, written
+from the primary source, and it contains two things this summary originally
+missed: the ladder must walk **ancestors**, and the application under test had to
+add transparent `Button` overlays and fall back to FlaUI to work around the
+driver.
+
+The mis-attribution worth knowing: an earlier memory entry recorded
+"#1079 reproduced constantly" during a CollectionView rebind. That is wrong twice
+over. The observed problem was **clicks not reaching handlers**, not finds
+returning empty, and the cause was an `AutomationId` on a pattern-less `Border`
+inside the item container whose parent held `SelectionItemPattern`. Nothing to do
+with #1079.
+
+
 WinAppDriver's Element Click is **synthesized mouse input at the bounding-box centre in SCREEN
 coordinates**. It does not scroll first and does not check the point lies inside the target window.
 
@@ -464,6 +742,98 @@ That one Alarms rename cascade costs the suite ~167 tests: `DismissAddAlarmPage(
 parked on the dialog.
 
 ---
+
+## 7b. Learned while building it (2026-08-08, implementation phase)
+
+Everything above was learned by researching. This section is what only appeared
+once code ran. See also `docs/LIMITATIONS.md`, which tracks the live list.
+
+### UIA rejects RuntimeId as a property condition
+
+`CreatePropertyCondition(UIA_RuntimeIdPropertyId, int[])` fails with
+`E_INVALIDARG`. Not documented anywhere obvious; found by trying it and watching
+two integration tests fail. A search by element id therefore has to enumerate
+descendants and compare, which costs a full tree walk per by-id find.
+
+That cost is the price of holding no cache, and it is worth paying: the
+alternative is keeping elements alive between calls, which is the exact design
+that produces #857 and #1079.
+
+### `ActivateApplication` reports an unknown package as `E_INVALIDARG`
+
+Which `Marshal.ThrowExceptionForHR` maps to **`ArgumentException`**, not
+`COMException` — so a handler written for COM exceptions misses it entirely and
+the exception escapes the launcher. Read HRESULTs directly rather than throwing
+and guessing which type each maps to.
+
+**This also finally explains a string the old implementation carried for years:**
+`"Value does not fall within the expected range"` is `E_INVALIDARG`'s stock
+message. It was surfaced to clients without anyone ever identifying what produced
+it.
+
+### Windows 11 `notepad.exe` defeats both obvious window searches
+
+The path is a stub that starts the packaged Notepad and exits, so the launched
+process owns no window. And Notepad is WinUI 3, so the window is not an
+`ApplicationFrameWindow` — the packaged-app fallback misses it too. Found by a
+ten-second timeout in an integration test on its first run.
+
+The search now widens in stages: launched process → any descendant → any
+top-level window that did not exist before the launch. Finding descendants needs
+the parent process id, which neither WMI nor `Process.GetProcesses` exposes, so
+it reads Toolhelp32 directly.
+
+### Capability rules that contradict the obvious reading
+
+All measured against WinAppDriver, all four the opposite of what a spec reading
+gives:
+
+- Supplying **both** `app` and `appTopLevelWindow` is **rejected**, with the same
+  message as supplying neither. Exclusive, not preferential.
+- An empty `app` has its own message: `Capability: app cannot be empty`.
+- `capabilities.alwaysMatch` is **not understood at all**.
+- Unrecognised capabilities are **dropped from the echo** — `deviceName` vanished,
+  `platformName` survived. The list in `AuthoringTestScripts.md` is an allowlist,
+  not documentation.
+
+### Tooling constraints worth knowing before they cost an hour
+
+- `LibraryImport` cannot marshal `[Out] char[]` without disabling runtime
+  marshalling assembly-wide (SYSLIB1051), nor a struct with a fixed-size inline
+  string. Both cases stay on `DllImport`.
+- `LibraryImport` requires `AllowUnsafeBlocks`; the generated stubs are unsafe.
+- A COM coclass cannot be cast to its interface directly — go through `object` so
+  the runtime issues a `QueryInterface`.
+- A COM interface is a vtable in declaration order. Unused methods must still be
+  declared or later methods bind to the wrong slot.
+
+### A false negative in my own verification loop
+
+Mutation testing by hand has a failure mode that looks exactly like success.
+Several mutations **broke the build** rather than failing a test — orphaning a
+private method, tripping a style analyzer — and a grep filtered to test results
+then printed nothing at all, which reads identically to "no test caught it".
+
+Two rules came out of it, both now habit:
+
+1. A mutation must **assert that it applied**. A scripted find-and-replace that
+   silently matches nothing produced a "fix" that existed only in a commit
+   message — the gate it claimed to add was never wired, and only running the
+   real executable caught it.
+2. A mutation must be **analyzer-clean**, or it is testing the analyzers rather
+   than the tests.
+
+### Test seams pay off immediately, and visibly
+
+`IApplicationLauncher` and `IWindowLocator` exist so session creation is testable
+without a desktop. Every branch — packaged, classic, desktop, attach, and each
+failure — is covered by protocol tests that need no UI session at all. The
+implementation being replaced launched processes inline in the route handler,
+which is precisely why none of its session behaviour was ever tested.
+
+The converse also held: the two defects above were found by the *integration*
+tests on their first run, because those are the only tests that exercise anything
+below the seam.
 
 ## 8. Mistakes not to repeat
 

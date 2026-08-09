@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The JSON Wire Protocol surface: routes, response envelopes, error mapping.
+       Owns all serialization. Contains no UIA. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsDriverCore.Automation\WindowsDriverCore.Automation.csproj" />
+    <ProjectReference Include="..\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
+  </ItemGroup>
+  <!-- No Microsoft.Extensions.Logging.Abstractions PackageReference here:
+       the ASP.NET Core framework reference above already provides it, and
+       NuGet reports the redundant reference as NU1510. -->
+</Project>

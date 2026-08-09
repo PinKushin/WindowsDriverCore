@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Composition root: CLI parsing, DI wiring, logging, Kestrel. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>WindowsDriverCore</AssemblyName>
+    <RootNamespace>WindowsDriverCore.Host</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsDriverCore.Protocol\WindowsDriverCore.Protocol.csproj" />
+    <ProjectReference Include="..\WindowsDriverCore.Automation\WindowsDriverCore.Automation.csproj" />
+    <ProjectReference Include="..\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Sinks.Async" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- UIA element find and interaction. Typed in, typed out.
+       Must not reference ASP.NET Core or System.Text.Json: this layer does not
+       know that HTTP or JSON exist. -->
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Interop.UIAutomationClient" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+</Project>

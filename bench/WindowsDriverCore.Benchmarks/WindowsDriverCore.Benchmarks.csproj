@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <!-- FlaUI and the Appium client are referenced ONLY here so the driver never
+       depends on either. They are the two baselines, and they measure different
+       axes: FlaUI is in-process (the floor — what this costs with no transport
+       at all), WinAppDriver is over HTTP (the thing to beat). The gap between
+       us and FlaUI is the optimization budget for the hop plus our layering. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsDriverCore.Automation\WindowsDriverCore.Automation.csproj" />
+    <ProjectReference Include="..\..\src\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="FlaUI.Core" />
+    <PackageReference Include="FlaUI.UIA3" />
+    <PackageReference Include="Appium.WebDriver" />
+  </ItemGroup>
+</Project>
