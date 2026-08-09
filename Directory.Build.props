@@ -3,7 +3,21 @@
   <!-- Settings shared by every project in the solution. -->
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- TargetFramework is declared in EVERY csproj, not here, and that
+         duplication is deliberate.
+
+         Buildalyzer — which Stryker.NET uses to work out what to mutate — reads
+         the project file textually to find the target framework. It does not
+         evaluate MSBuild first, so a TargetFramework inherited from this file is
+         invisible to it, and so is `$(SomeProperty)` indirection. Both were
+         measured: with the value only here, Stryker reports "No project found"
+         and exits in about a second having analysed nothing.
+
+         PokemonBattleJournal and TcgDex.CSharpSdk both have a
+         Directory.Build.props and neither puts TargetFramework in it, which is
+         why Stryker works in those repositories and did not work here.
+
+         If you move it back, mutation testing stops working silently. -->
 
     <!-- Strict null analysis: reference types are non-nullable by default and a
          possible null is a compile error. Nullability is opt-in via `string?`. -->

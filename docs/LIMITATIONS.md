@@ -140,17 +140,37 @@ performance argument does not motivate it either.
 
 ## Tooling that is configured but does not run
 
-**Stryker.NET 4.16 cannot analyse this solution.** Three ways tried on
-2026-08-09, all failing at project analysis before any mutant is generated:
+**Stryker.NET could not analyse this solution, and the cause was ours.**
+Fixed 2026-08-09 after being wrong about it twice.
 
-| Attempt | Result |
-|---|---|
-| `dotnet stryker` with `solution: WindowsDriverCore.slnx` | `No project found` — 4.16 does not read the `.slnx` solution format |
-| `--project` / `--test-project` from the repository root | Same; it rediscovers the `.slnx` from the working directory regardless of configuration |
-| Run from the test project directory, no solution present | `Analyzing 1 test project(s)` then `No project found` — Buildalyzer fails on this project, most likely the .NET 10 SDK or the `net10.0-windows` target |
+The first diagnosis blamed the `.slnx` solution format. That was a guess, and the
+evidence already contradicted it: a run from the test project directory, with no
+solution involved at all, failed the same way.
 
-The debug log adds nothing beyond the warning. `stryker-config.json` is kept
-pointing at the solution so it works the day the tool does.
+Bisected against a minimal project instead. Stryker mutates a clean
+`net10.0-windows` project fine, with central package management, with no
+solution file. It breaks the moment `TargetFramework` is declared **only** in
+`Directory.Build.props`.
+
+**Buildalyzer, which Stryker uses to discover projects, reads the project file
+textually.** It does not evaluate MSBuild first, so a `TargetFramework` inherited
+from `Directory.Build.props` is invisible to it — and so is
+`$(SomeProperty)` indirection, which was tried and also fails. The symptom is
+`No project found` after about a second, with `Analyzing 0 projects` in the debug
+log and nothing about why.
+
+The control was in the next directory the whole time: `PokemonBattleJournal` and
+`TcgDex.CSharpSdk` both have a `Directory.Build.props`, neither declares
+`TargetFramework` in it, and Stryker works in both.
+
+Every project now declares its own `TargetFramework`. That duplicates one
+constant across nine files, which is a real cost, and the alternative is that
+mutation testing silently does nothing. `Directory.Build.props` carries a comment
+saying so, because putting it back looks like a tidy-up.
+
+**Mutation runs exclude `Tests.Integration` deliberately.** It launches
+Calculator and Settings, so including it would drive the real desktop once per
+mutant — hundreds of launches and clicks on a machine somebody is using.
 
 **This matters less than it looks, because mutation testing here has been
 manual and has been the most productive practice in the project.** Deliberate

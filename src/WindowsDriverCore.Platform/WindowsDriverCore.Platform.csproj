@@ -2,6 +2,8 @@
   <!-- Win32 P/Invoke, window discovery, input synthesis, process lifetime.
        Bottom of the stack: references nothing of ours. -->
   <PropertyGroup>
+    <!-- Literal, not inherited: Buildalyzer reads this textually. See Directory.Build.props. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <!-- Scoped to this project, not the solution. LibraryImport generates the
          marshalling stubs and they are unsafe by construction; this is also the
          only project that should ever need it, since it is the only one that
