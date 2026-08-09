@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
@@ -81,27 +80,7 @@ public sealed class HeldElementLivenessTests
     }
 
     [OneTimeTearDown]
-    public void CloseCalculator() => KillCalculator();
-
-    private static void KillCalculator()
-    {
-        foreach (Process process in Process.GetProcessesByName("CalculatorApp"))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
-            }
-            catch (InvalidOperationException)
-            {
-                // Already gone.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-    }
+    public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
 
     private string Find(string automationId)
     {
@@ -201,7 +180,9 @@ public sealed class HeldElementLivenessTests
         // It answers now.
         held.Element.CurrentName.ShouldBe("Five");
 
-        KillCalculator();
+        // Only this instance. Killing by name would destroy the fixture's shared
+        // Calculator and couple this test to the order it runs in.
+        AppLifetime.KillProcess(launched.Application.ProcessId);
 
         COMException? failure = Should.Throw<COMException>(
             () => _ = held.Element.CurrentName,
