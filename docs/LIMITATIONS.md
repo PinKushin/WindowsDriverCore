@@ -20,8 +20,10 @@ Three kinds of entry, kept apart because they need different responses:
 | **XPath locator** | Every expression reported as `XPath Lookup Error` (status 19) | UIA has no XPath. WinAppDriver evaluates its own over the tree. Reporting valid expressions as invalid is wrong, but wrong *loudly* — silently matching nothing would look like a correct search. |
 | **`DELETE /session` app shutdown** | Session is removed; the application keeps running | Leaks a process per session. Needs a process-termination path. |
 | **Implicit wait** | `POST /timeouts` accepts and validates, then ignores | Find does not retry. This is the defect that cost the old implementation 167 tests, so it must not ship unfixed. |
-| **Element interaction** | Not started | click, text, attribute, enabled, displayed, selected, clear, value. |
-| **Element geometry** | Not started | `/location`, `/size`, `/location_in_view`. |
+| **Element interaction** | Reads done; writes not started | `/text`, `/name`, `/attribute`, `/enabled`, `/displayed`, `/selected` and geometry all serve. `click`, `clear` and `value` do not. |
+| **Element-valued attributes** | Render as `null` | `LabeledBy`, `ControllerFor`, `Selection.Selection` and the other properties whose UIA value is an element or element array. What WinAppDriver sends for these was never measured, and inventing a spelling would be a divergence written as if it were a contract. |
+| **`/text` on a Selection** | Implemented, unmeasured | The rung that answers a list's selected item comes from WinAppDriver's own `ElementText.GetElementText` (`MinuteLoopingSelector.Text == "00"`), not from a measurement here. No Windows 11 app tried so far still exposes a looping selector in a reachable state. |
+| **Issued-element ids grow unbounded** | Per session, until `DELETE /session` | `ElementRegistry` keeps one short string per element ever returned, which is what makes stale (status 10) distinguishable from unknown (status 7). A session that finds elements in a loop for hours accumulates them. Bounding it needs a policy, and a policy needs a measurement of what real suites do. |
 | **Window routes** | Not started | `window/size`, `window/{handle}/size`, `/position`, `/maximize`, `window_handle(s)`, switch, close. |
 | **Mouse, touch, Actions** | Not started | `buttondown`/`buttonup`/`click`/`doubleclick`/`moveto`, eight `touch/*`. ~20 of the 70-test backlog is Actions **error validation** only, which needs no Actions implementation. |
 | **Screenshots** | Not started | `/screenshot` for session and element. |
@@ -64,6 +66,14 @@ question is closed on those grounds — see `PROJECT-KNOWLEDGE.md`.
 *several* properties per element rather than one — name, class and control type
 together would otherwise be three calls each. It is simply not the win it was
 predicted to be for runtime ids alone.
+
+**Resolution costs a full tree walk per element command.** Every property route
+resolves the id by enumerating descendants and comparing, for the same reason
+find-by-id does: UIA rejects RuntimeId in a property condition. That is one walk
+per HTTP request — the same price a client pays for each of seven property calls
+anyway — but it means a property read costs about what a find costs, and FlaUI,
+which holds the element, will not. Measure before fixing; the last two
+performance theories on this project were both wrong.
 
 **The remaining performance work, in order:**
 
