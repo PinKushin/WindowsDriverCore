@@ -111,8 +111,20 @@ and it is what `bench/WindowsDriverCore.Benchmarks` exists to track.
 
 - **Round trips dominate**, not codegen. This is cross-process COM. If a find
   shows up in a benchmark the answer is `IUIAutomationCacheRequest` — fetch more
-  per trip — never a snapshot held *between* calls, which trades correctness for
-  speed and is the design being replaced.
+  per trip — or holding the element the caller already named.
+
+  **Corrected 2026-08-08, and this rule previously said the opposite.** It read
+  "never a snapshot held *between* calls, which trades correctness for speed".
+  `HeldElementLivenessTests` measured the premise: an `IUIAutomationElement`
+  obtained without a cache request is a **live proxy, not a snapshot**. Every
+  `Current*` read crosses to the provider, its runtime id survives changes to the
+  tree, and once the element is destroyed it throws `UIA_E_ELEMENTNOTAVAILABLE`
+  rather than answering with the last value it saw.
+
+  So the ban never applied to element handles. What it correctly forbids is
+  holding a *cached property snapshot* (`FindAllBuildCache` results reused across
+  calls) or a stale *result set*. Holding a live handle to an element the client
+  has already been given an id for is neither.
 - **Raw COM interfaces, no managed wrappers.** `IUIAutomation` directly; no
   `System.Windows.Automation`, no `FlaUI.Core`. Each wrapper is a layer whose
   cost and behaviour you inherit and then have to explain.
@@ -125,7 +137,9 @@ and it is what `bench/WindowsDriverCore.Benchmarks` exists to track.
 - **No hidden behaviour** — no implicit retries, no caching the caller did not
   ask for, no exception translation that loses the original. This one is not a
   speed argument, but it is what keeps the speed honest: a driver that quietly
-  caches looks fast and is wrong.
+  caches *values* looks fast and is wrong. Keeping a live handle against the
+  element id the caller supplied is not that — the id **is** the caller asking
+  for that element, and every property still comes from the provider.
 
 ## Rules that are not negotiable
 

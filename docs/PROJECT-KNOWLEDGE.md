@@ -14,8 +14,14 @@ in the reasoning.
 
 ## 0. The one lesson, if you read nothing else
 
-**Four load-bearing claims in this repository turned out to be wrong. Every one
+**Five load-bearing claims in this repository turned out to be wrong. Every one
 was inherited from an earlier session and repeated without being checked.**
+
+**None of them were the user's.** The project `CLAUDE.md` was written by earlier
+AI sessions, so its technical assertions carry no more authority than any other
+file here — the user confirmed this explicitly on 2026-08-08 about the caching
+rule below. Its *process* rules (test-first, no `var`, zero warnings, branching)
+are a different matter and stand.
 
 | Claim | Reality | Cost |
 |---|---|---|
@@ -23,8 +29,9 @@ was inherited from an earlier session and repeated without being checked.**
 | "#1079: FindElements randomly returns empty" | Deterministic `FindElement`/`FindElements` disagreement over the same XPath | An experiment was built against a condition unrelated to the bug |
 | "Both come from the managed wrapper's cached view" | Appears in neither issue. Inference presented as fact — and the entire justification for the architecture | Two weeks of confident repetition |
 | "The Alarms fixture fails because X" | Four successive wrong answers before measurement found a renamed control | A day |
+| "Never hold an element between calls — it is a snapshot that drifts" | A held `IUIAutomationElement` is a **live proxy**. Properties come from the provider on every read, its runtime id survives tree changes, and a destroyed element throws `UIA_E_ELEMENTNOTAVAILABLE` instead of answering. Measured in `HeldElementLivenessTests` | A full tree walk on **every** element command, and the belief that FlaUI had a structural speed advantage here |
 
-A fifth was caught going the other way: overstating WinAppDriver's fault for
+A sixth was caught going the other way: overstating WinAppDriver's fault for
 something that was really a consequence of building custom MAUI controls out of
 primitives. **Overstating in the project's favour is the failure mode to watch
 for most**, because nothing in the repo pushes back on it.
@@ -35,7 +42,13 @@ one came from reading a summary and reasoning forward.
 
 **A claim written in this repository is not evidence.** The recordings, the
 measured numbers and `LIMITATIONS.md` were produced by running something.
-Treat everything else as a hypothesis until it has been.
+Treat everything else as a hypothesis until it has been — `CLAUDE.md` included.
+
+The fifth entry shows the shape this takes when it survives longest: a rule
+phrased as an engineering principle, in the file that reads most like authority,
+justified by two of the other wrong claims. It cost a tree walk per command and
+was refuted by one experiment that took minutes to write. **Doctrine is the
+easiest kind of claim to inherit, because it does not look like a claim.**
 
 ---
 
@@ -91,8 +104,9 @@ this code and the API it drives unless it is pulling its weight.
   translation that loses the original. Where the driver decides something for the caller, the
   decision is documented and, where it matters, selectable.
 - **Round trips are the cost that matters**, not codegen — this is cross-process COM. If a find
-  shows up in a benchmark the answer is `IUIAutomationCacheRequest` to fetch more per trip, never a
-  snapshot held between calls, which is the design being replaced.
+  shows up in a benchmark the answers are `IUIAutomationCacheRequest`, to fetch more per trip, and
+  holding the element the caller already has an id for. **Not** a retained *result set* or a cached
+  *property snapshot* — those do go stale. A live element reference does not; see §0.
 - **`unsafe` where it genuinely pays**, which so far means `Platform`, because that is what the
   P/Invoke source generator emits.
 

@@ -40,11 +40,17 @@ public sealed record FindResult(IReadOnlyList<string> ElementIds, FindFailure Fa
 /// Finds elements in a window's UI Automation tree.
 /// </summary>
 /// <remarks>
-/// The reason this project exists. WinAppDriver searches a cached view of the
-/// tree, which produces two long-standing defects: elements present on screen
-/// but absent from the search (#857), and <c>FindElements</c> intermittently
-/// returning nothing (#1079). Implementations of this interface query the live
-/// tree so that class of failure has nowhere to occur.
+/// A find is a query, so it runs against the tree as it is now rather than
+/// against a retained result set. That is not a claim about WinAppDriver's
+/// defects — an earlier version of this comment attributed #857 and #1079 to a
+/// cached view, and <c>docs/FOUNDING-PREMISE.md</c> retracts both descriptions.
+/// It is simply what a search means: a result set kept between calls would
+/// answer about a UI that has moved on.
+///
+/// Note what this does <b>not</b> forbid. Holding a live
+/// <c>IUIAutomationElement</c> for an element the caller already has an id for
+/// is a different thing, measured in <c>HeldElementLivenessTests</c>: such a
+/// reference is a proxy, not a snapshot.
 /// </remarks>
 public interface IElementFinder
 {

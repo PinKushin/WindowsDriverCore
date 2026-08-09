@@ -11,17 +11,22 @@ namespace WindowsDriverCore.Automation.Uia;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>No caching, deliberately.</b> Every call builds a fresh condition and asks
-/// UIA to walk the tree now. That is the whole design: WinAppDriver's #857 and
-/// #1079 are both symptoms of searching a cached view that has drifted from what
-/// is on screen, and a search that never caches cannot drift.
+/// <b>No retained result set.</b> Every call builds a fresh condition and asks
+/// UIA to walk the tree now, because a set of matches kept between calls would
+/// answer about a UI that has moved on.
 /// </para>
 /// <para>
-/// It costs a cross-process round trip per find, which is the trade being made
-/// knowingly. If it ever shows up in a benchmark, the answer is
-/// <c>IUIAutomationCacheRequest</c> to fetch more per round trip — not to hold a
-/// snapshot between calls, which would reintroduce exactly the defect this
-/// replaces.
+/// An earlier version of this comment justified that by attributing WinAppDriver
+/// #857 and #1079 to a cached view. <c>docs/FOUNDING-PREMISE.md</c> retracts both
+/// descriptions, and the justification does not need them: it follows from what a
+/// query is.
+/// </para>
+/// <para>
+/// It costs a cross-process tree walk per find. If that shows up in a benchmark
+/// the answers are <c>IUIAutomationCacheRequest</c>, to fetch more per round
+/// trip, and holding the element itself for later commands — measured in
+/// <c>HeldElementLivenessTests</c> to be a live proxy rather than a snapshot, and
+/// therefore not the thing this paragraph rules out.
 /// </para>
 /// </remarks>
 public sealed class UiaElementFinder : IElementFinder
