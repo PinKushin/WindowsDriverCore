@@ -404,6 +404,20 @@ stream → `ObjectDisposedException: Cannot access a closed Stream`.
 
 ### Click semantics — the single most valuable behavioural difference
 
+**Read `docs/CLICK-SEMANTICS.md` first.** It is the design requirement, written
+from the primary source, and it contains two things this summary originally
+missed: the ladder must walk **ancestors**, and the application under test had to
+add transparent `Button` overlays and fall back to FlaUI to work around the
+driver.
+
+The mis-attribution worth knowing: an earlier memory entry recorded
+"#1079 reproduced constantly" during a CollectionView rebind. That is wrong twice
+over. The observed problem was **clicks not reaching handlers**, not finds
+returning empty, and the cause was an `AutomationId` on a pattern-less `Border`
+inside the item container whose parent held `SelectionItemPattern`. Nothing to do
+with #1079.
+
+
 WinAppDriver's Element Click is **synthesized mouse input at the bounding-box centre in SCREEN
 coordinates**. It does not scroll first and does not check the point lies inside the target window.
 
