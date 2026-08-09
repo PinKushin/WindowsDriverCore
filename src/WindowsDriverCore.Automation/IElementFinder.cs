@@ -16,6 +16,38 @@ public enum FindFailure
     XPathLookupError,
 }
 
+/// <summary>Where a search runs.</summary>
+/// <param name="Window">The session's window.</param>
+/// <param name="ContainerElementId">
+/// An element to search inside, or <see langword="null"/> to search the whole
+/// window.
+/// </param>
+/// <remarks>
+/// <para>
+/// Scoping a search to a container is the protocol's answer to duplicate and
+/// unnamed elements: rows that are indistinguishable across a window are usually
+/// unique within their own list. Measured against WinAppDriver — searching for
+/// <c>CalculatorResults</c> inside the keypad answers <c>no such element</c>
+/// while the same locator at window scope finds it.
+/// </para>
+/// <para>
+/// A record struct with an implicit conversion from <c>nint</c>, so the common
+/// case still reads <c>FindAll(window, kind, value)</c> and only nested finds
+/// mention scope at all.
+/// </para>
+/// </remarks>
+public readonly record struct SearchScope(nint Window, string? ContainerElementId = null)
+{
+    /// <summary>A search over a whole window.</summary>
+    /// <param name="window">The window.</param>
+    public static implicit operator SearchScope(nint window) => new(window);
+
+    /// <summary>A search over a whole window.</summary>
+    /// <param name="window">The window.</param>
+    /// <returns>The scope.</returns>
+    public static SearchScope FromWindow(nint window) => new(window);
+}
+
 /// <summary>The outcome of a find.</summary>
 /// <param name="ElementIds">
 /// Matching element ids, in tree order. Empty when nothing matched, which is
@@ -55,14 +87,14 @@ public sealed record FindResult(IReadOnlyList<string> ElementIds, FindFailure Fa
 public interface IElementFinder
 {
     /// <summary>Finds every element matching a locator.</summary>
-    /// <param name="searchRoot">The window to search within.</param>
+    /// <param name="scope">The window, and optionally an element to search inside.</param>
     /// <param name="kind">What to match on.</param>
     /// <param name="value">The value to match.</param>
     /// <returns>The matching element ids, or why the search could not run.</returns>
-    FindResult FindAll(nint searchRoot, LocatorKind kind, string value);
+    FindResult FindAll(SearchScope scope, LocatorKind kind, string value);
 
     /// <summary>Finds the first element matching a locator.</summary>
-    /// <param name="searchRoot">The window to search within.</param>
+    /// <param name="scope">The window, and optionally an element to search inside.</param>
     /// <param name="kind">What to match on.</param>
     /// <param name="value">The value to match.</param>
     /// <returns>At most one element id, or why the search could not run.</returns>
@@ -80,5 +112,5 @@ public interface IElementFinder
     /// a real application.
     /// </para>
     /// </remarks>
-    FindResult FindFirst(nint searchRoot, LocatorKind kind, string value);
+    FindResult FindFirst(SearchScope scope, LocatorKind kind, string value);
 }

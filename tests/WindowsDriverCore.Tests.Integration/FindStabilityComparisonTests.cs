@@ -117,7 +117,8 @@ public sealed class FindStabilityComparisonTests
 
         WindowLocator windows = new();
         ApplicationLauncher launcher = new(new MainWindowWaiter(TimeProvider.System), windows);
-        UiaElementFinder finder = new(new CUIAutomationClass());
+        CUIAutomationClass automation = new();
+        UiaElementFinder finder = new(automation, new UiaElementResolver(automation));
 
         LaunchResult launched = launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
         if (launched.Application is null)

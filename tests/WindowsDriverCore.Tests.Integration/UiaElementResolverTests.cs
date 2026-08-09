@@ -38,7 +38,7 @@ public sealed class UiaElementResolverTests
         WindowLocator windows = new();
         ApplicationLauncher launcher = new(new MainWindowWaiter(TimeProvider.System), windows);
         CUIAutomationClass automation = new();
-        _finder = new UiaElementFinder(automation);
+        _finder = new UiaElementFinder(automation, new UiaElementResolver(automation));
         _resolver = new UiaElementResolver(automation);
 
         LaunchResult launched = launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));

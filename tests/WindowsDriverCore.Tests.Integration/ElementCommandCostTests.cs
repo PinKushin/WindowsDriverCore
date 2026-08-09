@@ -47,7 +47,7 @@ public sealed class ElementCommandCostTests : IDisposable
     public void LaunchCalculator()
     {
         _automation = new CUIAutomationClass();
-        _finder = new UiaElementFinder(_automation);
+        _finder = new UiaElementFinder(_automation, new UiaElementResolver(_automation));
         _walking = new UiaElementResolver(_automation);
         _caching = new CachingElementResolver(_walking);
 

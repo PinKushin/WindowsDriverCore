@@ -44,7 +44,7 @@ public sealed class UiaElementInteractorTests
     public void LaunchCalculator()
     {
         _automation = new CUIAutomationClass();
-        _finder = new UiaElementFinder(_automation);
+        _finder = new UiaElementFinder(_automation, new UiaElementResolver(_automation));
 
         UiaElementResolver resolver = new(_automation);
         _inspector = new UiaElementInspector(_automation, resolver);
