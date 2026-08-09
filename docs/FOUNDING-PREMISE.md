@@ -1,5 +1,15 @@
 # What This Project Actually Fixes
 
+> **Read the goal first.** This project is *the WinAppDriver API implemented on
+> raw `IUIAutomation` COM, built to FlaUI's standard of capability*. FlaUI reaches
+> UIA properly but is a .NET library no Appium suite can drive; WinAppDriver has
+> the API every suite already speaks and an implementation that is weak and
+> abandoned. Closing that gap is the point.
+>
+> The two issue numbers below were treated as the justification for two weeks.
+> They were not the justification and they were both misdescribed. This document
+> exists to stop them being repeated, not to replace the goal.
+
 **Written 2026-08-08 after reading the two issues the project was founded on.
 Nobody had read them. Everything below supersedes the summaries in `CLAUDE.md`
 and earlier memory entries, which are wrong in three specific ways.**

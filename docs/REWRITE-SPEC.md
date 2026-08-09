@@ -1,6 +1,7 @@
 # WindowsDriverCore — Rewrite Specification
 
-**Status:** approved direction, not yet implemented
+**Status:** in progress on `feat/rewrite-jwp-core`. Milestones 1–6 partially done —
+see `CLAUDE.md` for what works and `LIMITATIONS.md` for what does not.
 **Date:** 2026-08-08
 **Supersedes:** the current `WindowsDriverCore/` implementation (kept as reference until parity)
 
