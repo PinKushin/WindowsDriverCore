@@ -32,23 +32,28 @@ namespace WindowsDriverCore.Automation.Uia;
 public sealed class UiaElementFinder : IElementFinder
 {
     private readonly IUIAutomation _automation;
+    private readonly IElementResolver _resolver;
 
     /// <summary>Creates the finder.</summary>
     /// <param name="automation">The UI Automation root object.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="automation"/> is null.</exception>
-    public UiaElementFinder(IUIAutomation automation)
+    /// <param name="resolver">Resolves a container element for a nested search.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public UiaElementFinder(IUIAutomation automation, IElementResolver resolver)
     {
         ArgumentNullException.ThrowIfNull(automation);
+        ArgumentNullException.ThrowIfNull(resolver);
+
         _automation = automation;
+        _resolver = resolver;
     }
 
     /// <inheritdoc />
-    public FindResult FindAll(nint searchRoot, LocatorKind kind, string value) =>
-        Find(searchRoot, kind, value, exhaustive: true);
+    public FindResult FindAll(SearchScope scope, LocatorKind kind, string value) =>
+        Find(scope, kind, value, exhaustive: true);
 
     /// <inheritdoc />
-    public FindResult FindFirst(nint searchRoot, LocatorKind kind, string value) =>
-        Find(searchRoot, kind, value, exhaustive: false);
+    public FindResult FindFirst(SearchScope scope, LocatorKind kind, string value) =>
+        Find(scope, kind, value, exhaustive: false);
 
     /// <summary>
     /// One search, stopping at the first match or enumerating everything.
@@ -59,7 +64,7 @@ public sealed class UiaElementFinder : IElementFinder
     /// filter — is identical, and duplicating it is how the singular and plural
     /// paths of WinAppDriver's own XPath drifted apart into issue #1079.
     /// </remarks>
-    private FindResult Find(nint searchRoot, LocatorKind kind, string value, bool exhaustive)
+    private FindResult Find(SearchScope scope, LocatorKind kind, string value, bool exhaustive)
     {
         ArgumentNullException.ThrowIfNull(value);
 
@@ -73,10 +78,29 @@ public sealed class UiaElementFinder : IElementFinder
             return FindResult.Failed(FindFailure.XPathLookupError);
         }
 
+        // A nested search roots at the container element; everything else about
+        // the search is identical, which is the point — the singular and plural
+        // XPath paths of WinAppDriver drifted apart precisely because they were
+        // written twice.
+        using ElementLookupResult container = scope.ContainerElementId is null
+            ? ElementLookupResult.Failed(ElementLookupOutcome.NotFound)
+            : _resolver.Resolve(scope.Window, scope.ContainerElementId);
+
+        if (scope.ContainerElementId is not null &&
+            container.Outcome != ElementLookupOutcome.Resolved)
+        {
+            // A container that cannot be resolved is reported as no match rather
+            // than as a window failure, matching WinAppDriver: a nested find
+            // against an unknown element id answers "no such element".
+            return container.Outcome == ElementLookupOutcome.NoSuchWindow
+                ? FindResult.Failed(FindFailure.NoSuchWindow)
+                : FindResult.Matched([]);
+        }
+
         IUIAutomationElement? root;
         try
         {
-            root = _automation.ElementFromHandle(searchRoot);
+            root = container.Element ?? _automation.ElementFromHandle(scope.Window);
         }
         catch (COMException)
         {

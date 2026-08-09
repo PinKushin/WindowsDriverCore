@@ -144,7 +144,7 @@ public sealed class FindCostBreakdownTests
         // The language question, measured. Everything our code does around the
         // COM calls — allocating the result list, formatting ids, building the
         // condition — against the COM calls themselves.
-        UiaElementFinder finder = new(_automation);
+        UiaElementFinder finder = new(_automation, new UiaElementResolver(_automation));
 
         // Warm up so JIT and first-call COM setup do not land in the sample.
         finder.FindAll(_window, LocatorKind.ControlType, "Button");

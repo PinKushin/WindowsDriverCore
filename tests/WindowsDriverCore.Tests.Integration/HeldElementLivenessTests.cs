@@ -62,7 +62,7 @@ public sealed class HeldElementLivenessTests
     public void LaunchCalculator()
     {
         _automation = new CUIAutomationClass();
-        _finder = new UiaElementFinder(_automation);
+        _finder = new UiaElementFinder(_automation, new UiaElementResolver(_automation));
         _resolver = new UiaElementResolver(_automation);
         _inspector = new UiaElementInspector(_automation, _resolver);
 

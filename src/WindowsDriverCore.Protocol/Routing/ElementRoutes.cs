@@ -108,6 +108,78 @@ public static class ElementRoutes
             })
             .RequiresSession();
 
+        // Nested find: the same search, rooted at an element instead of the
+        // window.
+        //
+        // This is the protocol's answer to duplicate and unnamed elements. Rows
+        // that are indistinguishable across a window are usually unique inside
+        // their own container, and measured against WinAppDriver the scoping is
+        // real: CalculatorResults searched inside the keypad answers "no such
+        // element" while the same locator at window scope finds it.
+        app.MapPost("/session/{sessionId}/element/{elementId}/element",
+            async (HttpContext context, IElementFinder finder, IElementRegistry registry,
+                   string elementId) =>
+            {
+                (LocatorParseResult locator, IResult? rejection) = await ReadLocator(context)
+                    .ConfigureAwait(false);
+                if (rejection is not null)
+                {
+                    return rejection;
+                }
+
+                DriverSession session = context.GetSession();
+                FindResult found = finder.FindFirst(
+                    new SearchScope(session.WindowHandle, elementId), locator.Kind, locator.Value);
+
+                if (found.Failure != FindFailure.None)
+                {
+                    return FailureResponse(found.Failure, locator.Value);
+                }
+
+                if (found.ElementIds.Count == 0)
+                {
+                    return Fault(WebDriverFault.NoSuchElement, NoSuchElementMessage);
+                }
+
+                registry.Record(session.Id, found.ElementIds[0]);
+
+                return Results.Json(JsonWireResponse.ForSession(
+                    session.Id,
+                    new ElementReference(found.ElementIds[0])));
+            })
+            .RequiresSession();
+
+        app.MapPost("/session/{sessionId}/element/{elementId}/elements",
+            async (HttpContext context, IElementFinder finder, IElementRegistry registry,
+                   string elementId) =>
+            {
+                (LocatorParseResult locator, IResult? rejection) = await ReadLocator(context)
+                    .ConfigureAwait(false);
+                if (rejection is not null)
+                {
+                    return rejection;
+                }
+
+                DriverSession session = context.GetSession();
+                FindResult found = finder.FindAll(
+                    new SearchScope(session.WindowHandle, elementId), locator.Kind, locator.Value);
+
+                if (found.Failure != FindFailure.None)
+                {
+                    return FailureResponse(found.Failure, locator.Value);
+                }
+
+                foreach (string id in found.ElementIds)
+                {
+                    registry.Record(session.Id, id);
+                }
+
+                return Results.Json(JsonWireResponse.ForSession(
+                    session.Id,
+                    found.ElementIds.Select(id => new ElementReference(id)).ToList()));
+            })
+            .RequiresSession();
+
         return app;
     }
 

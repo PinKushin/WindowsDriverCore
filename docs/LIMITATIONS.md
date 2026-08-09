@@ -17,6 +17,7 @@ Three kinds of entry, kept apart because they need different responses:
 
 | Area | State | Notes |
 |---|---|---|
+| **Duplicate and unnamed elements** | Two of three answers implemented | `POST /elements` + client index, and **nested find** (`/element/{id}/element`), both serve. XPath positional predicates — `(//Button)[3]` — do not. Synthetic identifiers are deliberately **not** generated: any invented id is only as stable as what it derives from, and every source is either already expressible (tree position *is* positional XPath), already unstable (content), or already non-durable (RuntimeId does not survive a restart). Scope the search instead of inventing a name. |
 | **XPath locator** | Every expression reported as `XPath Lookup Error` (status 19) | UIA has no XPath. WinAppDriver evaluates its own over the tree. Reporting valid expressions as invalid is wrong, but wrong *loudly* — silently matching nothing would look like a correct search. |
 | **`DELETE /session` app shutdown** | Session is removed; the application keeps running | Leaks a process per session. Needs a process-termination path. |
 | **Implicit wait** | `POST /timeouts` accepts and validates, then ignores | Find does not retry. This is the defect that cost the old implementation 167 tests, so it must not ship unfixed. |

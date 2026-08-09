@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-08-08T21:27:08.0799081-04:00",
+  "recordedAt": "2026-08-09T17:32:50.1231148-04:00",
   "winAppDriverVersion": "1.2.2009.02003",
   "os": "10.0.26200.0",
   "note": "Raw responses from real WinAppDriver. This is the contract; do not edit by hand.",
@@ -1075,6 +1075,78 @@
       "requestBody": null,
       "httpStatus": 200,
       "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"False\"}"
+    },
+    {
+      "name": "nested.element.byAccessibilityId",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/element",
+      "requestBody": "{\"value\":\"num5Button\",\"using\":\"accessibility id\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"ELEMENT\":\"42.9308662.4.60\"}}"
+    },
+    {
+      "name": "nested.element.byTagName",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/element",
+      "requestBody": "{\"value\":\"Button\",\"using\":\"tag name\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"ELEMENT\":\"42.9308662.4.50\"}}"
+    },
+    {
+      "name": "nested.element.byClassName",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/element",
+      "requestBody": "{\"value\":\"Button\",\"using\":\"class name\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"ELEMENT\":\"42.9308662.4.50\"}}"
+    },
+    {
+      "name": "nested.element.noSuchElement",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/element",
+      "requestBody": "{\"value\":\"NotInThisContainer\",\"using\":\"accessibility id\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "nested.elements.byTagName",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/elements",
+      "requestBody": "{\"value\":\"Button\",\"using\":\"tag name\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":[{\"ELEMENT\":\"42.9308662.4.50\"},{\"ELEMENT\":\"42.9308662.4.52\"},{\"ELEMENT\":\"42.9308662.4.54\"},{\"ELEMENT\":\"42.9308662.4.56\"},{\"ELEMENT\":\"42.9308662.4.58\"},{\"ELEMENT\":\"42.9308662.4.60\"},{\"ELEMENT\":\"42.9308662.4.62\"},{\"ELEMENT\":\"42.9308662.4.63\"},{\"ELEMENT\":\"42.9308662.4.64\"},{\"ELEMENT\":\"42.9308662.4.65\"},{\"ELEMENT\":\"42.9308662.4.66\"}]}"
+    },
+    {
+      "name": "nested.elements.noMatch",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/elements",
+      "requestBody": "{\"value\":\"NotInThisContainer\",\"using\":\"accessibility id\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":[]}"
+    },
+    {
+      "name": "nested.element.outsideContainer",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/element",
+      "requestBody": "{\"value\":\"CalculatorResults\",\"using\":\"accessibility id\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "topLevel.element.calculatorResults",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"value\":\"CalculatorResults\",\"using\":\"accessibility id\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"ELEMENT\":\"42.9308662.4.9\"}}"
+    },
+    {
+      "name": "nested.element.unknownContainer",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/99999.99999.99999/element",
+      "requestBody": "{\"value\":\"num5Button\",\"using\":\"accessibility id\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
     }
   ]
 }
