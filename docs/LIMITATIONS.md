@@ -20,7 +20,8 @@ Three kinds of entry, kept apart because they need different responses:
 | **XPath locator** | Every expression reported as `XPath Lookup Error` (status 19) | UIA has no XPath. WinAppDriver evaluates its own over the tree. Reporting valid expressions as invalid is wrong, but wrong *loudly* — silently matching nothing would look like a correct search. |
 | **`DELETE /session` app shutdown** | Session is removed; the application keeps running | Leaks a process per session. Needs a process-termination path. |
 | **Implicit wait** | `POST /timeouts` accepts and validates, then ignores | Find does not retry. This is the defect that cost the old implementation 167 tests, so it must not ship unfixed. |
-| **Element interaction** | Reads done; writes not started | `/text`, `/name`, `/attribute`, `/enabled`, `/displayed`, `/selected` and geometry all serve. `click`, `clear` and `value` do not. |
+| **Element interaction** | Reads done; writes on the pattern path only | `click`, `clear` and `value` serve through UIA patterns. **No mouse path yet**, so a genuinely pattern-less target answers `element not interactable` rather than falling back to a coordinate click. Deliberate ordering — with a coordinate fallback available it becomes the path of least resistance. |
+| **Keyboard input** | Not implemented | `POST /value` sets ValuePattern's value rather than sending keystrokes, so **no key events reach the application**: anything driven by `KeyDown` rather than by the value changing will not fire, and an element that refuses ValuePattern reports `element not interactable` rather than falling back. `/keys` (session-level send-keys) does not exist. |
 | **Element-valued attributes** | Render as `null` | `LabeledBy`, `ControllerFor`, `Selection.Selection` and the other properties whose UIA value is an element or element array. What WinAppDriver sends for these was never measured, and inventing a spelling would be a divergence written as if it were a contract. |
 | **`/text` on a Selection** | Implemented, unmeasured | The rung that answers a list's selected item comes from WinAppDriver's own `ElementText.GetElementText` (`MinuteLoopingSelector.Text == "00"`), not from a measurement here. No Windows 11 app tried so far still exposes a looping selector in a reachable state. |
 | **Issued-element ids grow unbounded** | Per session, until `DELETE /session` | `ElementRegistry` keeps one short string per element ever returned, which is what makes stale (status 10) distinguishable from unknown (status 7). A session that finds elements in a loop for hours accumulates them. Bounding it needs a policy, and a policy needs a measurement of what real suites do. |
@@ -212,8 +213,41 @@ first run after a build, never on a warm re-run. It is now a 30-second deadline,
 and the failure message reports elapsed time and observation count so a
 recurrence is diagnosable rather than anonymous.
 
-**Not claimed as fixed.** The cause is plausible and unconfirmed. Run the suite
-with `--logger trx` so the next occurrence names itself.
+**IDENTIFIED, and it was a product bug rather than a flake.**
+`BoundingRectangle_IsTheLabelledFormat_AndAgreesWithScreenBounds` compared the
+same rectangle through two routes and they disagreed by a pixel:
+`Left:257 Top:615 Width:96 Height:34` from `/attribute` against
+`Left:257 Top:616 Width:97 Height:35` from `/size`.
+
+`/attribute/BoundingRectangle` read the raw property — a `double[4]` of
+unrounded values — and truncated, while `ScreenBounds` used UIA's own integer
+rectangle. The two agree only when the underlying values happen to be integral,
+which depends on where the window sits, so it appeared and disappeared. The
+whole-solution run made it more likely because the other assemblies' load shifts
+timing and layout.
+
+Fixed by rendering that one attribute from the same source `/location` and
+`/size` use. Rounding the raw doubles instead would not have worked:
+`round(right) - round(left)` and `round(width)` are not the same number, so
+agreement needs one source rather than matching arithmetic.
+
+**Two earlier candidates, both wrong, both worth keeping.** A count-based rather
+than time-based wait in `UiSettle`, and:
+
+**A second candidate, from the repository owner: physical interference.** The
+tests that could have failed that way all assert on window geometry, and a person
+nudging or dragging the Calculator window mid-run produces exactly the observed
+symptom — bounds that never settle, or a before/after comparison that disagrees.
+Neither candidate is confirmed and neither excludes the other.
+
+**Not claimed as fixed.** Run the suite with `--logger trx` so the next
+occurrence names itself.
+
+**Interference is a permanent property of these tests, not a bug to close.** Any
+test driving a real desktop shares the machine with whoever is using it. The
+answer is not retries — a retry turns a real failure into a probabilistic pass —
+but diagnosability: a geometry test that fails should say what moved, so a
+human-caused failure is recognisable rather than filed as a driver defect.
 
 **Splash-screen handling is partial.** The window search prefers a titled window,
 which avoids the common case WinAppDriver is documented as failing. A splash
