@@ -108,10 +108,18 @@ real MAUI suite went from firing clicks into the taskbar and silently failing on
 CI, to 83/83 at CI's exact geometry, purely by replacing coordinate clicks with a
 UIA pattern ladder.
 
-The application also had to work around the driver by adding transparent `Button`
-overlays to its own markup, and by dropping to FlaUI where WinAppDriver could not
-reach. FlaUI wraps the same `IUIAutomation` API this driver uses, so the
-capability was always in UIA — WinAppDriver simply was not reaching for it.
+Be precise about what that defect is, because an earlier version of this
+paragraph overstated it. The application's transparent `Button` overlays are
+**not** evidence against the driver: a MAUI composite built from `Grid` and
+`Border` with a tap handler exposes no UIA pattern because MAUI gives it none,
+and no driver can invoke what does not exist. Overlaying a real button is
+reasonable design that assistive technology benefits from too.
+
+The driver's actual defects are narrower and both real: its mouse fallback is
+unguarded — screen coordinates, no scroll, no window-bounds check, success
+reported regardless — and it never looks at an element's ancestors, so an
+`AutomationId` on a pattern-less child of a selectable container is unreachable
+when its parent was selectable all along.
 
 That is a better claim than the two it replaces, because it is demonstrable.
 

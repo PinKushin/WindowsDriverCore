@@ -45,22 +45,50 @@ automation-lookup mismatch.
 **This is what "cannot click anything in the CollectionView" actually was.** Not
 a find problem, not a caching problem.
 
-## What that cost the application
+## What is the driver's fault, and what is not
 
-Two workarounds shipped in the app and its suite, and both are indictments of the
-driver rather than of the app:
+An earlier version of this document claimed the application's transparent
+`Button` overlays were an indictment of the driver. **That was wrong, and it is
+worth being precise about, because the two failures above have different causes
+and only one of them is the driver's.**
 
-1. **Transparent `Button` overlays.** Anything that needed clicking got an
-   invisible button laid over it, owning the `AutomationId` and the command,
-   purely so it would expose `InvokePattern`.
-2. **Dropping to FlaUI** for what WinAppDriver could not reach.
+**Not the driver's fault: a composite control has no pattern to find.** A MAUI
+`Grid` or `Border` with a `TapGestureRecognizer` exposes no UIA pattern because
+MAUI does not give it one. When an app builds a custom control out of primitives
+— PokemonBattleJournal's archetype dropdown shows *two* images beside the
+selection, which no stock `Picker` does — the result is a composition, not a
+ComboBox, and UIA has nothing to report about it. There is literally nothing for
+any driver to invoke.
 
-The second matters most. FlaUI is a managed wrapper over the same
-`IUIAutomation` COM API this driver uses. If FlaUI could do it, the capability
-was in UIA all along — WinAppDriver simply was not reaching for it.
+Overlaying a transparent `Button` that owns the `AutomationId` and the command is
+therefore not a workaround for a broken driver. It gives the composite a real UIA
+control type, which **assistive technology needs just as much as automation
+does** — a screen reader cannot announce "button" for something UIA calls a pane
+either. It is reasonable design.
 
-**An application should not need invisible buttons bolted onto it to be
-automatable.** That is the requirement this document exists to state.
+The consequence for this driver is the opposite of what the earlier framing
+suggested: because genuinely pattern-less targets exist and always will, a mouse
+path is **necessary**, not a failure. A pattern-only driver cannot click a large
+share of a real MAUI application.
+
+**The driver's fault, and the actual defect:** the mouse path is *unguarded*. It
+clicks at screen coordinates without scrolling first and without checking the
+point lands inside the target window, then reports success regardless. That is
+what fired clicks into the taskbar locally and did nothing at all on CI.
+
+**Also the driver's fault: the ancestor lookup.** The CollectionView rows were a
+different problem entirely — a pattern *did* exist, one level up, and the driver
+never looked. The investigation is explicit that this was fixed in the test
+helper and not in the app markup, precisely because the rows had no accessibility
+defect: `SelectionMode="Single"` meant a screen reader could always select them.
+Worth asking before changing any app markup — is the element genuinely
+unreachable, or merely mis-identified?
+
+**On FlaUI.** It was reached for where WinAppDriver could not do the job. FlaUI
+wraps the same `IUIAutomation` API this driver uses, and draws an explicit
+distinction between a pattern invoke and a real mouse click. That distinction is
+the idea worth taking; it is evidence about what a driver should expose, not
+evidence that WinAppDriver was hiding a capability.
 
 ---
 
