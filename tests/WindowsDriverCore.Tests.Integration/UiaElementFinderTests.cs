@@ -88,16 +88,51 @@ public sealed class UiaElementFinderTests
         result.ElementIds.ShouldBeEmpty();
     }
 
-    [Test]
-    public void FindAll_ByLocalizedControlType_MatchesButtons()
+    [TestCase("Button", true)]
+    [TestCase("button", false)]
+    [TestCase("Text", true)]
+    [TestCase("text", false)]
+    public void FindAll_ByControlType_MatchesTheProgrammaticName_CaseSensitively(
+        string name, bool shouldMatch)
     {
-        // This is the locator the previous implementation got wrong by mapping
-        // "tag name" to ControlType rather than LocalizedControlType. Matching
-        // the wrong property does not error — it silently finds nothing.
-        FindResult result = _finder.FindAll(_window, LocatorKind.LocalizedControlType, "button");
+        // Measured against WinAppDriver: "Button" 200, "button" 404, "ListItem"
+        // 200, "list item" 404. It compares UIA_ControlTypePropertyId against the
+        // enum's programmatic name.
+        //
+        // The case pairs are the whole point. Under the LocalizedControlType
+        // reading this file used to hold, every prediction here inverts —
+        // "button" matches and "Button" does not — so a wrong implementation
+        // cannot pass by accident. An input of "Button" alone would prove
+        // nothing, because a Button's localized type differs from its
+        // programmatic name only by case; that is exactly how the wrong reading
+        // survived review.
+        FindResult result = _finder.FindAll(_window, LocatorKind.ControlType, name);
 
         result.Failure.ShouldBe(FindFailure.None);
-        result.ElementIds.Count.ShouldBeGreaterThan(5, "Calculator has a keypad full of buttons");
+
+        if (shouldMatch)
+        {
+            result.ElementIds.Count.ShouldBeGreaterThan(
+                0, $"Calculator has elements of control type {name}");
+        }
+        else
+        {
+            result.ElementIds.ShouldBeEmpty($"'{name}' is not a control type name");
+        }
+    }
+
+    [TestCase("InvalidTagName")]
+    [TestCase("//@InvalidTagNameMalformed")]
+    public void FindAll_ByControlType_WithAnUnknownName_MatchesNothing_WithoutFailing(string name)
+    {
+        // An unknown tag name must find nothing, so POST /element answers "no
+        // such element". The previous implementation fell back to
+        // UIA_CustomControlTypeId, which can silently succeed and return a real
+        // element for a name that means nothing.
+        FindResult result = _finder.FindAll(_window, LocatorKind.ControlType, name);
+
+        result.Failure.ShouldBe(FindFailure.None);
+        result.ElementIds.ShouldBeEmpty();
     }
 
     [Test]

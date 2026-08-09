@@ -92,7 +92,7 @@ public sealed class FindCostBreakdownTests
         {
             IUIAutomationElement root = automation.ElementFromHandle(_window);
             IUIAutomationCondition condition = automation.CreatePropertyCondition(
-                30004 /* LocalizedControlType */, "button");
+                30003 /* ControlType */, 50000 /* Button */);
 
             Stopwatch search = Stopwatch.StartNew();
             IUIAutomationElementArray matches = root.FindAll(
@@ -147,12 +147,12 @@ public sealed class FindCostBreakdownTests
         UiaElementFinder finder = new(_automation);
 
         // Warm up so JIT and first-call COM setup do not land in the sample.
-        finder.FindAll(_window, LocatorKind.LocalizedControlType, "button");
+        finder.FindAll(_window, LocatorKind.ControlType, "Button");
 
         Stopwatch whole = Stopwatch.StartNew();
         for (int sample = 0; sample < Samples; sample++)
         {
-            FindResult result = finder.FindAll(_window, LocatorKind.LocalizedControlType, "button");
+            FindResult result = finder.FindAll(_window, LocatorKind.ControlType, "Button");
             result.Failure.ShouldBe(FindFailure.None);
         }
 
@@ -164,7 +164,7 @@ public sealed class FindCostBreakdownTests
         for (int sample = 0; sample < Samples; sample++)
         {
             IUIAutomationElement root = automation.ElementFromHandle(_window);
-            IUIAutomationCondition condition = automation.CreatePropertyCondition(30004, "button");
+            IUIAutomationCondition condition = automation.CreatePropertyCondition(30003, 50000);
             IUIAutomationElementArray matches = root.FindAll(
                 TreeScope.TreeScope_Descendants, condition);
 
