@@ -6,6 +6,14 @@
     <ProjectReference Include="..\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The pure functions worth testing hardest are internal: runtime-id
+         formatting, the control-type table, and the attribute renderer. They are
+         internal because no caller outside this assembly should reach them, not
+         because they are unimportant — the id format is the contract between
+         issuing an element and resolving it. -->
+    <InternalsVisibleTo Include="WindowsDriverCore.Tests.Unit" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Interop.UIAutomationClient" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
