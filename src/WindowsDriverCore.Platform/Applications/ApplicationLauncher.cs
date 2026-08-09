@@ -8,20 +8,16 @@ namespace WindowsDriverCore.Platform.Applications;
 /// Starts applications and waits for the window to drive.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>Classic applications only, for now.</b> A packaged application is
-/// identified by an AUMID containing <c>!</c> — for example
-/// <c>Microsoft.WindowsCalculator_8wekyb3d8bbwe!App</c> — and cannot be started
-/// with <c>Process.Start</c>. It needs <c>IApplicationActivationManager</c>,
-/// which is the next piece of work. Until then an AUMID fails with the
-/// file-not-found message, which is wrong but visible rather than silent.
-/// </para>
-/// <para>
-/// Nothing here is covered by the protocol tests: they substitute
-/// <see cref="IApplicationLauncher"/> precisely so session creation can be
-/// tested without a desktop. This type needs integration tests against a real
-/// application, and does not have them yet.
-/// </para>
+/// Two launch paths. A packaged application is identified by an AUMID
+/// containing <c>!</c> — <c>Microsoft.WindowsCalculator_8wekyb3d8bbwe!App</c> —
+/// and goes through <c>IApplicationActivationManager</c>, because
+/// <c>Process.Start</c> cannot start one. Anything else is a classic
+/// executable and goes through <c>Process.Start</c>.
+///
+/// Nothing here is covered by the protocol tests, which substitute
+/// <see cref="IApplicationLauncher"/> so session creation can be tested without
+/// a desktop. It is covered by the integration suite, which drives real
+/// applications.
 /// </remarks>
 public sealed class ApplicationLauncher : IApplicationLauncher
 {
@@ -71,10 +67,12 @@ public sealed class ApplicationLauncher : IApplicationLauncher
             return LaunchResult.Failure(InvalidDirectoryMessage);
         }
 
-        // Snapshot BEFORE launching. A packaged application's window belongs to
-        // ApplicationFrameHost rather than to the process activation returns, so
-        // the only way to recognise it is that the frame window is new.
-        IReadOnlySet<nint> framesBefore = MainWindowWaiter.SnapshotFrameWindows();
+        // Snapshot BEFORE launching. Several applications never give the launched
+        // process a window: a packaged app's belongs to ApplicationFrameHost, and
+        // Windows 11's notepad.exe is a stub that starts the real app and exits.
+        // Recognising the window as one that did not exist a moment ago is the
+        // only thing that covers both.
+        IReadOnlySet<nint> windowsBefore = MainWindowWaiter.SnapshotTopLevelWindows();
 
         int processId;
         try
@@ -92,8 +90,16 @@ public sealed class ApplicationLauncher : IApplicationLauncher
             return LaunchResult.Failure(FileNotFoundMessage);
         }
 
+        if (processId == 0)
+        {
+            // Activation rejected the AUMID: the package is not installed, or it
+            // does not declare that application id. From the client's side the
+            // app could not be found, so it gets the same message.
+            return LaunchResult.Failure(FileNotFoundMessage);
+        }
+
         nint window = await _waiter
-            .WaitAsync(processId, framesBefore, WindowTimeout, PollInterval)
+            .WaitAsync(processId, windowsBefore, WindowTimeout, PollInterval)
             .ConfigureAwait(false);
 
         if (window == 0)
@@ -110,7 +116,51 @@ public sealed class ApplicationLauncher : IApplicationLauncher
             new LaunchedApplication(owningProcess != 0 ? owningProcess : processId, window));
     }
 
-    private static int StartProcess(ApplicationTarget target)
+    /// <summary>
+    /// Whether an app value names a packaged application rather than an
+    /// executable.
+    /// </summary>
+    /// <remarks>
+    /// An AUMID is <c>PackageFamilyName!ApplicationId</c>. The rooted-path check
+    /// matters because a file path may legitimately contain <c>!</c>, and
+    /// treating <c>C:\tools\build!final\app.exe</c> as an AUMID would send it to
+    /// COM activation and fail for a reason that names the wrong thing.
+    /// </remarks>
+    internal static bool IsPackagedApplication(string app) =>
+        app.Contains('!', StringComparison.Ordinal) && !Path.IsPathRooted(app);
+
+    private static int StartProcess(ApplicationTarget target) =>
+        IsPackagedApplication(target.App)
+            ? ActivatePackagedApplication(target)
+            : StartClassicProcess(target);
+
+    private static int ActivatePackagedApplication(ApplicationTarget target)
+    {
+        // Through object deliberately: the coclass does not declare the
+        // interface, so a direct cast will not compile. Going via object makes
+        // the runtime issue a QueryInterface, which is what actually binds them.
+        object activator = new ApplicationActivationManager();
+        IApplicationActivationManager manager = (IApplicationActivationManager)activator;
+
+        int hr = manager.ActivateApplication(
+            target.App,
+            target.Arguments,
+            ActivateOptions.None,
+            out uint processId);
+
+        // The HRESULT is returned rather than thrown. Marshal.ThrowExceptionForHR
+        // maps each code to a different exception type, so catching COMException
+        // is not enough — an unregistered package returns E_INVALIDARG and
+        // arrives as ArgumentException, which sailed straight past the handler
+        // and out of the launcher. Reading the code directly removes the guessing.
+        //
+        // Incidentally this is where the previous implementation's mysterious
+        // "Value does not fall within the expected range" came from: that is
+        // E_INVALIDARG's stock message, surfaced without ever being identified.
+        return hr < 0 ? 0 : (int)processId;
+    }
+
+    private static int StartClassicProcess(ApplicationTarget target)
     {
         ProcessStartInfo startInfo = new()
         {
