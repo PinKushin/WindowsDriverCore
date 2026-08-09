@@ -368,3 +368,6 @@ vs_BuildTools.exe
 server-*.txt
 test-results*.txt
 winappdriver-decompiled/
+
+# Mutation testing output.
+StrykerOutput/
