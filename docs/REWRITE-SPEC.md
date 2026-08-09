@@ -241,6 +241,32 @@ control named beside it, or passing means nothing:
   Measurement: BenchmarkDotNet, same operation, three subjects. FlaUI is the floor, WinAppDriver is
   the baseline to beat, and the gap between us and FlaUI is the budget.
 
+### Performance: the order of operations
+
+"Close to the metal" means fast, and the subjects are already named in H3. What
+matters is the order the work happens in, because the tempting first move is the
+wrong one.
+
+1. **Instrument.** Split time inside the UIA call from time in managed code. If
+   UIA is 95%+ of a find, every argument about languages and marshalling is
+   settled and the answer is "do less UIA", not "write it in C".
+2. **Reduce round trips.** This is cross-process COM; a round trip dwarfs
+   anything else. The known defect is N+1 — one call to search, then one more per
+   match to read its RuntimeId. `IUIAutomationCacheRequest` +
+   `FindAllBuildCache` collapses that to one.
+3. **Re-measure**, with FlaUI in-process as the floor.
+4. **Only then** consider a native shim, and only with a number justifying it.
+
+Two rules that outlast this list:
+
+- **A cache request is not a cache.** Fetching more per round trip is free
+  correctness-wise; holding a snapshot *between* calls is the design being
+  replaced, and no benchmark result justifies reintroducing it.
+- **If a shim ever happens it is C, not Zig**, and its interface is "find, and
+  return N elements' properties as one flat buffer" — one P/Invoke, one
+  allocation, no RCWs. See `PROJECT-KNOWLEDGE.md` for why the COM vtable problem
+  outweighs Zig's safety advantage.
+
 ### UI tests: the only legitimate uncertainty is *when*, never *what*
 
 The program is deterministic and the measured values are deterministic. Only the moment a

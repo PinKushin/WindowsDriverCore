@@ -130,6 +130,18 @@ surface where it matters. The previous implementation shipped a command-injectio
 Where C# could genuinely cost: per-call interop marshalling, GC pause consistency (latency tails
 rather than throughput), and JIT warmup — the last irrelevant for a long-running server.
 
+**If a shim is ever warranted, it is C, not Zig.** Zig is the better language on safety — bounds
+checks, defined overflow, explicit allocators — but the thing being shimmed is COM, and Zig has no
+COM support. `@cImport` chokes on the vtable macros in `UIAutomationClient.h`, so every interface
+would be a hand-written `extern struct` of function pointers. A wrong slot ordinal there is silent
+memory corruption, which is worse than anything the bounds checking buys back. C inherits the
+correct vtable layout from the header for free. Getting COM right is the hard part; memory safety
+in a small flat-buffer shim is the easy part.
+
+And the shim's interface should be *"find, and return N elements' properties as one flat buffer"* —
+one P/Invoke, one allocation, no RCWs. Not "wrap COM in another language". Note that is the same
+idea as a cache request, one layer down, which is why the managed version comes first.
+
 **Do not re-argue this. Measure it.** Instrument a find to separate time spent inside the UIA call
 from time spent in managed code. If UIA is 95%+ of it, the question is closed and a rewrite would
 be buying the remainder. If the managed side turns out to be material, that is a real finding, and

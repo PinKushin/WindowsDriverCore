@@ -30,6 +30,52 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## Known performance defects
+
+**MEASURED AND WRONG — the N+1 is not a performance problem.** This entry
+claimed the per-match `GetRuntimeId()` calls were expensive cross-process round
+trips and would be "the large win". Measured against Calculator, 47 matches:
+
+| | run 1 | run 2 |
+|---|---|---|
+| search (`FindAll`) | 17.55 ms | 11.33 ms |
+| reading 47 runtime ids | 0.22 ms | 0.14 ms |
+| id reads as share of total | **1%** | **1%** |
+
+About 4.7us per id. UIA serves them from the element proxy rather than making a
+call per element. A cache request would save roughly 1%, so it is not worth doing
+for performance.
+
+**The search itself is ~80% of the cost**, and that is UIA walking the tree — not
+something this project can make faster except by searching less of it.
+
+**The managed share cannot be pinned down with this instrument.** The two runs
+above report 17% and 29% for managed overhead, and the COM-only path moved by
+5.5 ms between them despite no change to that code. Run-to-run variance is larger
+than the effect. Wall-clock timing of a cross-process call on a live desktop is
+not precise enough; this belongs in `bench/` under BenchmarkDotNet with warmup
+and reported variance.
+
+**What this settles anyway:** a native shim can only address the managed share,
+which is at most 17-29% and unmeasured within that. Not 30x. The language
+question is closed on those grounds — see `PROJECT-KNOWLEDGE.md`.
+
+`IUIAutomationCacheRequest` remains the right tool the moment a find needs
+*several* properties per element rather than one — name, class and control type
+together would otherwise be three calls each. It is simply not the win it was
+predicted to be for runtime ids alone.
+
+**The remaining performance work, in order:**
+
+1. Move the measurement into `bench/` under BenchmarkDotNet. The current
+   instrument cannot resolve the effect it is being asked about.
+2. Benchmark FlaUI in-process for the floor, and WinAppDriver over HTTP for the
+   baseline, on matched operations.
+3. Attack the search cost — narrower tree scope, more selective conditions —
+   since that is ~80% of it.
+4. A native shim only if the managed share turns out to be real and large, which
+   the evidence so far does not suggest.
+
 ## Platform constraints
 
 **RuntimeId cannot be used in a UIA property condition.**
