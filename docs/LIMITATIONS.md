@@ -87,10 +87,47 @@ The reason this was not done sooner was a rule against holding elements between
 calls, which `HeldElementLivenessTests` refuted — see `PROJECT-KNOWLEDGE.md` §0.
 Remaining cost is the initial find, which is a genuine search.
 
+## Measured against FlaUI, 2026-08-09 — we are not at the floor
+
+In-process, both rooted at the same HWND, same Calculator, BenchmarkDotNet.
+Three clean runs.
+
+| | ours | FlaUI | |
+|---|---|---|---|
+| find by automation id | 11.7 / 11.8 / 16.5 ms | 8.6 / 8.4 / 8.3 ms | **FlaUI ~1.4x faster** (ratio 0.737, 0.716) |
+| read one property | 339 / 346 / 364 us | 116 / 113 / 139 us | **FlaUI ~3x faster** |
+| allocation, find | 336 B | 918 B | we allocate 2.7x less |
+| allocation, read | 177 B | 32 B | we allocate 5.5x more |
+
+**The prediction written into the benchmark before running it was wrong.** It
+said find should come out roughly equal because both are dominated by the same
+cross-process tree walk. FlaUI is consistently faster, and the ratio is stable
+across runs, so it is not noise.
+
+**A candidate cause, not yet tested:** `POST /element` calls `FindAll` and then
+reads `GetRuntimeId` for every match, when the route uses only the first.
+FlaUI's `FindFirstDescendant` stops at the first hit. On a locator matching one
+element the two should be close, so this predicts the gap widens with match
+count — which is a testable claim rather than an explanation.
+
+**The read gap has a clearer cause and is the same shape.** Reading `/text`
+through this driver costs a runtime-id validation on the cached handle, a
+ValuePattern availability check, possibly a Selection availability check, and
+then the Name — four cross-process calls against FlaUI's one. Round trips, as
+predicted; `IUIAutomationCacheRequest` is the documented answer.
+
+**What the first run got wrong, and how it was caught.** It reported this driver
+23x *faster* at reading. The FlaUI case called
+`FindFirstDescendant(...).Name` — re-finding the element every iteration, so
+8.9 ms was a find rather than a read, against a method named "read a property
+from a held element". The benchmark's own doc comment carried the prediction that
+*if this driver came out much faster, suspect the benchmark before believing it*,
+which is what caught it. Corrected to hold the element from setup.
+
 **The remaining performance work, in order:**
 
-1. Move the measurement into `bench/` under BenchmarkDotNet. The current
-   instrument cannot resolve the effect it is being asked about.
+1. ~~Move the measurement into `bench/` under BenchmarkDotNet.~~ Done, and it
+   settled the question the wall-clock instrument could not: see above.
 2. Benchmark FlaUI in-process for the floor, and WinAppDriver over HTTP for the
    baseline, on matched operations.
 3. Attack the search cost — narrower tree scope, more selective conditions —

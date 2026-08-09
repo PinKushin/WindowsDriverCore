@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using BenchmarkDotNet.Attributes;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
@@ -40,7 +39,19 @@ namespace WindowsDriverCore.Benchmarks;
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 3, iterationCount: 10)]
+
+// In-process, deliberately. BenchmarkDotNet's default spawns a child process per
+// benchmark case, and each one runs GlobalSetup — so four cases meant four
+// Calculators, four UIA connections, and any setup exception swallowed inside a
+// child whose output is discarded on cleanup. All four cases reported NA.
+//
+// The isolation a separate process buys is about JIT and runtime state at
+// nanosecond scale. Everything measured here is a cross-process COM call costing
+// milliseconds, which is four to six orders of magnitude above that noise floor,
+// so the trade costs nothing real and makes failures visible.
+[InProcess]
+[WarmupCount(3)]
+[IterationCount(10)]
 [SuppressMessage(
     "Reliability", "CA1001:Types that own disposable fields should be disposable",
     Justification =
@@ -58,8 +69,8 @@ public class FindBenchmarks
     private string _elementId = null!;
 
     private UIA3Automation _flaui = null!;
-    private Window _flauiWindow = null!;
-    private int _processId;
+    private AutomationElement _flauiWindow = null!;
+    private AutomationElement _flauiElement = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -80,7 +91,6 @@ public class FindBenchmarks
         }
 
         _window = launched.Application.WindowHandle;
-        _processId = launched.Application.ProcessId;
 
         FindResult found = _finder.FindAll(_window, LocatorKind.AutomationId, "num5Button");
         if (found.ElementIds.Count == 0)
@@ -90,12 +100,23 @@ public class FindBenchmarks
 
         _elementId = found.ElementIds[0];
 
-        // FlaUI attaches to the same window, so both subjects walk the same tree.
+        // FlaUI attaches to the same HWND this driver was given, so both subjects
+        // are rooted at literally the same window rather than at two windows
+        // argued to be the same.
+        //
+        // An earlier version searched the desktop's children for one whose
+        // process id matched the launched application, and found nothing.
+        // Calculator is packaged: its window belongs to ApplicationFrameHost, not
+        // to CalculatorApp — the platform constraint already recorded in
+        // PROJECT-KNOWLEDGE, met again from a new direction.
         _flaui = new UIA3Automation();
-        _flauiWindow = _flaui.GetDesktop()
-            .FindAllChildren()
-            .Select(element => element.AsWindow())
-            .First(window => window.Properties.ProcessId.ValueOrDefault == _processId);
+        _flauiWindow = _flaui.FromHandle(_window);
+
+        // Found once and held, which is what FlaUI callers actually do and what
+        // makes the read comparison fair.
+        _flauiElement = _flauiWindow.FindFirstDescendant(
+            condition => condition.ByAutomationId("num5Button"))
+            ?? throw new InvalidOperationException("FlaUI could not find num5Button.");
     }
 
     [GlobalCleanup]
@@ -147,9 +168,16 @@ public class FindBenchmarks
     [Benchmark(Description = "ours: read a property by element id (cached handle)")]
     public string? ReadThroughThisDriver() => _inspector.Text(_window, _elementId).Value;
 
-    /// <summary>The same read through FlaUI, holding the element.</summary>
+    /// <summary>The same read through FlaUI, from an element held since setup.</summary>
+    /// <remarks>
+    /// <b>Corrected after the first run.</b> This called
+    /// <c>FindFirstDescendant(...).Name</c>, re-finding the element every
+    /// iteration, and measured 8.9 ms — a find, not a read. It made this driver
+    /// look 23x faster at a comparison the two were not both doing.
+    ///
+    /// The file's own prediction said that if this driver came out much faster,
+    /// the benchmark was wrong before the driver was right. It did, and it was.
+    /// </remarks>
     [Benchmark(Description = "FlaUI: read a property from a held element")]
-    public string? ReadThroughFlaUi() =>
-        _flauiWindow.FindFirstDescendant(
-            condition => condition.ByAutomationId("num5Button"))?.Name;
+    public string ReadThroughFlaUi() => _flauiElement.Name;
 }
