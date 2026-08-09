@@ -528,6 +528,98 @@ parked on the dialog.
 
 ---
 
+## 7b. Learned while building it (2026-08-08, implementation phase)
+
+Everything above was learned by researching. This section is what only appeared
+once code ran. See also `docs/LIMITATIONS.md`, which tracks the live list.
+
+### UIA rejects RuntimeId as a property condition
+
+`CreatePropertyCondition(UIA_RuntimeIdPropertyId, int[])` fails with
+`E_INVALIDARG`. Not documented anywhere obvious; found by trying it and watching
+two integration tests fail. A search by element id therefore has to enumerate
+descendants and compare, which costs a full tree walk per by-id find.
+
+That cost is the price of holding no cache, and it is worth paying: the
+alternative is keeping elements alive between calls, which is the exact design
+that produces #857 and #1079.
+
+### `ActivateApplication` reports an unknown package as `E_INVALIDARG`
+
+Which `Marshal.ThrowExceptionForHR` maps to **`ArgumentException`**, not
+`COMException` — so a handler written for COM exceptions misses it entirely and
+the exception escapes the launcher. Read HRESULTs directly rather than throwing
+and guessing which type each maps to.
+
+**This also finally explains a string the old implementation carried for years:**
+`"Value does not fall within the expected range"` is `E_INVALIDARG`'s stock
+message. It was surfaced to clients without anyone ever identifying what produced
+it.
+
+### Windows 11 `notepad.exe` defeats both obvious window searches
+
+The path is a stub that starts the packaged Notepad and exits, so the launched
+process owns no window. And Notepad is WinUI 3, so the window is not an
+`ApplicationFrameWindow` — the packaged-app fallback misses it too. Found by a
+ten-second timeout in an integration test on its first run.
+
+The search now widens in stages: launched process → any descendant → any
+top-level window that did not exist before the launch. Finding descendants needs
+the parent process id, which neither WMI nor `Process.GetProcesses` exposes, so
+it reads Toolhelp32 directly.
+
+### Capability rules that contradict the obvious reading
+
+All measured against WinAppDriver, all four the opposite of what a spec reading
+gives:
+
+- Supplying **both** `app` and `appTopLevelWindow` is **rejected**, with the same
+  message as supplying neither. Exclusive, not preferential.
+- An empty `app` has its own message: `Capability: app cannot be empty`.
+- `capabilities.alwaysMatch` is **not understood at all**.
+- Unrecognised capabilities are **dropped from the echo** — `deviceName` vanished,
+  `platformName` survived. The list in `AuthoringTestScripts.md` is an allowlist,
+  not documentation.
+
+### Tooling constraints worth knowing before they cost an hour
+
+- `LibraryImport` cannot marshal `[Out] char[]` without disabling runtime
+  marshalling assembly-wide (SYSLIB1051), nor a struct with a fixed-size inline
+  string. Both cases stay on `DllImport`.
+- `LibraryImport` requires `AllowUnsafeBlocks`; the generated stubs are unsafe.
+- A COM coclass cannot be cast to its interface directly — go through `object` so
+  the runtime issues a `QueryInterface`.
+- A COM interface is a vtable in declaration order. Unused methods must still be
+  declared or later methods bind to the wrong slot.
+
+### A false negative in my own verification loop
+
+Mutation testing by hand has a failure mode that looks exactly like success.
+Several mutations **broke the build** rather than failing a test — orphaning a
+private method, tripping a style analyzer — and a grep filtered to test results
+then printed nothing at all, which reads identically to "no test caught it".
+
+Two rules came out of it, both now habit:
+
+1. A mutation must **assert that it applied**. A scripted find-and-replace that
+   silently matches nothing produced a "fix" that existed only in a commit
+   message — the gate it claimed to add was never wired, and only running the
+   real executable caught it.
+2. A mutation must be **analyzer-clean**, or it is testing the analyzers rather
+   than the tests.
+
+### Test seams pay off immediately, and visibly
+
+`IApplicationLauncher` and `IWindowLocator` exist so session creation is testable
+without a desktop. Every branch — packaged, classic, desktop, attach, and each
+failure — is covered by protocol tests that need no UI session at all. The
+implementation being replaced launched processes inline in the route handler,
+which is precisely why none of its session behaviour was ever tested.
+
+The converse also held: the two defects above were found by the *integration*
+tests on their first run, because those are the only tests that exercise anything
+below the seam.
+
 ## 8. Mistakes not to repeat
 
 ### In the code (all measured in the old implementation)
