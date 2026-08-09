@@ -12,10 +12,56 @@ in the reasoning.
 
 ---
 
+## 0. The one lesson, if you read nothing else
+
+**Four load-bearing claims in this repository turned out to be wrong. Every one
+was inherited from an earlier session and repeated without being checked.**
+
+| Claim | Reality | Cost |
+|---|---|---|
+| "#857: elements are absent from the tree WinAppDriver searches" | They are absent from the UIA tree entirely. Inspect.exe cannot see them either. Not fixable by any client. | The project claimed a fix it cannot deliver |
+| "#1079: FindElements randomly returns empty" | Deterministic `FindElement`/`FindElements` disagreement over the same XPath | An experiment was built against a condition unrelated to the bug |
+| "Both come from the managed wrapper's cached view" | Appears in neither issue. Inference presented as fact — and the entire justification for the architecture | Two weeks of confident repetition |
+| "The Alarms fixture fails because X" | Four successive wrong answers before measurement found a renamed control | A day |
+
+A fifth was caught going the other way: overstating WinAppDriver's fault for
+something that was really a consequence of building custom MAUI controls out of
+primitives. **Overstating in the project's favour is the failure mode to watch
+for most**, because nothing in the repo pushes back on it.
+
+Every correct answer this project has came from running something: recording real
+responses, walking a live UIA tree, driving a real app step by step. Every wrong
+one came from reading a summary and reasoning forward.
+
+**A claim written in this repository is not evidence.** The recordings, the
+measured numbers and `LIMITATIONS.md` were produced by running something.
+Treat everything else as a hypothesis until it has been.
+
+---
+
 ## 1. What this project is
 
-An open-source replacement for WinAppDriver, which Microsoft archived in June 2025. It speaks the
-protocol Appium/Selenium clients expect and drives Windows apps through `IUIAutomation` COM.
+**The WinAppDriver API, implemented on raw `IUIAutomation` COM, built to FlaUI's standard of
+capability.**
+
+- **FlaUI reaches UIA properly** — pattern-aware, and explicit about the difference between
+  invoking a pattern and dispatching real mouse input.
+- **But it is a .NET library.** No Appium suite, no Python test, nothing speaking WebDriver can
+  drive it. Reaching for FlaUI means leaving the protocol behind.
+- **WinAppDriver has the API every existing suite already speaks** — and an implementation that is
+  weak, and archived since June 2025.
+
+So: serve WinAppDriver's protocol over a UIA layer as capable as FlaUI's. An existing suite points
+at it unchanged and stops hitting the ceiling.
+
+This is why the only dependency is `Interop.UIAutomationClient` — FlaUI's own interop layer, the
+raw COM surface — and deliberately **not** `FlaUI.Core`. A peer, not a wrapper. Taking the wrapper
+would inherit its abstractions and defeat the point; taking its interop layer is just using the
+COM definitions someone already wrote correctly.
+
+**Protocol compatibility is the floor, not the ceiling.** Where WinAppDriver's behaviour is a
+defect rather than a contract, match the protocol and fix the behaviour. Where a capability has no
+expression in the protocol, add a vendor extension rather than silently choosing for the caller.
 
 The founding motivation was two WinAppDriver bugs. **Both were misdescribed in this repository
 for two weeks — read `docs/FOUNDING-PREMISE.md` before relying on anything about them.**
@@ -33,15 +79,61 @@ repeated as fact in every document here. Querying live remains the right default
 measurably faster, and avoids a class of staleness — but it was adopted for a reason that turned
 out to be unsupported.
 
-**Direction from the user:** cheat-tool-level control. Raw COM, no managed wrappers hiding
-behaviour, no hidden retries, no hidden caching, no hidden exception translation. Own the COM
-pointers, the tree traversal, and the caching strategy. `unsafe` where it genuinely pays.
+### As close to the metal as possible
 
-**FlaUI is not the answer** and this was settled with evidence: `Interop.UIAutomationClient` — the
-only dependency — is authored by *Roemer*, FlaUI's author. It **is** FlaUI's interop layer. Adding
-`FlaUI.UIA3` on top means wrapping a wrapper to fix wrapper bugs. The one useful idea from FlaUI is
-that it draws a clear distinction between a pattern invoke and a real mouse click; take the idea,
-not the dependency.
+Standing direction, and it decides arguments rather than flavouring them. Nothing sits between
+this code and the API it drives unless it is pulling its weight.
+
+- **Raw COM interfaces, not managed wrappers.** A wrapper's behaviour becomes this driver's
+  behaviour and its bugs become ours to explain.
+- **Own COM lifetime explicitly** — deterministic release, not finalizer roulette.
+- **No hidden behaviour**: no implicit retries, no caching the caller did not ask for, no exception
+  translation that loses the original. Where the driver decides something for the caller, the
+  decision is documented and, where it matters, selectable.
+- **Round trips are the cost that matters**, not codegen — this is cross-process COM. If a find
+  shows up in a benchmark the answer is `IUIAutomationCacheRequest` to fetch more per trip, never a
+  snapshot held between calls, which is the design being replaced.
+- **`unsafe` where it genuinely pays**, which so far means `Platform`, because that is what the
+  P/Invoke source generator emits.
+
+**FlaUI is the capability benchmark, not a dependency.** `Interop.UIAutomationClient` — the only
+dependency here — is authored by *Roemer*, FlaUI's author, and **is** FlaUI's interop layer, so the
+raw COM definitions are already shared. Taking `FlaUI.Core` on top would inherit its object model
+and abstractions, which is the opposite of the point: this project needs to own tree traversal,
+COM lifetime and activation strategy in order to expose them through a protocol.
+
+What to take from FlaUI is the *standard* — pattern awareness, and an explicit distinction between
+invoking a pattern and dispatching real mouse input. What not to take is the wrapper.
+
+It is also the natural benchmark subject: in-process, no transport, so it measures the floor of
+what this work costs. See H3 in `REWRITE-SPEC.md`.
+
+### Why C# rather than C, and how to settle it if it comes up again
+
+The temptation is real — there is no UI here, and the original WinAppDriver was C++. But the one
+measurement available already argues against it:
+
+**WinAppDriver *is* native C++, and it is the thing taking ~1070 ms per find against this C#
+implementation's ~33 ms.** Native did not save it. The gap is architectural — what it does per
+call — not language.
+
+That matches the shape of the workload. A UIA `FindAll` is an RPC into the target application's
+provider process; the provider does the tree walk while this process waits. Marshalling overhead on
+the client side is noise beside a cross-process round trip, and marshalling is most of what C would
+buy back.
+
+Against that, C# is carrying real weight on a component that **takes HTTP input from the network
+and launches processes with it**: Kestrel, `System.Text.Json`, and memory safety on exactly the
+surface where it matters. The previous implementation shipped a command-injection vector through
+`Process.Start`; that class of defect is cheaper to avoid than to audit for.
+
+Where C# could genuinely cost: per-call interop marshalling, GC pause consistency (latency tails
+rather than throughput), and JIT warmup — the last irrelevant for a long-running server.
+
+**Do not re-argue this. Measure it.** Instrument a find to separate time spent inside the UIA call
+from time spent in managed code. If UIA is 95%+ of it, the question is closed and a rewrite would
+be buying the remainder. If the managed side turns out to be material, that is a real finding, and
+a C shim for the hot path becomes worth costing — not a whole-project rewrite.
 
 **Native AOT is out.** `Marshal.ReleaseComObject` and built-in COM interop are unsupported under
 AOT; getting there means a `ComWrappers` rewrite. JIT is also right on merit — this workload is

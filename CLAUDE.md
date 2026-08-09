@@ -1,151 +1,195 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
-## Project overview
+## Read this first
 
-WindowsDriverCore is an open-source replacement for WinAppDriver. It implements the WebDriver/JSON Wire Protocol that Appium clients expect, listening on `http://127.0.0.1:4723`.
+**`docs/PROJECT-KNOWLEDGE.md`** is the single consolidated briefing — protocol
+contract, compatibility floor, measured test results, UIA/COM knowledge, and the
+mistakes not to repeat. Read it before writing code. `docs/README.md` indexes the
+rest.
 
-**Current state**: Uses `System.Windows.Automation` (managed wrapper around `IUIAutomation` COM). Planned migration to raw `IUIAutomation` COM interop for direct control — see `docs/plan-raw-com-migration.md`.
+**Three claims this repository asserted for two weeks were wrong**, and each was
+inherited from an earlier session and repeated without checking. See
+`docs/FOUNDING-PREMISE.md`. The habit that caused it matters more than the
+individual errors: *a claim in this repo is not evidence. Measure it.*
 
-## Known WinAppDriver issues — CORRECTED, see docs/FOUNDING-PREMISE.md
+## What this project is
 
-**The summaries below were wrong and are kept only to show what was believed.**
-Both issues were finally read on 2026-08-08. #857 is not a WinAppDriver defect at
-all — Inspect.exe cannot see the elements either, so they are genuinely absent
-from the UIA tree and no client can find them. #1079 is not random emptiness; it
-is a deterministic disagreement between `FindElement` and `FindElements` for the
-same XPath, which makes it an XPath bug rather than a caching one. The "cached
-view" explanation appears nowhere in either issue and was inference.
+**The WinAppDriver API, implemented on raw `IUIAutomation` COM, built to FlaUI's
+standard of capability.**
 
-### What was believed (wrong)
+Three facts define the gap it fills:
 
-- [WinAppDriver #857](https://github.com/microsoft/WinAppDriver/issues/857): Elements exist on screen but aren't in the UIA tree that `FindElement` searches. ListView items get "orphaned" — present in the visual tree but with no parent in the UIA hierarchy.
-- [WinAppDriver #1079](https://github.com/microsoft/WinAppDriver/issues/1079): `FindElements` randomly returns empty results.
-- WinAppDriver is closed-source (archived June 2025) so these bugs cannot be fixed externally.
+- **FlaUI reaches UI Automation properly.** It is pattern-aware, it draws an
+  explicit distinction between invoking a pattern and dispatching a real mouse
+  click, and it gets at what UIA actually offers.
+- **But FlaUI is a .NET library.** It cannot be driven from an Appium suite, from
+  Python, or from any existing test that speaks WebDriver. Reaching for it means
+  abandoning the protocol.
+- **WinAppDriver has the API every existing suite already speaks** — and an
+  implementation that is both weak and, since June 2025, archived. Nothing filed
+  against it will ever be fixed.
 
-## Architecture
+So the answer is not to wrap FlaUI and not to reimplement WinAppDriver's
+limitations faithfully. It is to serve WinAppDriver's protocol over a UIA layer
+that is as capable as FlaUI's. An existing suite points at it unchanged and stops
+hitting the ceiling.
 
-ASP.NET Core Minimal API on Kestrel. All services are singletons.
+That is why this project depends on `Interop.UIAutomationClient` — FlaUI's own
+interop layer, the raw COM surface — and deliberately not on `FlaUI.Core`. It is
+a peer, not a wrapper.
+
+**The contract is JSON Wire Protocol, not W3C WebDriver.** Stated outright in
+`WinAppDriver/Tests/WebDriverAPI/README.md`. Where they disagree, JWP wins. The
+previous implementation was built from the W3C spec and that single wrong choice
+produced a large share of its failures.
+
+**Protocol compatibility is the floor, not the ceiling.** Where WinAppDriver's
+behaviour is a defect rather than a contract — an unguarded coordinate click, a
+lookup that never checks ancestors — match the protocol and fix the behaviour.
+Where a capability has no expression in the protocol, add a vendor extension
+(`windows: invoke` versus `windows: mouseClick`) rather than silently choosing
+for the caller.
+
+## Current state
+
+A rewrite is in progress on `feat/rewrite-jwp-core`. The original implementation
+still sits in `WindowsDriverCore/` as reference and will be deleted at parity.
 
 ```
-Program.cs                     → DI + middleware + route registration
-Automation/
-  IElementFinder.cs            → FindElement, FindElements, FindElementInElement
-  ElementFinder.cs             → UIAutomation-based implementation (TO BE REWRITTEN)
-  IElementInteractor.cs        → Click, SendKeys, GetText, GetAttribute, etc.
-  ElementInteractor.cs         → UIAutomation pattern-based implementation (TO BE REWRITTEN)
-  ElementStore.cs              → ConcurrentDictionary<Guid, AutomationElement> cache
-Windows/
-  Win32.cs                     → P/Invoke: EnumWindows, GetWindowText, SendInput, etc.
-  WindowFinder.cs              → Multi-strategy window discovery (Win32 + UWP)
-Applications/
-  AppLauncher.cs               → Process.Start + UWP COM activation (IApplicationActivationManager)
-  SessionCleanupService.cs     → BackgroundService polling for orphaned sessions
-Sessions/
-  SessionStore.cs              → ConcurrentDictionary-backed session storage
-Routes/
-  StatusRoutes.cs              → GET /status
-  SessionRoutes.cs             → POST/DELETE /session, window management
-  ElementRoutes.cs             → Element CRUD, click, text, attributes, screenshots
+src/WindowsDriverCore.Host          composition root, CLI, DI
+src/WindowsDriverCore.Protocol      JWP surface — routes, envelopes, faults. No UIA.
+src/WindowsDriverCore.Automation    element find. Typed in, typed out. No HTTP.
+src/WindowsDriverCore.Platform      Win32, window discovery, process lifetime
+tests/…Unit  …Protocol  …Integration
+bench/…Benchmarks  …Fuzz
 ```
 
-## Key design decisions
+Working: `/status`, unknown-command fallback, session create/list/delete,
+`/orientation`, element find (`/element`, `/elements`), CLI argument forms and
+base path, classic and packaged application launch.
 
-- **Element identity**: UIA RuntimeId (comma-separated int array) serves as element ID — same approach as WinAppDriver
-- **Stale element detection**: Checks `parent.Current.BoundingRectangle` before search; catches `ElementNotAvailableException` and `COMException`
-- **Window finding**: Win32 path first (EnumWindows + PID filter), then UWP path (ApplicationFrameWindow + CoreWindow), with new-window detection for slow-starting apps
-- **UWP launching**: `IApplicationActivationManager` COM interface, not shell: protocol
-- **Process kill**: 5-step cascade: WM_CLOSE → taskkill /F /T → bottom-up child kill → Process.Kill(entireProcessTree). Explorer special-cased.
-- **DPI awareness**: `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` at startup
-- **Dual protocol support**: All element property endpoints accept both GET (W3C) and POST (JSON Wire Protocol) via `DualGetPost` helper. The old Appium client (Selenium 3.8) sends POST; modern clients send GET.
-- **W3C `/rect` endpoint**: Returns `{x, y, width, height}` — the W3C equivalent of both `/location` and `/size`. Required by Selenium 3.8 client.
-- **COM exception mapping**: `UIA_E_ELEMENTNOTAVAILABLE` (0x80040200) → stale element reference (404); `UIA_E_ELEMENTNOTENABLED` (0x80040201) → element not visible (500). Exception handler uses `AllowStatusCode404Response = true`.
-- **CSS selector fallback**: Old Appium client sends `"css selector"` for `FindElementByClassName` due to a bug (appium/dotnet-client#265). We map `css selector` with `.`-prefixed values to class name search.
+Not working yet: element interaction, window routes, mouse/touch/Actions,
+implicit wait, XPath, screenshots. `docs/LIMITATIONS.md` is the live list.
 
-## Test status
+## Claims
 
-**Score: 80 / 290 passed (27.6%)**
+The goal above is the claim. Two footnotes keep it honest:
 
-### Passing test categories
-- Calculator element operations (click, text, enabled, displayed, attribute, tag name, location, size)
-- Session management (create, delete, capabilities)
-- Window operations (rect, maximize, minimize, restore)
-- Error handling (no such window, no such element, unsupported locators)
+- **Do not claim it fixes issue #857.** The elements are absent from the UIA tree
+  entirely and Inspect.exe cannot see them either, so no client can. See
+  `docs/FOUNDING-PREMISE.md` — the bug numbers this repo was founded on were both
+  misdescribed, and they were never the real justification anyway.
+- **The capability claim is the one with evidence.** `docs/CLICK-SEMANTICS.md`
+  has a documented cause, a reproduction, and a measured before/after from a real
+  application suite. Prefer it to anything about issue numbers.
 
-### Known failure blocks
-- **Alarms app UI changed on Win11** (~30 tests): `AlarmClockBase.TestInit()` fails — `NavigationViewItem` replaced `ListViewItem`
-- **CalculatorBase.GetStaleElement()** (~10 tests): Calculator UI changes on Win11 break stale element creation
-- **SendKeys client crash** (~10 tests): `session.Keyboard.SendKeys()` crashes in old Appium driver — client-side bug, not fixable server-side
-- **Actions/Pen/Touch** (~30 tests): Not implemented, low ROI
-- **location_in_view** (~6 tests): Selenium 3.8 base `RemoteWebElement` not overridden by Appium driver — Newtonsoft.Json `JObject` cast issue
+**Measured so far:** WinAppDriver scores 112/290 on its own compatibility suite
+on Windows 11; a find takes roughly 33 ms here against roughly 1070 ms through
+WinAppDriver.
+
+## As close to the metal as possible — meaning fast
+
+Standing direction, and it is a performance goal first. Every layer between this
+code and UIA costs time, and the whole reason to write a driver rather than use
+one is that the layers WinAppDriver has are not paying for themselves.
+
+**The targets, in order:**
+
+| Subject | Role | Measured |
+|---|---|---|
+| FlaUI, in-process | **the floor** — what this costs with no transport at all | not yet |
+| This driver | floor + HTTP hop + our layering | ~33 ms per find |
+| WinAppDriver | **the baseline to beat** | ~1070 ms per find |
+
+Roughly 30x on the one measurement taken, under unmatched conditions. The gap
+between us and FlaUI is the optimization budget; closing on FlaUI is the goal,
+and it is what `bench/WindowsDriverCore.Benchmarks` exists to track.
+
+**What that implies, concretely:**
+
+- **Round trips dominate**, not codegen. This is cross-process COM. If a find
+  shows up in a benchmark the answer is `IUIAutomationCacheRequest` — fetch more
+  per trip — never a snapshot held *between* calls, which trades correctness for
+  speed and is the design being replaced.
+- **Raw COM interfaces, no managed wrappers.** `IUIAutomation` directly; no
+  `System.Windows.Automation`, no `FlaUI.Core`. Each wrapper is a layer whose
+  cost and behaviour you inherit and then have to explain.
+- **Deterministic COM lifetime.** `ComScope`, explicit `ReleaseComObject`, not
+  finalizer roulette. The previous implementation stored elements and released
+  none of them.
+- **Source-generated P/Invoke** (`LibraryImport`) where it marshals, `DllImport`
+  where it will not, with the reason at the declaration. `unsafe` is on in
+  `Platform` because that is what the generator emits.
+- **No hidden behaviour** — no implicit retries, no caching the caller did not
+  ask for, no exception translation that loses the original. This one is not a
+  speed argument, but it is what keeps the speed honest: a driver that quietly
+  caches looks fast and is wrong.
+
+## Rules that are not negotiable
+
+- **Measure, do not infer.** Wire behaviour comes from
+  `tests/WindowsDriverCore.Tests.Protocol/Recordings/winappdriver-responses.json`,
+  captured from the real server. Do not hand-edit it; re-record it.
+- **Test-first.** A test that has never been red proves nothing. Where that is
+  not possible, verify by mutation — and make the mutation assert it applied and
+  compile cleanly, or a build failure will masquerade as an uncaught mutation.
+- **No `var`.** Explicit types everywhere, which also rules out anonymous types
+  and forces every response to be a named record.
+- **Composition, not inheritance.** Interfaces are contracts for substitution;
+  no base class carries logic; `sealed` on every concrete class.
+- **No static reachable from a route handler.** That is what made the previous
+  implementation untestable.
+- **The automation layer does not know HTTP or JSON exist.** Enforced by
+  `Automation` and `Platform` not referencing ASP.NET Core.
+- **Zero warnings.** `TreatWarningsAsErrors`, `AnalysisModeSecurity=All`.
+
+## Branching
+
+`feat/rewrite-jwp-core` is the integration branch. One sub-branch per complete
+sub-step, merged back with `--no-ff`, branch deleted. A sub-step is complete when
+the build is clean, its tests are green, and its behaviour is mutation-verified.
 
 ## Commands
 
 ```powershell
-# Build
+# Build and test
 dotnet build WindowsDriverCore.slnx
+dotnet test WindowsDriverCore.slnx
 
-# Run tests (requires server running at http://127.0.0.1:4723)
-dotnet test WindowsDriverCore.Tests/WindowsDriverCore.Tests.csproj
+# Skip the slow WinAppDriver comparison (6+ minutes)
+dotnet test WindowsDriverCore.slnx --filter "TestCategory!=Comparison"
 
-# Run server
-dotnet run --project WindowsDriverCore/WindowsDriverCore.csproj
+# Run the server
+dotnet run --project src/WindowsDriverCore.Host
 
-# Run WinAppDriver compatibility tests (requires server running)
-& "F:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\bin\Debug\WebDriverAPI.dll"
+# WinAppDriver-compatible argument forms
+WindowsDriverCore.exe                       # 127.0.0.1:4723
+WindowsDriverCore.exe 4727                  # port only
+WindowsDriverCore.exe 10.0.0.10 4725        # host and port
+WindowsDriverCore.exe 10.0.0.10 4723/wd/hub # base path rides on the PORT argument
+WindowsDriverCore.exe * 4723                # all interfaces
 
-# Run specific WinAppDriver tests
-& "F:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\bin\Debug\WebDriverAPI.dll" /Tests:GetElementLocation
+# Mutation testing (reports; break threshold is 0 until it earns raising)
+dotnet stryker
 
-# Rebuild WinAppDriver tests
-& "F:\VisualStudio2026\MSBuild\Current\Bin\MSBuild.exe" "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\WebDriverAPI.csproj"
+# Compatibility suite against a running server — the scoreboard, kept UNMODIFIED
+& "F:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" `
+  "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\bin\Debug\WebDriverAPI.dll"
 
-# Kill orphaned Calculator/Alarms windows
-Get-Process Calculator -ErrorAction SilentlyContinue | Stop-Process -Force
-Get-Process "Microsoft.WindowsAlarms" -ErrorAction SilentlyContinue | Stop-Process -Force
+# Clean up orphaned test apps
+Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
-## IUIAutomation COM reference (for raw COM migration)
+## Ground truth worth memorising
 
-### Primary entry point
-
-```csharp
-IUIAutomation automation = new CUIAutomation();
-```
-
-### Key COM interfaces
-
-| Interface | GUID | Purpose |
-|-----------|------|---------|
-| `IUIAutomation` | `14314595-B0AD-4A2C-B385-AC53C31A1D25` | Root factory |
-| `IUIAutomationElement` | `D827F2C0-3771-4AD9-872E-F0246972138F` | Element properties + tree navigation |
-| `IUIAutomationCondition` | `352FFBA8-0973-437C-A6E3-20FA2465F1AC` | Base condition (empty interface) |
-| `IUIAutomationInvokePattern` | `FB377FBE-8EA6-46D5-9C73-6499642D3059` | Click/activate |
-| `IUIAutomationValuePattern` | `A9468346-2255-4FF4-A07C-75353AE7E3E5` | Get/set text values |
-| `IUIAutomationSelectionItemPattern` | `A8EFA66A-0FDA-421A-9194-38021F3578EA` | Select items |
-| `IUIAutomationExpandCollapsePattern` | `619B0F0D-0936-427C-8936-843FEE4CCFB0` | Expand/collapse |
-
-### Property IDs (from `UIAutomationClient.h`)
-
-```
-UIA_ControlTypePropertyId      = 30003
-UIA_NamePropertyId             = 30005
-UIA_AutomationIdPropertyId     = 30011
-UIA_ClassNamePropertyId        = 30012
-UIA_HasKeyboardFocusPropertyId = 30026
-UIA_IsEnabledPropertyId        = 30010
-UIA_NativeWindowHandlePropertyId = 30020
-UIA_BoundingRectanglePropertyId = 30001
-UIA_ProcessIdPropertyId        = 30002
-UIA_RuntimeIdPropertyId        = 30007
-```
-
-### Pattern IDs
-
-```
-UIA_InvokePatternId     = 10000
-UIA_ValuePatternId      = 10002
-UIA_SelectionItemPatternId = 10010
-UIA_ExpandCollapsePatternId = 10005
-```
+- WinAppDriver scores **112/290** on its own suite on Windows 11. The old
+  "80/290 = 27.6%" was a fraction of a denominator nobody had checked.
+- A find takes roughly **33 ms** here against roughly **1070 ms** through
+  WinAppDriver — unmatched conditions, but a 30x gap.
+- Compatibility floor is **Windows 10 1607 / Server 2016**, the same as
+  WinAppDriver's. .NET reaches further back than that, so the framework is not
+  the constraint.
+- The compatibility suite lives in the sibling `WinAppDriver/` repo and is kept
+  **pristine**. Local modifications are stashed there, not committed.
