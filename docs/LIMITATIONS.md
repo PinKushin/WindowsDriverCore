@@ -168,9 +168,28 @@ constant across nine files, which is a real cost, and the alternative is that
 mutation testing silently does nothing. `Directory.Build.props` carries a comment
 saying so, because putting it back looks like a tidy-up.
 
-**Mutation runs exclude `Tests.Integration` deliberately.** It launches
-Calculator and Settings, so including it would drive the real desktop once per
-mutant — hundreds of launches and clicks on a machine somebody is using.
+**Mutation runs must exclude `Tests.Integration`, and `test-projects` alone does
+not do it.** Listing only the Unit and Protocol projects there looks like it
+scopes the run. It does not: with `solution` set, Stryker discovers every test
+project in the solution, and `Tests.Integration` references Protocol
+transitively through Host. Observed 2026-08-09 — a run believed to be headless
+spent five minutes launching Calculator on repeat.
+
+`solution` is now absent from the config, which is what actually scopes it.
+Before any run, read the analysis output and confirm which test projects it
+picked rather than trusting the configuration.
+
+**Two operating rules for these tools, learned the same way.** Mutation testing
+gives each mutant a time budget and marks anything slower as `Timeout`, so a busy
+machine turns real survivors into false timeouts — the result is wrong, not just
+slow — and editing source mid-run invalidates it outright. So: run only when the
+machine is free, announce it first, and change nothing while it runs.
+
+**Interrupting the command does not stop it.** The run above continued for about
+five minutes after the launching call was cancelled, spawning `vstest.console`
+and `testhost` and launching applications the whole time. After stopping any long
+run, check for surviving processes and kill them explicitly, then verify the list
+is empty — the first sweep missed processes that were still spawning.
 
 **This matters less than it looks, because mutation testing here has been
 manual and has been the most productive practice in the project.** Deliberate

@@ -18,10 +18,7 @@
     },
     "mutate": [
       "**/*.cs",
-      "!**/GlobalUsings.cs",
-      "!src/WindowsDriverCore.Platform/**/*Interop*.cs"
-    ],
-    "solution": "WindowsDriverCore.slnx",
-    "comment": "Tests.Integration is deliberately absent. It launches Calculator and Settings, so including it would drive the real desktop once per mutant \u2014 hundreds of app launches and clicks, on a machine somebody is using. Mutation testing here runs against the headless projects only."
+      "!**/GlobalUsings.cs"
+    ]
   }
 }
