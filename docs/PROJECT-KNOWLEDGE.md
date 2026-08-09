@@ -17,16 +17,21 @@ in the reasoning.
 An open-source replacement for WinAppDriver, which Microsoft archived in June 2025. It speaks the
 protocol Appium/Selenium clients expect and drives Windows apps through `IUIAutomation` COM.
 
-The founding motivation was two WinAppDriver bugs:
+The founding motivation was two WinAppDriver bugs. **Both were misdescribed in this repository
+for two weeks — read `docs/FOUNDING-PREMISE.md` before relying on anything about them.**
 
-- **#857** — elements exist on screen but are absent from the UIA tree `FindElement` searches;
-  ListView items get orphaned.
-- **#1079** — `FindElements` randomly returns empty.
+- **#857** — elements visible on screen are absent from the UIA tree. **Inspect.exe cannot see them
+  either**, which means the application's UIA provider has not published them and *no* client can
+  find them. **This driver does not fix #857 and cannot.**
+- **#1079** — not random emptiness. `FindElement` succeeds and `FindElements` returns empty for the
+  *same XPath*, deterministically. That is a defect in WinAppDriver's own XPath evaluation, which
+  has separate singular and plural paths. Real, probably fixable, and untouched here because XPath
+  is not implemented.
 
-Both are believed to come from the *managed wrapper's cached view* of the tree, not from UIA
-itself. Querying the live tree with raw COM should make the whole class not exist. This is the
-project's reason to be, and **it is still unimplemented** — do not lose sight of it while chasing
-protocol parity.
+The "managed wrapper's cached view" explanation appears in neither issue. It was inference,
+repeated as fact in every document here. Querying live remains the right default — it is simpler,
+measurably faster, and avoids a class of staleness — but it was adopted for a reason that turned
+out to be unsupported.
 
 **Direction from the user:** cheat-tool-level control. Raw COM, no managed wrappers hiding
 behaviour, no hidden retries, no hidden caching, no hidden exception translation. Own the COM

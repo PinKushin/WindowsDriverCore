@@ -8,7 +8,17 @@ WindowsDriverCore is an open-source replacement for WinAppDriver. It implements 
 
 **Current state**: Uses `System.Windows.Automation` (managed wrapper around `IUIAutomation` COM). Planned migration to raw `IUIAutomation` COM interop for direct control — see `docs/plan-raw-com-migration.md`.
 
-## Known WinAppDriver issues this solves
+## Known WinAppDriver issues — CORRECTED, see docs/FOUNDING-PREMISE.md
+
+**The summaries below were wrong and are kept only to show what was believed.**
+Both issues were finally read on 2026-08-08. #857 is not a WinAppDriver defect at
+all — Inspect.exe cannot see the elements either, so they are genuinely absent
+from the UIA tree and no client can find them. #1079 is not random emptiness; it
+is a deterministic disagreement between `FindElement` and `FindElements` for the
+same XPath, which makes it an XPath bug rather than a caching one. The "cached
+view" explanation appears nowhere in either issue and was inference.
+
+### What was believed (wrong)
 
 - [WinAppDriver #857](https://github.com/microsoft/WinAppDriver/issues/857): Elements exist on screen but aren't in the UIA tree that `FindElement` searches. ListView items get "orphaned" — present in the visual tree but with no parent in the UIA hierarchy.
 - [WinAppDriver #1079](https://github.com/microsoft/WinAppDriver/issues/1079): `FindElements` randomly returns empty results.
