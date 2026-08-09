@@ -78,7 +78,7 @@ public class FindBenchmarks
     public void Setup()
     {
         _automation = new CUIAutomationClass();
-        _finder = new UiaElementFinder(_automation);
+        _finder = new UiaElementFinder(_automation, new UiaElementResolver(_automation));
         _cachingResolver = new CachingElementResolver(new UiaElementResolver(_automation));
         _inspector = new UiaElementInspector(_automation, _cachingResolver);
 

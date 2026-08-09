@@ -96,8 +96,8 @@ public sealed class ElementRouteTests : IDisposable
     {
         // The condition that separates a correct handler from one searching the
         // desktop or a hardcoded handle: the session was seeded with 0x9999.
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.2.3"]));
-        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.2.3"]));
+        _finder.FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.2.3"]));
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.2.3"]));
 
         await Find("element", "class name", "Button");
 
@@ -141,8 +141,8 @@ public sealed class ElementRouteTests : IDisposable
     [Test]
     public async Task FindElement_NoMatch_IsNoSuchElement()
     {
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
-        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
+        _finder.FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
 
         HttpResponseMessage response = await Find("element", "accessibility id", "nope");
 
@@ -161,8 +161,8 @@ public sealed class ElementRouteTests : IDisposable
         // The asymmetry. Measured: POST /elements with no match answers 200 with
         // an empty array, while POST /element answers 404. Treating them alike —
         // in either direction — is the obvious simplification and is wrong.
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
-        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
+        _finder.FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
 
         HttpResponseMessage response = await Find("elements", "accessibility id", "nope");
 
@@ -176,8 +176,8 @@ public sealed class ElementRouteTests : IDisposable
     [Test]
     public async Task FindElements_ReturnsEveryMatch_InOrder()
     {
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.1", "2.2", "3.3"]));
-        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.1", "2.2", "3.3"]));
+        _finder.FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.1", "2.2", "3.3"]));
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.1", "2.2", "3.3"]));
 
         HttpResponseMessage response = await Find("elements", "class name", "Button");
 
@@ -211,14 +211,17 @@ public sealed class ElementRouteTests : IDisposable
     {
         await Find("element", "link text", "whatever");
 
-        _finder.DidNotReceive().FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>());
+        // Both, because the singular route uses FindFirst and the plural uses
+        // FindAll — asserting only one would leave half the surface unguarded.
+        _finder.DidNotReceive().FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>());
+        _finder.DidNotReceive().FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>());
     }
 
     [Test]
     public async Task XPath_ReportsALookupError_WithoutTheClientSideSuffix()
     {
-        _finder.FindAll(Arg.Any<nint>(), LocatorKind.XPath, Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.XPathLookupError));
-        _finder.FindFirst(Arg.Any<nint>(), LocatorKind.XPath, Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.XPathLookupError));
+        _finder.FindAll(Arg.Any<SearchScope>(), LocatorKind.XPath, Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.XPathLookupError));
+        _finder.FindFirst(Arg.Any<SearchScope>(), LocatorKind.XPath, Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.XPathLookupError));
 
         HttpResponseMessage response = await Find("element", "xpath", "//*[@bad=]");
 
@@ -238,8 +241,8 @@ public sealed class ElementRouteTests : IDisposable
     [Test]
     public async Task ClosedWindow_ReportsNoSuchWindow()
     {
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.NoSuchWindow));
-        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.NoSuchWindow));
+        _finder.FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.NoSuchWindow));
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.NoSuchWindow));
 
         HttpResponseMessage response = await Find("element", "name", "anything");
 
@@ -259,6 +262,7 @@ public sealed class ElementRouteTests : IDisposable
         JsonElement produced = await BodyOf(response);
         produced.GetProperty("status").GetInt32().ShouldBe(101);
 
-        _finder.DidNotReceive().FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>());
+        _finder.DidNotReceive().FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>());
+        _finder.DidNotReceive().FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>());
     }
 }

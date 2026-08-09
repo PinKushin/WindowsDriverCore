@@ -29,12 +29,14 @@ public sealed class UiaElementFinderTests
     private UiaElementFinder _finder = null!;
     private nint _window;
 
+    private static readonly CUIAutomationClass SharedAutomation = new();
+
     [OneTimeSetUp]
     public void LaunchCalculator()
     {
         WindowLocator windows = new();
         _launcher = new ApplicationLauncher(new MainWindowWaiter(TimeProvider.System), windows);
-        _finder = new UiaElementFinder(new CUIAutomationClass());
+        _finder = new UiaElementFinder(SharedAutomation, new UiaElementResolver(SharedAutomation));
 
         LaunchResult launched = _launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
         if (launched.Application is null)
