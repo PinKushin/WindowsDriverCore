@@ -87,13 +87,39 @@ vanishes, `platformName` survives.
 
 ## What the tests do not prove
 
-**The founding hypothesis has no control.**
-`FindAll_RepeatedManyTimes_NeverReturnsEmptyForAnElementThatIsPresent` shows that
-#1079 does not reproduce here under 200 repetitions. It does **not** show that
-WinAppDriver's does, because nothing runs the same manipulation through
-WinAppDriver for comparison. Until that control exists, a green test means "the
-defect did not occur", not "the defect was fixed" — and a defect that is hard to
-trigger looks identical to one that is absent.
+**The founding hypothesis is still unproven, and now measurably so.**
+
+The control exists — `FindStabilityComparisonTests` runs the same manipulation
+through this driver and through real WinAppDriver. Measured 2026-08-08, 300
+iterations each:
+
+| Subject | Empty results | Failed requests |
+|---|---|---|
+| This driver | 0 / 300 | 0 |
+| WinAppDriver | 0 / 300 | 0 |
+
+**Both zero, so the experiment does not support H1.** The manipulation produced
+no difference between the subjects, which means the *condition* is insensitive:
+an input for which a correct implementation and a broken one predict the same
+observation. It says nothing either way about whether #1079 is fixed.
+
+The condition is what needs fixing, not the assertion. Clicking a digit rewrites
+Calculator's display but never destroys and re-creates the searched element's
+siblings. The field report behind #1079 reproduced it during a `CollectionView`
+rebind, with rows removed and re-materialised. Calculator's memory list does
+exactly that and is the next condition to try.
+
+Until a condition exists where WinAppDriver demonstrably fails and this driver
+does not, **the project's central claim rests on a design argument rather than on
+evidence.** Worth stating plainly.
+
+**An unplanned observation from that run, recorded but not yet trusted.** The
+same 300 iterations took roughly 33 ms per search through this driver and roughly
+1070 ms through WinAppDriver — about 32x. That bears on H3, not H1, and the two
+subjects were not measured under matched conditions: this driver ran in-process
+while WinAppDriver ran over HTTP and re-clicked through its own element lookup
+each iteration. It is a signal worth chasing in the benchmark project, not a
+benchmark result.
 
 **Splash-screen handling is partial.** The window search prefers a titled window,
 which avoids the common case WinAppDriver is documented as failing. A splash
