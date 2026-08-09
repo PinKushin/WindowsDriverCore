@@ -73,8 +73,8 @@ public sealed class ElementRouteTests : IDisposable
     [Test]
     public async Task FindElement_ReturnsTheFirstMatch_AsAnElementReference()
     {
-        _finder.FindAll(0x9999, LocatorKind.AutomationId, "num5Button")
-            .Returns(FindResult.Matched(["42.19466560.4.73", "42.19466560.4.99"]));
+        _finder.FindAll(0x9999, LocatorKind.AutomationId, "num5Button").Returns(FindResult.Matched(["42.19466560.4.73", "42.19466560.4.99"]));
+        _finder.FindFirst(0x9999, LocatorKind.AutomationId, "num5Button").Returns(FindResult.Matched(["42.19466560.4.73", "42.19466560.4.99"]));
 
         HttpResponseMessage response = await Find("element", "accessibility id", "num5Button");
 
@@ -96,19 +96,53 @@ public sealed class ElementRouteTests : IDisposable
     {
         // The condition that separates a correct handler from one searching the
         // desktop or a hardcoded handle: the session was seeded with 0x9999.
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
-            .Returns(FindResult.Matched(["1.2.3"]));
+        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.2.3"]));
+        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.2.3"]));
 
         await Find("element", "class name", "Button");
 
-        _finder.Received(1).FindAll(0x9999, LocatorKind.ClassName, "Button");
+        _finder.Received(1).FindFirst(0x9999, LocatorKind.ClassName, "Button");
+    }
+
+    [Test]
+    public async Task FindElement_StopsAtTheFirstMatch_RatherThanWalkingEverything()
+    {
+        // The one test that cares which UIA call the singular route makes.
+        //
+        // Every other test here stubs both, deliberately: the protocol answer is
+        // identical either way, so making them care would turn a performance
+        // decision into a change detector. This one pins it on purpose —
+        // measured at 10.4 ms against 12.5 ms on Calculator, and an exhaustive
+        // walk to use element zero is the kind of thing that quietly comes back.
+        _finder.FindFirst(0x9999, LocatorKind.AutomationId, "num5Button")
+            .Returns(FindResult.Matched(["42.19466560.4.73"]));
+
+        (await Find("element", "accessibility id", "num5Button")).StatusCode
+            .ShouldBe(HttpStatusCode.OK);
+
+        _finder.Received(1).FindFirst(0x9999, LocatorKind.AutomationId, "num5Button");
+        _finder.DidNotReceive().FindAll(0x9999, LocatorKind.AutomationId, "num5Button");
+    }
+
+    [Test]
+    public async Task FindElements_WalksEverything_BecauseItReturnsEverything()
+    {
+        // The control for the test above. The plural route cannot stop early.
+        _finder.FindAll(0x9999, LocatorKind.AutomationId, "row")
+            .Returns(FindResult.Matched(["42.1.1", "42.1.2"]));
+
+        (await Find("elements", "accessibility id", "row")).StatusCode
+            .ShouldBe(HttpStatusCode.OK);
+
+        _finder.Received(1).FindAll(0x9999, LocatorKind.AutomationId, "row");
+        _finder.DidNotReceive().FindFirst(0x9999, LocatorKind.AutomationId, "row");
     }
 
     [Test]
     public async Task FindElement_NoMatch_IsNoSuchElement()
     {
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
-            .Returns(FindResult.Matched([]));
+        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
+        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
 
         HttpResponseMessage response = await Find("element", "accessibility id", "nope");
 
@@ -127,8 +161,8 @@ public sealed class ElementRouteTests : IDisposable
         // The asymmetry. Measured: POST /elements with no match answers 200 with
         // an empty array, while POST /element answers 404. Treating them alike —
         // in either direction — is the obvious simplification and is wrong.
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
-            .Returns(FindResult.Matched([]));
+        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
+        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched([]));
 
         HttpResponseMessage response = await Find("elements", "accessibility id", "nope");
 
@@ -142,8 +176,8 @@ public sealed class ElementRouteTests : IDisposable
     [Test]
     public async Task FindElements_ReturnsEveryMatch_InOrder()
     {
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
-            .Returns(FindResult.Matched(["1.1", "2.2", "3.3"]));
+        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.1", "2.2", "3.3"]));
+        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Matched(["1.1", "2.2", "3.3"]));
 
         HttpResponseMessage response = await Find("elements", "class name", "Button");
 
@@ -183,8 +217,8 @@ public sealed class ElementRouteTests : IDisposable
     [Test]
     public async Task XPath_ReportsALookupError_WithoutTheClientSideSuffix()
     {
-        _finder.FindAll(Arg.Any<nint>(), LocatorKind.XPath, Arg.Any<string>())
-            .Returns(FindResult.Failed(FindFailure.XPathLookupError));
+        _finder.FindAll(Arg.Any<nint>(), LocatorKind.XPath, Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.XPathLookupError));
+        _finder.FindFirst(Arg.Any<nint>(), LocatorKind.XPath, Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.XPathLookupError));
 
         HttpResponseMessage response = await Find("element", "xpath", "//*[@bad=]");
 
@@ -204,8 +238,8 @@ public sealed class ElementRouteTests : IDisposable
     [Test]
     public async Task ClosedWindow_ReportsNoSuchWindow()
     {
-        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
-            .Returns(FindResult.Failed(FindFailure.NoSuchWindow));
+        _finder.FindAll(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.NoSuchWindow));
+        _finder.FindFirst(Arg.Any<nint>(), Arg.Any<LocatorKind>(), Arg.Any<string>()).Returns(FindResult.Failed(FindFailure.NoSuchWindow));
 
         HttpResponseMessage response = await Find("element", "name", "anything");
 

@@ -1,5 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
@@ -40,7 +40,19 @@ namespace WindowsDriverCore.Benchmarks;
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]
-[SimpleJob(warmupCount: 3, iterationCount: 10)]
+
+// In-process, deliberately. BenchmarkDotNet's default spawns a child process per
+// benchmark case, and each one runs GlobalSetup — so four cases meant four
+// Calculators, four UIA connections, and any setup exception swallowed inside a
+// child whose output is discarded on cleanup. All four cases reported NA.
+//
+// The isolation a separate process buys is about JIT and runtime state at
+// nanosecond scale. Everything measured here is a cross-process COM call costing
+// milliseconds, which is four to six orders of magnitude above that noise floor,
+// so the trade costs nothing real and makes failures visible.
+[InProcess]
+[WarmupCount(3)]
+[IterationCount(10)]
 [SuppressMessage(
     "Reliability", "CA1001:Types that own disposable fields should be disposable",
     Justification =
@@ -51,6 +63,7 @@ public class FindBenchmarks
 {
     private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
+    private CUIAutomationClass _automation = null!;
     private UiaElementFinder _finder = null!;
     private CachingElementResolver _cachingResolver = null!;
     private UiaElementInspector _inspector = null!;
@@ -58,16 +71,16 @@ public class FindBenchmarks
     private string _elementId = null!;
 
     private UIA3Automation _flaui = null!;
-    private Window _flauiWindow = null!;
-    private int _processId;
+    private AutomationElement _flauiWindow = null!;
+    private AutomationElement _flauiElement = null!;
 
     [GlobalSetup]
     public void Setup()
     {
-        CUIAutomationClass automation = new();
-        _finder = new UiaElementFinder(automation);
-        _cachingResolver = new CachingElementResolver(new UiaElementResolver(automation));
-        _inspector = new UiaElementInspector(automation, _cachingResolver);
+        _automation = new CUIAutomationClass();
+        _finder = new UiaElementFinder(_automation);
+        _cachingResolver = new CachingElementResolver(new UiaElementResolver(_automation));
+        _inspector = new UiaElementInspector(_automation, _cachingResolver);
 
         LaunchResult launched = new ApplicationLauncher(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator())
@@ -80,7 +93,6 @@ public class FindBenchmarks
         }
 
         _window = launched.Application.WindowHandle;
-        _processId = launched.Application.ProcessId;
 
         FindResult found = _finder.FindAll(_window, LocatorKind.AutomationId, "num5Button");
         if (found.ElementIds.Count == 0)
@@ -90,12 +102,23 @@ public class FindBenchmarks
 
         _elementId = found.ElementIds[0];
 
-        // FlaUI attaches to the same window, so both subjects walk the same tree.
+        // FlaUI attaches to the same HWND this driver was given, so both subjects
+        // are rooted at literally the same window rather than at two windows
+        // argued to be the same.
+        //
+        // An earlier version searched the desktop's children for one whose
+        // process id matched the launched application, and found nothing.
+        // Calculator is packaged: its window belongs to ApplicationFrameHost, not
+        // to CalculatorApp — the platform constraint already recorded in
+        // PROJECT-KNOWLEDGE, met again from a new direction.
         _flaui = new UIA3Automation();
-        _flauiWindow = _flaui.GetDesktop()
-            .FindAllChildren()
-            .Select(element => element.AsWindow())
-            .First(window => window.Properties.ProcessId.ValueOrDefault == _processId);
+        _flauiWindow = _flaui.FromHandle(_window);
+
+        // Found once and held, which is what FlaUI callers actually do and what
+        // makes the read comparison fair.
+        _flauiElement = _flauiWindow.FindFirstDescendant(
+            condition => condition.ByAutomationId("num5Button"))
+            ?? throw new InvalidOperationException("FlaUI could not find num5Button.");
     }
 
     [GlobalCleanup]
@@ -123,10 +146,92 @@ public class FindBenchmarks
         }
     }
 
-    /// <summary>Finding one element by automation id, through this driver.</summary>
-    [Benchmark(Baseline = true, Description = "ours: find by automation id")]
+    /// <summary>What <c>POST /element</c> does: find the first match.</summary>
+    [Benchmark(Baseline = true, Description = "ours: find first by automation id")]
     public int FindThroughThisDriver() =>
+        _finder.FindFirst(_window, LocatorKind.AutomationId, "num5Button").ElementIds.Count;
+
+    /// <summary>What <c>POST /elements</c> does: find every match.</summary>
+    [Benchmark(Description = "ours: find ALL by automation id")]
+    public int FindAllThroughThisDriver() =>
         _finder.FindAll(_window, LocatorKind.AutomationId, "num5Button").ElementIds.Count;
+
+    /// <summary>
+    /// The same search, but stopping at the first match, in raw COM.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The experiment for why FlaUI's find is faster. <c>POST /element</c> uses
+    /// <c>FindAll</c>, which must enumerate every descendant; FlaUI's
+    /// <c>FindFirstDescendant</c> maps to <c>FindFirst</c>, which can return as
+    /// soon as it matches. The route only ever uses the first result.
+    /// </para>
+    /// <para>
+    /// <b>Note what this is not.</b> The obvious explanation — that reading a
+    /// runtime id per match costs the difference — was measured earlier and is
+    /// wrong: 47 ids cost 0.22 ms against a ~17 ms search, about 1%. That is
+    /// recorded in LIMITATIONS as a wrong theory, and it cannot account for a
+    /// 3.4 ms gap. If the raw FindAll case below lands near our finder, the cost
+    /// is the exhaustive walk and not our layering.
+    /// </para>
+    /// </remarks>
+    [Benchmark(Description = "raw COM: FindFirst by automation id")]
+    public bool FindFirstRaw()
+    {
+        IUIAutomationElement root = _automation.ElementFromHandle(_window);
+        IUIAutomationCondition condition =
+            _automation.CreatePropertyCondition(30011, "num5Button");
+
+        try
+        {
+            IUIAutomationElement? found =
+                root.FindFirst(TreeScope.TreeScope_Descendants, condition);
+
+            if (found is null)
+            {
+                return false;
+            }
+
+            Marshal.ReleaseComObject(found);
+
+            return true;
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(condition);
+            Marshal.ReleaseComObject(root);
+        }
+    }
+
+    /// <summary>
+    /// The exhaustive search in raw COM, with no runtime ids read.
+    /// </summary>
+    /// <remarks>
+    /// The control that separates "FindAll is expensive" from "our layer around
+    /// it is expensive". If this sits near our finder, the walk is the cost.
+    /// </remarks>
+    [Benchmark(Description = "raw COM: FindAll by automation id, no id reads")]
+    public int FindAllRaw()
+    {
+        IUIAutomationElement root = _automation.ElementFromHandle(_window);
+        IUIAutomationCondition condition =
+            _automation.CreatePropertyCondition(30011, "num5Button");
+
+        try
+        {
+            IUIAutomationElementArray matches =
+                root.FindAll(TreeScope.TreeScope_Descendants, condition);
+            int length = matches.Length;
+            Marshal.ReleaseComObject(matches);
+
+            return length;
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(condition);
+            Marshal.ReleaseComObject(root);
+        }
+    }
 
     /// <summary>The same find through FlaUI — the floor.</summary>
     [Benchmark(Description = "FlaUI: find by automation id")]
@@ -147,9 +252,16 @@ public class FindBenchmarks
     [Benchmark(Description = "ours: read a property by element id (cached handle)")]
     public string? ReadThroughThisDriver() => _inspector.Text(_window, _elementId).Value;
 
-    /// <summary>The same read through FlaUI, holding the element.</summary>
+    /// <summary>The same read through FlaUI, from an element held since setup.</summary>
+    /// <remarks>
+    /// <b>Corrected after the first run.</b> This called
+    /// <c>FindFirstDescendant(...).Name</c>, re-finding the element every
+    /// iteration, and measured 8.9 ms — a find, not a read. It made this driver
+    /// look 23x faster at a comparison the two were not both doing.
+    ///
+    /// The file's own prediction said that if this driver came out much faster,
+    /// the benchmark was wrong before the driver was right. It did, and it was.
+    /// </remarks>
     [Benchmark(Description = "FlaUI: read a property from a held element")]
-    public string? ReadThroughFlaUi() =>
-        _flauiWindow.FindFirstDescendant(
-            condition => condition.ByAutomationId("num5Button"))?.Name;
+    public string ReadThroughFlaUi() => _flauiElement.Name;
 }
