@@ -101,6 +101,20 @@ specification the original did not follow.
 
 **What it should not claim:** that it fixes #857. It does not.
 
+**What it CAN claim, with field evidence rather than inference —
+see `docs/CLICK-SEMANTICS.md`:** that clicking works on elements WinAppDriver
+cannot reliably click. That defect is documented, reproduced, and measured: a
+real MAUI suite went from firing clicks into the taskbar and silently failing on
+CI, to 83/83 at CI's exact geometry, purely by replacing coordinate clicks with a
+UIA pattern ladder.
+
+The application also had to work around the driver by adding transparent `Button`
+overlays to its own markup, and by dropping to FlaUI where WinAppDriver could not
+reach. FlaUI wraps the same `IUIAutomation` API this driver uses, so the
+capability was always in UIA — WinAppDriver simply was not reaching for it.
+
+That is a better claim than the two it replaces, because it is demonstrable.
+
 **What it may be able to claim, once XPath exists:** that `FindElement` and
 `FindElements` agree, which #1079 says WinAppDriver's do not. That becomes a
 testable experiment with an obvious control the moment XPath lands — run the same
