@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using WindowsDriverCore.Host.CommandLine;
+using Interop.UIAutomationClient;
+using WindowsDriverCore.Automation;
+using WindowsDriverCore.Automation.Uia;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Routing;
@@ -62,6 +65,8 @@ public partial class Program
         builder.Services.AddSingleton<MainWindowWaiter>();
         builder.Services.AddSingleton<IWindowLocator, WindowLocator>();
         builder.Services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
+        builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
+        builder.Services.AddSingleton<IElementFinder, UiaElementFinder>();
 
         WebApplication app = builder.Build();
 
