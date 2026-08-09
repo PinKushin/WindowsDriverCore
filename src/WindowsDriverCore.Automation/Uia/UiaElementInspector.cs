@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
 
@@ -39,11 +40,41 @@ public sealed class UiaElementInspector : IElementInspector
         // on a live element and a good attribute on a dead one stay
         // distinguishable — the first is null with status 0, the second is a
         // stale reference.
-        return UiaProperties.TryGetId(name, out int propertyId)
-            ? Read(window, elementId, element =>
-                UiaAttributeRenderer.Render(
-                    propertyId, element.GetCurrentPropertyValue(propertyId)))
-            : Read(window, elementId, static _ => (string?)null);
+        if (!UiaProperties.TryGetId(name, out int propertyId))
+        {
+            return Read(window, elementId, static _ => (string?)null);
+        }
+
+        // BoundingRectangle comes from the same place /location and /size use,
+        // not from the raw property.
+        //
+        // The raw property is a double[4] of unrounded values; CurrentBoundingRectangle
+        // is UIA's own integer rectangle. Rendering the first while /size renders
+        // the second makes two routes disagree about one rectangle by a pixel
+        // whenever the underlying values are fractional — which depends on where
+        // the window happens to sit, so it appears and disappears. Measured:
+        // "Left:257 Top:615 Width:96 Height:34" against
+        // "Left:257 Top:616 Width:97 Height:35" for the same element at the same
+        // moment.
+        //
+        // Rounding the raw values instead would not fix it: round(right) minus
+        // round(left) and round(width) are not the same number. Agreement
+        // requires one source, not matching arithmetic.
+        if (propertyId == UiaProperties.BoundingRectangle)
+        {
+            return Read(window, elementId, static element =>
+            {
+                ElementBounds bounds = BoundsOf(element);
+
+                return (string?)string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Left:{bounds.X} Top:{bounds.Y} Width:{bounds.Width} Height:{bounds.Height}");
+            });
+        }
+
+        return Read(window, elementId, element =>
+            UiaAttributeRenderer.Render(
+                propertyId, element.GetCurrentPropertyValue(propertyId)));
     }
 
     /// <inheritdoc />

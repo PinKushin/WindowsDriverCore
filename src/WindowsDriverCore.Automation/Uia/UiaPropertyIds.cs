@@ -47,8 +47,20 @@ internal static class UiaPropertyIds
     /// <summary>Whether the element has keyboard focus.</summary>
     internal const int HasKeyboardFocus = 30026;
 
+    /// <summary>Whether the element exposes the ExpandCollapse pattern.</summary>
+    internal const int IsExpandCollapsePatternAvailable = 30028;
+
+    /// <summary>Whether the element exposes the Invoke pattern.</summary>
+    internal const int IsInvokePatternAvailable = 30031;
+
+    /// <summary>Whether the element exposes the ScrollItem pattern.</summary>
+    internal const int IsScrollItemPatternAvailable = 30035;
+
     /// <summary>Whether the element exposes the SelectionItem pattern.</summary>
     internal const int IsSelectionItemPatternAvailable = 30036;
+
+    /// <summary>Whether the element exposes the Toggle pattern.</summary>
+    internal const int IsTogglePatternAvailable = 30041;
 
     /// <summary>Whether the element exposes the Selection pattern.</summary>
     internal const int IsSelectionPatternAvailable = 30037;

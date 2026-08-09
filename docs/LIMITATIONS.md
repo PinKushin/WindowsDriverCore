@@ -212,6 +212,27 @@ first run after a build, never on a warm re-run. It is now a 30-second deadline,
 and the failure message reports elapsed time and observation count so a
 recurrence is diagnosable rather than anonymous.
 
+**IDENTIFIED, and it was a product bug rather than a flake.**
+`BoundingRectangle_IsTheLabelledFormat_AndAgreesWithScreenBounds` compared the
+same rectangle through two routes and they disagreed by a pixel:
+`Left:257 Top:615 Width:96 Height:34` from `/attribute` against
+`Left:257 Top:616 Width:97 Height:35` from `/size`.
+
+`/attribute/BoundingRectangle` read the raw property — a `double[4]` of
+unrounded values — and truncated, while `ScreenBounds` used UIA's own integer
+rectangle. The two agree only when the underlying values happen to be integral,
+which depends on where the window sits, so it appeared and disappeared. The
+whole-solution run made it more likely because the other assemblies' load shifts
+timing and layout.
+
+Fixed by rendering that one attribute from the same source `/location` and
+`/size` use. Rounding the raw doubles instead would not have worked:
+`round(right) - round(left)` and `round(width)` are not the same number, so
+agreement needs one source rather than matching arithmetic.
+
+**Two earlier candidates, both wrong, both worth keeping.** A count-based rather
+than time-based wait in `UiSettle`, and:
+
 **A second candidate, from the repository owner: physical interference.** The
 tests that could have failed that way all assert on window geometry, and a person
 nudging or dragging the Calculator window mid-run produces exactly the observed

@@ -81,6 +81,7 @@ public partial class Program
         builder.Services.AddSingleton<IElementHandleCache>(
             provider => provider.GetRequiredService<CachingElementResolver>());
         builder.Services.AddSingleton<IElementInspector, UiaElementInspector>();
+        builder.Services.AddSingleton<IElementInteractor, UiaElementInteractor>();
         builder.Services.AddSingleton<IElementRegistry, ElementRegistry>();
 
         WebApplication app = builder.Build();
