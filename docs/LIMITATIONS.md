@@ -30,6 +30,31 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## Known performance defects
+
+**`UiaElementFinder` makes N+1 cross-process round trips per find.** The search
+itself is one call. Reading each match's RuntimeId is another
+`element.GetRuntimeId()` — a separate COM call into the target application's
+provider, per element — plus an RCW allocated and released for each. A find
+matching 200 elements costs 201 round trips.
+
+Fixable in managed code, and it is the first thing to try before any argument
+about languages: build an `IUIAutomationCacheRequest` asking for `RuntimeId`,
+call `FindAllBuildCache`, then read `GetCachedPropertyValue` out of local memory
+with **zero** further round trips. `AutomationElementMode.None` makes the
+returned elements cache-only, which is cheaper again and is all this path needs.
+
+Caveat to verify rather than assume: `RuntimeId` is already known to be rejected
+as a *property condition* (`E_INVALIDARG`, see below), so it may not be cacheable
+either. If it is not, cache whatever is cacheable and measure what remains.
+
+**The performance work has an order, and it is not "pick a faster language":**
+
+1. Instrument a find to split time inside the UIA call from time in managed code.
+2. Kill the N+1 with cache requests. Expected to be the large win.
+3. Re-measure, and benchmark FlaUI in-process as the floor.
+4. Only then consider a native shim, with a number in hand.
+
 ## Platform constraints
 
 **RuntimeId cannot be used in a UIA property condition.**
