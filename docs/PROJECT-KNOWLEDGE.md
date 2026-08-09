@@ -40,6 +40,47 @@ Every correct answer this project has came from running something: recording rea
 responses, walking a live UIA tree, driving a real app step by step. Every wrong
 one came from reading a summary and reasoning forward.
 
+### The mistake that keeps recurring, in four disguises
+
+Every wrong claim in the table above is the same error underneath: **an
+observation for which the correct and the broken implementation predict the same
+thing.** It is worth naming, because it has now appeared four times in different
+clothes and was not recognised as the same thing until the third.
+
+These are not a new taxonomy. They are the **wrong condition** and **wrong
+instrument** routes from the testing standard in the global `CLAUDE.md`, which
+already listed both — the failure was not having a name for them, it was not
+checking against the names that existed.
+
+| Where | Route | The blind observation | What discriminated |
+|---|---|---|---|
+| `tag name` locator comment | wrong condition | The example `"Button"` — a Button's localized type differs from its programmatic name only by case | `ListItem` against `list item` |
+| `Format_IsInjective` property test | wrong condition | Two independently generated runtime ids never share a digit concatenation, so the region where the hypotheses differ has measure zero | Construct the colliding pair: the same digits partitioned two ways |
+| `/location` bounds test | wrong instrument | Two elements have the *same* offset — which is `0 == 0` once the subtraction is removed | Assert the offset is also **non-zero** |
+| Cache eviction test | wrong instrument | "Is the kept element cached at the end?" — under first-in-first-out it is evicted, re-resolved and re-added, so it usually is | Count how many times the inner resolver was asked for it |
+
+The two instrument failures share the shape of the standard's own leak-test
+example, where a search of serialized *bytes* stood in for *content* and escaping
+decoupled them. Presence in a cache stands in for never having been evicted, and
+re-insertion decouples them. **A proxy tracks the variable faithfully right up
+until the bug is the thing that separates them**, which is why it survives review
+and dies to a mutation.
+
+The standard also warns that the instinct is to strengthen the assertion and that
+this is usually wrong. True in three of the four: strengthening would have fixed
+none of them. The fixes were to **change the input** — `ListItem`, constructed
+collisions — and to **change what is measured** — a non-zero offset, a count of
+walks.
+
+Three of the four were **written specifically to catch the bug they missed**, and
+all four passed against a deliberately broken implementation. Randomising the
+input does not help; two of them generated thousands of cases.
+
+**The question to ask before writing the assertion is not "what should be true"
+but "is there an input where correct and broken differ, and does my observation
+see it?"** Sabotage the code and watch the test fail; a test that stays green
+under sabotage is measuring something else, however well its name reads.
+
 **A claim written in this repository is not evidence.** The recordings, the
 measured numbers and `LIMITATIONS.md` were produced by running something.
 Treat everything else as a hypothesis until it has been — `CLAUDE.md` included.

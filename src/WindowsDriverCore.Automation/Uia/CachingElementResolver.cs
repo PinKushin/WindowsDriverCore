@@ -196,7 +196,7 @@ public sealed class CachingElementResolver : IElementResolver, IElementHandleCac
             {
                 // Racing a shutdown. Releasing here rather than storing keeps the
                 // promise that Dispose released everything.
-                Marshal.ReleaseComObject(element);
+                Release(element);
                 return;
             }
 
@@ -219,7 +219,25 @@ public sealed class CachingElementResolver : IElementResolver, IElementHandleCac
     {
         _entries.Remove(node.Value.Key);
         _recency.Remove(node);
-        Marshal.ReleaseComObject(node.Value.Element);
+        Release(node.Value.Element);
+    }
+
+    /// <summary>Releases an element, if it is something COM owns.</summary>
+    /// <remarks>
+    /// <c>ReleaseComObject</c> throws <c>ArgumentException</c> for anything that
+    /// is not a runtime callable wrapper. This class is public and takes any
+    /// <see cref="IElementResolver"/>, so an implementation that hands back a
+    /// managed <c>IUIAutomationElement</c> is legal and must not crash the
+    /// eviction path. It also makes the cache's own behaviour testable without
+    /// driving a real application, which is how the eviction path got covered at
+    /// all.
+    /// </remarks>
+    private static void Release(IUIAutomationElement element)
+    {
+        if (Marshal.IsComObject(element))
+        {
+            Marshal.ReleaseComObject(element);
+        }
     }
 
     private readonly record struct CacheKey(nint SearchRoot, string ElementId);

@@ -49,6 +49,17 @@ public interface IElementRegistry
     /// <summary>Drops everything recorded for a session.</summary>
     /// <param name="sessionId">The session being deleted.</param>
     void Forget(string sessionId);
+
+    /// <summary>How many ids are held for a session.</summary>
+    /// <param name="sessionId">The session.</param>
+    /// <returns>The count, zero for a session that has found nothing.</returns>
+    /// <remarks>
+    /// For diagnostics and for tests that measure growth. The recommended Appium
+    /// arrangement is one session for a whole suite, so this number is the
+    /// session's accumulated cost and is worth being able to state rather than
+    /// guess at.
+    /// </remarks>
+    int CountFor(string sessionId);
 }
 
 /// <inheritdoc />
@@ -84,6 +95,17 @@ public sealed class ElementRegistry : IElementRegistry
         // element both report status 10.
         return _bySession.TryGetValue(sessionId, out ConcurrentDictionary<string, byte>? issued) &&
             issued.TryRemove(elementId, out _);
+    }
+
+    /// <inheritdoc />
+    /// <exception cref="ArgumentNullException"><paramref name="sessionId"/> is null.</exception>
+    public int CountFor(string sessionId)
+    {
+        ArgumentNullException.ThrowIfNull(sessionId);
+
+        return _bySession.TryGetValue(sessionId, out ConcurrentDictionary<string, byte>? issued)
+            ? issued.Count
+            : 0;
     }
 
     /// <inheritdoc />

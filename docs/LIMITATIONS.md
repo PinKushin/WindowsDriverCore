@@ -24,7 +24,7 @@ Three kinds of entry, kept apart because they need different responses:
 | **Keyboard input** | Not implemented | `POST /value` sets ValuePattern's value rather than sending keystrokes, so **no key events reach the application**: anything driven by `KeyDown` rather than by the value changing will not fire, and an element that refuses ValuePattern reports `element not interactable` rather than falling back. `/keys` (session-level send-keys) does not exist. |
 | **Element-valued attributes** | Render as `null` | `LabeledBy`, `ControllerFor`, `Selection.Selection` and the other properties whose UIA value is an element or element array. What WinAppDriver sends for these was never measured, and inventing a spelling would be a divergence written as if it were a contract. |
 | **`/text` on a Selection** | Implemented, unmeasured | The rung that answers a list's selected item comes from WinAppDriver's own `ElementText.GetElementText` (`MinuteLoopingSelector.Text == "00"`), not from a measurement here. No Windows 11 app tried so far still exposes a looping selector in a reachable state. |
-| **Issued-element ids grow unbounded** | Per session, until `DELETE /session` | `ElementRegistry` keeps one short string per element ever returned, which is what makes stale (status 10) distinguishable from unknown (status 7). A session that finds elements in a loop for hours accumulates them. Bounding it needs a policy, and a policy needs a measurement of what real suites do. |
+| **Issued-element ids grow per distinct element** | Per session, until `DELETE /session` — **measured, and smaller than it reads** | `ElementRegistry` keeps one short string per element ever returned, which is what makes stale (status 10) distinguishable from unknown (status 7). Measured 2026-08-09 through the HTTP surface: 2000 distinct elements cost 2000 records, but **2000 finds of the same element cost one**. Growth follows distinct elements, not commands, so a page-object suite hammering the same controls costs a constant. `DELETE /session` releases all of it. Not worth bounding until a suite exists that finds a hundred thousand genuinely different elements in one session. |
 | **Window routes** | Not started | `window/size`, `window/{handle}/size`, `/position`, `/maximize`, `window_handle(s)`, switch, close. |
 | **Mouse, touch, Actions** | Not started | `buttondown`/`buttonup`/`click`/`doubleclick`/`moveto`, eight `touch/*`. ~20 of the 70-test backlog is Actions **error validation** only, which needs no Actions implementation. |
 | **Screenshots** | Not started | `/screenshot` for session and element. |
@@ -138,6 +138,27 @@ performance argument does not motivate it either.
 
 ---
 
+## The arrangement production suites actually use
+
+**One session for a whole suite, not one per fixture.** That is what the Appium
+documentation shows and what production suites tend to follow: a single
+`POST /session`, hundreds or thousands of commands, one `DELETE` at the end.
+
+This driver's own integration fixtures do the opposite — one session each, via
+`[OneTimeSetUp]`, matching WinAppDriver's own `[ClassInitialize]` style. That is
+reasonable for testing *this* code, and it means **nothing in the suite exercised
+what a session accumulates over its life** until `LongLivedSessionTests` was
+written. Two pieces of per-session state grow: the issued-element record and the
+resolver's handle cache. Both had been written down here as untested risks.
+
+Measured now for the registry, headless, through the HTTP surface. Still
+untested for the handle cache: `CachingElementResolver` evicts at 256 handles and
+nothing has ever driven it past that, because every fixture gets a fresh
+resolver. That eviction path is live code with no coverage, and the recommended
+arrangement is precisely the one that reaches it.
+
+---
+
 ## Tooling that is configured but does not run
 
 **Stryker.NET could not analyse this solution, and the cause was ours.**
@@ -179,6 +200,23 @@ spent five minutes launching Calculator on repeat.
 Before any run, read the analysis output and confirm which test projects it
 picked rather than trusting the configuration.
 
+**Full mutation runs are long enough to need a diff mode.** A sibling repo of
+comparable size takes 60 to 90 minutes for a full run, which is too long to sit
+in front of and long enough that it competes for a machine somebody is using.
+
+`--since[:<committish>]` mutates only code changed against a baseline, which is
+minutes for a normal edit:
+
+```bash
+dotnet stryker --since:main
+```
+
+It is a per-change gate, not a score: mutants outside the diff are not tested, so
+the percentage it reports is not the repository's. Run it on every change, and a
+full run occasionally when the number itself is wanted. `--mutation-level Basic`
+generates fewer mutants than the default `Standard`; `--concurrency` trades wall
+time for cores and is the worse lever on a long run.
+
 **Two operating rules for these tools, learned the same way.** Mutation testing
 gives each mutant a time budget and marks anything slower as `Timeout`, so a busy
 machine turns real survivors into false timeouts — the result is wrong, not just
@@ -204,6 +242,28 @@ One hazard learned the hard way: a mutation must **compile cleanly**. The first
 attempt at removing the runtime-id separator used `&& false` and was rejected by
 SonarAnalyzer S1125 — a build failure that looks exactly like an uncaught
 mutation if the build output is not read.
+
+**When the fuzzer is built, its corpus should be captured client traffic, not
+synthetic input.** Field evidence from a sibling project: a 300+MB corpus of real
+files has found more bugs there than any other analysis, static or otherwise.
+Real input hits shapes nobody thinks to write, which is a different activity from
+testing a hypothesis.
+
+The equivalent here is the other direction of a trick this repository already
+uses. `winappdriver-responses.json` records what the real server *sends*; the
+fuzz corpus should record what real clients *send us* — request bodies,
+capability dictionaries, element ids, locator values, in the shapes the Appium
+and Selenium clients actually emit. Those are the untrusted-input boundaries, and
+one of them reaches `Process.Start`.
+
+**Corpus size and mutation testing want opposite things, and should not share a
+run.** A corpus earns its size by finding unknown-unknowns. Mutation testing only
+needs inputs that reach the code, and a mutant surviving one representative input
+will survive a thousand. Running a large corpus once per mutant pays exploration
+cost to buy discrimination signal — the sibling project's mutation runs take 60
+to 90 minutes for exactly this reason, with `--since` already in use. The split
+is a coverage-minimized subset for mutation runs and the full corpus on its own
+schedule.
 
 **Fuzzing and benchmarking are scaffolding.** `bench/WindowsDriverCore.Fuzz`
 and `bench/WindowsDriverCore.Benchmarks` reference SharpFuzz, BenchmarkDotNet,
