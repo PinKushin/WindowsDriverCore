@@ -327,6 +327,23 @@ but the **server** sends only `Invalid XPath expression: {expr}`. The client app
 - `element/{id}/rect` is **501**. It is W3C-only; WinAppDriver does not implement it.
 - `element/{id}/clear` on an element with no ValuePattern returns **200**, not an error.
 
+### `SetWindowPos` and `GetWindowRect` disagree by a constant
+
+Measured 2026-08-09 on a Calculator window: setting x to `GetWindowRect`'s
+`Left + 120` produced a reported `Left` **175** greater. A constant 55px offset,
+because `GetWindowRect` reports the frame including the invisible resize border
+while `SetWindowPos` positions something else.
+
+The consequence for tests: **never predict an absolute position from a reading
+taken with a different API.** Move to a known place, move again by a known
+delta, and compare the two readings — identical operations, so the offset
+cancels. Predicting one from the other does not work and produces a failure that
+looks like environmental interference.
+
+This is the same class of mistake as mixing UIA bounding rectangles with
+`GetWindowRect`, which is why `WindowRelativeBounds` takes both of its
+rectangles from UIA.
+
 ### Element geometry uses two different coordinate spaces
 
 Measured on one element, read back to back, 2026-08-08:

@@ -45,6 +45,13 @@ internal static class UiaProperties
     /// <summary>Orientation, which renders as an enumeration name.</summary>
     internal const int Orientation = 30023;
 
+    /// <summary>
+    /// BoundingRectangle, which is rendered from UIA's integer rectangle rather
+    /// than from this property's raw doubles, so it agrees with what
+    /// <c>/location</c> and <c>/size</c> report.
+    /// </summary>
+    internal const int BoundingRectangle = 30001;
+
     private static readonly FrozenDictionary<string, int> ByName =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {

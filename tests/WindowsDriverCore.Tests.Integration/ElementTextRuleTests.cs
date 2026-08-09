@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
@@ -8,6 +9,7 @@ using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
 
@@ -88,13 +90,10 @@ public sealed class ElementTextRuleTests
     [Test]
     public void Text_PrefersAnEmptyValuePattern_OverANonEmptyName()
     {
-        FindResult edits = _finder.FindAll(_window, LocatorKind.ControlType, "Edit");
-        if (edits.ElementIds.Count == 0)
-        {
-            Assert.Ignore("Settings exposes no Edit control; the condition is unavailable.");
-        }
-
-        string searchBox = edits.ElementIds[0];
+        // Wait for content, do not assume it. Settings has a window well before
+        // it has controls, and the gap widens under load.
+        string searchBox = UiSettle.UntilSomethingMatches(
+            _finder, _window, LocatorKind.ControlType, "Edit")[0];
 
         // The premise, asserted rather than assumed. If the search box ever
         // stops having a Name, or starts non-empty, this test stops being an
@@ -115,10 +114,10 @@ public sealed class ElementTextRuleTests
         // The control, in the same window at the same moment. Without it, an
         // implementation that returned "" for everything would pass the test
         // above.
-        FindResult buttons = _finder.FindAll(_window, LocatorKind.ControlType, "Button");
-        buttons.ElementIds.ShouldNotBeEmpty();
+        IReadOnlyList<string> buttons = UiSettle.UntilSomethingMatches(
+            _finder, _window, LocatorKind.ControlType, "Button");
 
-        ElementRead<string> text = _inspector.Text(_window, buttons.ElementIds[0]);
+        ElementRead<string> text = _inspector.Text(_window, buttons[0]);
 
         text.Outcome.ShouldBe(ElementReadOutcome.Read);
         text.Value.ShouldNotBeNullOrEmpty("a titlebar button has a Name and no ValuePattern");

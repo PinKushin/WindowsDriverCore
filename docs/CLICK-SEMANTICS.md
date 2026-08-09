@@ -131,6 +131,67 @@ coordinate click.
 
 ---
 
+## Why pattern-first is a determinism argument, not only a capability one
+
+Owner's direction, 2026-08-09: *route clicks through the UI tree like FlaUI does
+where it can click things off screen and not use the mouse — user interference
+doesn't matter then. But we have to have mouse automation too, if for nothing
+more than backwards compatibility.*
+
+The capability half is already above: patterns reach elements a coordinate
+cannot. The half worth writing down is that **a coordinate click is not
+deterministic on a machine with a human on it**, and the reason is narrower and
+more dangerous than "the mouse might move".
+
+**What is not a risk.** `SendInput` documents that the events in one call are
+*"not interspersed with other keyboard or mouse input events inserted either by
+the user (with the keyboard or mouse) or by calls to keybd_event, mouse_event,
+or other calls to SendInput"*. So a **single call carrying move, button-down and
+button-up cannot be split by the user's hand.** Issuing three separate calls
+gives up that guarantee for nothing. One batch, always.
+
+**What is the risk, and it is not about the cursor at all.** Between reading the
+element's rectangle and issuing the batch, the *coordinate* can stop meaning what
+it meant:
+
+- the window is dragged, by a person or by the application
+- the application re-lays out — a virtualised list scrolls, a panel expands
+- another window is raised over the point
+
+None of these are interrupted by `SendInput`'s serialisation guarantee, because
+nothing about the input stream is wrong. The batch is delivered exactly as
+composed, to whatever is now under that point, and the driver reports success.
+That is the CI failure from the field evidence above wearing a different hat:
+**a click that lands somewhere else is indistinguishable from a click that
+worked**, unless the driver checks.
+
+So the mitigations are about the coordinate, not the pointer:
+
+- read the rectangle **immediately** before the batch, after any scrolling
+- check the point is inside the **target window**, and refuse loudly if not
+- never retry. A retry converts a deterministic wrong answer into a
+  probabilistic right one and destroys the signal.
+
+And the conclusion for the ladder: the pattern path is immune to every item on
+that list, because it names the element rather than a location. **It is the
+correct default for reliability reasons even where a mouse click would also
+work.** The mouse path exists because pattern-less targets exist — see the MAUI
+composite above — and for callers who specifically need real pointer input.
+
+**Consequence for the caller.** Because the two paths differ in kind and not
+just in mechanism, which one ran should be selectable rather than inferred:
+`windows: invoke` for pattern-only, `windows: mouseClick` for real pointer input,
+with W3C *Element Click* defaulting to the ladder. A test asserting that a
+`TapGestureRecognizer` fires, or that a hit-test overlay behaves, genuinely needs
+the mouse and should be able to say so.
+
+**Consequence for this project's own tests.** Any test that depends on a window
+staying where it was put is exposed to the same interference. They should report
+what moved when they fail, so a human-caused failure is recognisable as one
+rather than being filed as a driver defect.
+
+---
+
 ## Known divergences from a real mouse click
 
 Pattern activation is not identical to a mouse click, and the differences should

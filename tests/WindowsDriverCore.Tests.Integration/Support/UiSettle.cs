@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using NUnit.Framework;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Automation.Locators;
 
 namespace WindowsDriverCore.Tests.Integration.Support;
 
@@ -50,6 +52,50 @@ internal static class UiSettle
     private static readonly TimeSpan GiveUpAfter = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// Blocks until a locator matches at least one element.
+    /// </summary>
+    /// <param name="finder">The finder.</param>
+    /// <param name="window">The window to search.</param>
+    /// <param name="kind">What to match on.</param>
+    /// <param name="value">The value to match.</param>
+    /// <returns>The matching element ids.</returns>
+    /// <remarks>
+    /// A freshly launched application has a window before it has content, and
+    /// how long that gap is depends on the machine's load — so a fixture that
+    /// launches and searches in the next statement is asserting on a race. It
+    /// passes on an idle machine and fails when the whole solution's test
+    /// assemblies run at once, which is exactly the shape of failure that gets
+    /// filed as noise.
+    ///
+    /// Settings is the reason this exists: far slower to populate than
+    /// Calculator, and its fixture had no wait at all.
+    /// </remarks>
+    internal static IReadOnlyList<string> UntilSomethingMatches(
+        IElementFinder finder, nint window, LocatorKind kind, string value)
+    {
+        Stopwatch elapsed = Stopwatch.StartNew();
+        FindFailure lastFailure = FindFailure.None;
+
+        while (elapsed.Elapsed < GiveUpAfter)
+        {
+            FindResult found = finder.FindAll(window, kind, value);
+            lastFailure = found.Failure;
+
+            if (found.Failure == FindFailure.None && found.ElementIds.Count > 0)
+            {
+                return found.ElementIds;
+            }
+        }
+
+        Assert.Fail(
+            $"Nothing matched {kind} '{value}' within {GiveUpAfter.TotalSeconds:F0}s " +
+            $"(last failure: {lastFailure}). The application has a window but no content, " +
+            "or the locator is wrong.");
+
+        return [];
+    }
+
+    /// <summary>
     /// Blocks until the element is displayed and two consecutive readings of its
     /// bounds agree.
     /// </summary>
@@ -94,6 +140,8 @@ internal static class UiSettle
         Assert.Fail(
             $"Element {elementId} never settled in {elapsed.Elapsed.TotalSeconds:F1}s " +
             $"across {observations} observations. Last bounds {previous}. " +
-            "The window is still moving, or the element is not being laid out.");
+            "Either the element is not being laid out, or something kept moving the " +
+            "window — including a person using the machine, which is a permanent " +
+            "hazard for tests that drive a real desktop and not a driver defect.");
     }
 }
