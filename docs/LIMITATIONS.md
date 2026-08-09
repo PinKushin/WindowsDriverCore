@@ -193,6 +193,22 @@ FlaUI and the Appium client, and both `Program.cs` files throw
 run. The FlaUI floor comparison, which is the number that would say how much
 headroom is left, does not exist yet.
 
+**Dependency updates are on demand, by decision, until there is a release.**
+No Dependabot or Renovate before the first alpha or beta: a bot opens pull
+requests on every repository it is enabled for, and on unreleased work that is
+noise which trains you to ignore the channel real security news arrives on.
+
+The security half is automatic already and needs no bot — `NuGetAudit=true`,
+`NuGetAuditMode=all`, `NuGetAuditLevel=low`, so a known advisory on any package,
+transitive included, fails the build. Measured 2026-08-09: zero vulnerable
+packages across all eight projects; five outdated, all minor, each a one-line
+edit in `Directory.Packages.props` thanks to central package management.
+
+```bash
+dotnet list WindowsDriverCore.slnx package --vulnerable --include-transitive
+dotnet list WindowsDriverCore.slnx package --outdated
+```
+
 **What does run:** the .NET analyzers, Roslynator and SonarAnalyzer, with
 `TreatWarningsAsErrors`, `AnalysisModeSecurity=All` and `NuGetAudit` at `low`.
 These are not decoration — they failed the build roughly eight times in one
