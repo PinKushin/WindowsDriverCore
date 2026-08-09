@@ -60,9 +60,19 @@ namespace WindowsDriverCore.Tests.Integration;
 /// in the benchmark project, where the transports can be matched.
 /// </para>
 /// </remarks>
+/// <remarks>
+/// <b>Explicit, and not part of a normal run.</b> It measured 0/300 on both
+/// subjects, which means the condition is insensitive — it says nothing either
+/// way about #1079. An experiment that cannot distinguish its hypotheses is not
+/// worth several minutes and several hundred synthesized clicks on every suite
+/// run. It stays here, at a small iteration count, so it can be re-run against a
+/// condition that does discriminate; that condition needs XPath, which is not
+/// implemented.
+/// </remarks>
 [TestFixture]
 [Category("Integration")]
 [Category("Comparison")]
+[Explicit("Measured 0/300 on both drivers: the condition does not discriminate. Run deliberately.")]
 [NonParallelizable]
 public sealed class FindStabilityComparisonTests
 {
@@ -74,7 +84,10 @@ public sealed class FindStabilityComparisonTests
     /// <summary>Clicked repeatedly to keep the tree changing during the search.</summary>
     private const string MutatingElement = "num7Button";
 
-    private const int Iterations = 300;
+    // Was 300. The original run is recorded in docs/LIMITATIONS.md and does not
+    // need repeating: both subjects scored zero, so more iterations buy more
+    // clicks and no more information.
+    private const int Iterations = 10;
     private const int WinAppDriverPort = 4731;
 
     private static void KillCalculator()

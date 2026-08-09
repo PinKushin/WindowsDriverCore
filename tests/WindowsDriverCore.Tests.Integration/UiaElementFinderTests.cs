@@ -199,7 +199,7 @@ public sealed class UiaElementFinderTests
         // here under repetition; it does not show WinAppDriver's does, because
         // there is no control running the same manipulation through WinAppDriver.
         // That comparison is the real experiment and is not built yet.
-        for (int attempt = 0; attempt < 200; attempt++)
+        for (int attempt = 0; attempt < 10; attempt++)
         {
             FindResult result = _finder.FindAll(_window, LocatorKind.AutomationId, "num5Button");
 

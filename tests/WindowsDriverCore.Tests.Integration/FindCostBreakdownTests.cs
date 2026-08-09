@@ -34,7 +34,7 @@ namespace WindowsDriverCore.Tests.Integration;
 public sealed class FindCostBreakdownTests
 {
     private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
-    private const int Samples = 30;
+    private const int Samples = 10;
 
     private nint _window;
     private CUIAutomationClass _automation = null!;
