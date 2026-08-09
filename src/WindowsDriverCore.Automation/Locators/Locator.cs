@@ -15,8 +15,8 @@ public enum LocatorKind
     /// <summary>Match on UIA RuntimeId.</summary>
     RuntimeId,
 
-    /// <summary>Match on UIA LocalizedControlType.</summary>
-    LocalizedControlType,
+    /// <summary>Match on UIA ControlType, named by its programmatic name.</summary>
+    ControlType,
 
     /// <summary>Evaluate an XPath expression over the tree.</summary>
     XPath,
@@ -82,12 +82,18 @@ public static class Locator
             case "id":
                 return Accepted(LocatorKind.RuntimeId, value);
 
-            // NOT ControlType. WinAppDriver matches LocalizedControlType, a
-            // localized display string — "Button", "Edit". Mapping to
-            // UIA_ControlTypePropertyId integers, which the previous
-            // implementation did, matches a different property entirely.
+            // ControlType, by the enum's programmatic name, matched exactly:
+            // "Button" and "ListItem" find elements through WinAppDriver while
+            // "button" and "list item" both answer no such element. An earlier
+            // version of this comment argued for LocalizedControlType and cited
+            // "Button" as the example — the one input where both readings agree,
+            // because a Button's localized type differs only by case.
+            //
+            // The value is passed through unresolved. An unknown name has to
+            // become an empty find rather than a parse failure, and that
+            // decision belongs to the finder.
             case "tag name":
-                return Accepted(LocatorKind.LocalizedControlType, value);
+                return Accepted(LocatorKind.ControlType, value);
 
             case "xpath":
                 return Accepted(LocatorKind.XPath, value);

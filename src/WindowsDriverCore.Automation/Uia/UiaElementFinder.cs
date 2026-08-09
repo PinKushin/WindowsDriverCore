@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
@@ -77,10 +76,20 @@ public sealed class UiaElementFinder : IElementFinder
             // instead. That costs a full descendant walk, which is the price of
             // holding no cache; the alternative is keeping elements between calls,
             // which is precisely the design that produces #857 and #1079.
-            using ComScope<IUIAutomationCondition> condition = new(
-                kind == LocatorKind.RuntimeId
-                    ? _automation.CreateTrueCondition()
-                    : CreateCondition(kind, value));
+            IUIAutomationCondition? built = kind == LocatorKind.RuntimeId
+                ? _automation.CreateTrueCondition()
+                : CreateCondition(kind, value);
+
+            if (built is null)
+            {
+                // A tag name that is not a control type. Not an error: it is a
+                // search that matched nothing, so POST /element answers "no such
+                // element" and POST /elements answers an empty array — both of
+                // which the routes already derive from an empty result.
+                return FindResult.Matched([]);
+            }
+
+            using ComScope<IUIAutomationCondition> condition = new(built);
 
             IUIAutomationElementArray matches = root.FindAll(
                 TreeScope.TreeScope_Descendants,
@@ -99,7 +108,16 @@ public sealed class UiaElementFinder : IElementFinder
         }
     }
 
-    private IUIAutomationCondition CreateCondition(LocatorKind kind, string value) => kind switch
+    /// <summary>
+    /// The UIA condition for a locator, or <see langword="null"/> when the
+    /// locator cannot match anything.
+    /// </summary>
+    /// <remarks>
+    /// Null is reserved for one case: a <c>tag name</c> that is not a control
+    /// type. That is user input rather than a defect, and it has to produce an
+    /// empty find rather than an exception.
+    /// </remarks>
+    private IUIAutomationCondition? CreateCondition(LocatorKind kind, string value) => kind switch
     {
         LocatorKind.AutomationId =>
             _automation.CreatePropertyCondition(UiaPropertyIds.AutomationId, value),
@@ -110,58 +128,18 @@ public sealed class UiaElementFinder : IElementFinder
         LocatorKind.Name =>
             _automation.CreatePropertyCondition(UiaPropertyIds.Name, value),
 
-        LocatorKind.LocalizedControlType =>
-            _automation.CreatePropertyCondition(UiaPropertyIds.LocalizedControlType, value),
+        // ControlType, not LocalizedControlType. The two property ids differ by
+        // one digit and this driver had the wrong one: 30004 is a localized
+        // display string, 30003 is the id whose programmatic name the client
+        // sends. See UiaControlTypes for the measurement that settled it.
+        LocatorKind.ControlType => UiaControlTypes.TryGetId(value, out int controlTypeId)
+            ? _automation.CreatePropertyCondition(UiaPropertyIds.ControlType, controlTypeId)
+            : null,
 
         // XPath and RuntimeId are handled before this point; anything else is a
         // locator kind added without a condition, which is a bug rather than input.
         _ => throw new NotSupportedException($"No UIA condition for locator kind {kind}."),
     };
-
-    /// <summary>
-    /// The element id for an element: its UIA RuntimeId, dot-separated.
-    /// </summary>
-    /// <remarks>
-    /// Dots rather than commas. WinAppDriver's documentation and its live
-    /// responses both use dots (<c>42.19466560.4.73</c>); the previous
-    /// implementation used commas, which round-tripped within itself but did not
-    /// match ids copied from inspect.exe or from a WinAppDriver session.
-    /// </remarks>
-    /// <remarks>
-    /// Written by hand rather than with <c>string.Join</c> over a LINQ projection,
-    /// which allocated a string per integer and then a second one for the join.
-    /// Measured at roughly 80us per element across 47 elements — small in
-    /// absolute terms, but it was most of the 17% of a find spent in managed code,
-    /// and the UIA calls it sits beside are not something this project can make
-    /// faster.
-    /// </remarks>
-    internal static string FormatRuntimeId(int[] runtimeId)
-    {
-        if (runtimeId.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        // Eleven digits covers int.MinValue including its sign, plus one
-        // separator per part. Stack-allocated: a runtime id is a handful of ints,
-        // never an unbounded list.
-        Span<char> buffer = stackalloc char[runtimeId.Length * 12];
-        int written = 0;
-
-        for (int index = 0; index < runtimeId.Length; index++)
-        {
-            if (index > 0)
-            {
-                buffer[written++] = '.';
-            }
-
-            runtimeId[index].TryFormat(
-                buffer[written..], out int partLength, provider: CultureInfo.InvariantCulture);
-            written += partLength;
-        }
-
-        return new string(buffer[..written]);
-    }
 
     private static List<string> ReadRuntimeIds(IUIAutomationElementArray? matches)
     {
@@ -181,21 +159,11 @@ public sealed class UiaElementFinder : IElementFinder
 
             try
             {
-                int[]? runtimeId = element.GetRuntimeId();
-
-                // An element can be found and still have no resolvable identity
-                // when the tree is mutating underneath the query. Skipping it is
-                // deliberate: returning an element the caller cannot address is
-                // what produces the client-side InvalidOperationException that
-                // callers catching NoSuchElementException never catch.
-                if (runtimeId is { Length: > 0 })
+                string? runtimeId = UiaRuntimeId.Read(element);
+                if (runtimeId is not null)
                 {
-                    ids.Add(FormatRuntimeId(runtimeId));
+                    ids.Add(runtimeId);
                 }
-            }
-            catch (COMException)
-            {
-                // Went away mid-enumeration. Same reasoning as above.
             }
             finally
             {

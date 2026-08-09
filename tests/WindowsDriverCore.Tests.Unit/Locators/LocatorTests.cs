@@ -9,9 +9,9 @@ namespace WindowsDriverCore.Tests.Unit.Locators;
 /// W3C specification.
 ///
 /// Two rules here are ones a reasonable reading gets wrong, and the previous
-/// implementation got both wrong: "tag name" matches LocalizedControlType and
-/// not ControlType, and "css selector" is a workaround for a client bug rather
-/// than CSS support.
+/// implementation got both wrong: "tag name" matches ControlType by its
+/// programmatic name and case-sensitively, and "css selector" is a workaround
+/// for a client bug rather than CSS support.
 /// </summary>
 [TestFixture]
 public sealed class LocatorTests
@@ -30,16 +30,24 @@ public sealed class LocatorTests
         result.Value.ShouldBe("whatever");
     }
 
-    [Test]
-    public void TagName_MatchesLocalizedControlType_NotControlType()
+    [TestCase("Button")]
+    [TestCase("ListItem")]
+    public void TagName_MatchesControlType_NotLocalizedControlType(string name)
     {
-        // The distinction the previous implementation lost. LocalizedControlType
-        // is a display string; ControlType is an integer id. Matching the wrong
-        // one does not error, it silently finds nothing or finds the wrong thing.
-        LocatorParseResult result = Locator.Parse("tag name", "Button");
+        // Measured, and the opposite of what this file asserted before: "Button"
+        // and "ListItem" both find elements through WinAppDriver while "button"
+        // and "list item" both 404. It is the ControlType enum's programmatic
+        // name, compared exactly.
+        //
+        // The value is passed through unchanged. Resolving the name to a UIA
+        // control-type id belongs to the finder, because an unknown name has to
+        // become an empty find rather than a parse failure — WinAppDriver answers
+        // "no such element" for FindElementByTagName("InvalidTagName").
+        LocatorParseResult result = Locator.Parse("tag name", name);
 
-        result.Kind.ShouldBe(LocatorKind.LocalizedControlType);
-        result.Value.ShouldBe("Button");
+        result.Rejection.ShouldBe(LocatorRejection.None);
+        result.Kind.ShouldBe(LocatorKind.ControlType);
+        result.Value.ShouldBe(name);
     }
 
     [Test]
