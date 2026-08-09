@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
@@ -62,6 +63,7 @@ public class FindBenchmarks
 {
     private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
+    private CUIAutomationClass _automation = null!;
     private UiaElementFinder _finder = null!;
     private CachingElementResolver _cachingResolver = null!;
     private UiaElementInspector _inspector = null!;
@@ -75,10 +77,10 @@ public class FindBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        CUIAutomationClass automation = new();
-        _finder = new UiaElementFinder(automation);
-        _cachingResolver = new CachingElementResolver(new UiaElementResolver(automation));
-        _inspector = new UiaElementInspector(automation, _cachingResolver);
+        _automation = new CUIAutomationClass();
+        _finder = new UiaElementFinder(_automation);
+        _cachingResolver = new CachingElementResolver(new UiaElementResolver(_automation));
+        _inspector = new UiaElementInspector(_automation, _cachingResolver);
 
         LaunchResult launched = new ApplicationLauncher(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator())
@@ -144,10 +146,92 @@ public class FindBenchmarks
         }
     }
 
-    /// <summary>Finding one element by automation id, through this driver.</summary>
-    [Benchmark(Baseline = true, Description = "ours: find by automation id")]
+    /// <summary>What <c>POST /element</c> does: find the first match.</summary>
+    [Benchmark(Baseline = true, Description = "ours: find first by automation id")]
     public int FindThroughThisDriver() =>
+        _finder.FindFirst(_window, LocatorKind.AutomationId, "num5Button").ElementIds.Count;
+
+    /// <summary>What <c>POST /elements</c> does: find every match.</summary>
+    [Benchmark(Description = "ours: find ALL by automation id")]
+    public int FindAllThroughThisDriver() =>
         _finder.FindAll(_window, LocatorKind.AutomationId, "num5Button").ElementIds.Count;
+
+    /// <summary>
+    /// The same search, but stopping at the first match, in raw COM.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The experiment for why FlaUI's find is faster. <c>POST /element</c> uses
+    /// <c>FindAll</c>, which must enumerate every descendant; FlaUI's
+    /// <c>FindFirstDescendant</c> maps to <c>FindFirst</c>, which can return as
+    /// soon as it matches. The route only ever uses the first result.
+    /// </para>
+    /// <para>
+    /// <b>Note what this is not.</b> The obvious explanation — that reading a
+    /// runtime id per match costs the difference — was measured earlier and is
+    /// wrong: 47 ids cost 0.22 ms against a ~17 ms search, about 1%. That is
+    /// recorded in LIMITATIONS as a wrong theory, and it cannot account for a
+    /// 3.4 ms gap. If the raw FindAll case below lands near our finder, the cost
+    /// is the exhaustive walk and not our layering.
+    /// </para>
+    /// </remarks>
+    [Benchmark(Description = "raw COM: FindFirst by automation id")]
+    public bool FindFirstRaw()
+    {
+        IUIAutomationElement root = _automation.ElementFromHandle(_window);
+        IUIAutomationCondition condition =
+            _automation.CreatePropertyCondition(30011, "num5Button");
+
+        try
+        {
+            IUIAutomationElement? found =
+                root.FindFirst(TreeScope.TreeScope_Descendants, condition);
+
+            if (found is null)
+            {
+                return false;
+            }
+
+            Marshal.ReleaseComObject(found);
+
+            return true;
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(condition);
+            Marshal.ReleaseComObject(root);
+        }
+    }
+
+    /// <summary>
+    /// The exhaustive search in raw COM, with no runtime ids read.
+    /// </summary>
+    /// <remarks>
+    /// The control that separates "FindAll is expensive" from "our layer around
+    /// it is expensive". If this sits near our finder, the walk is the cost.
+    /// </remarks>
+    [Benchmark(Description = "raw COM: FindAll by automation id, no id reads")]
+    public int FindAllRaw()
+    {
+        IUIAutomationElement root = _automation.ElementFromHandle(_window);
+        IUIAutomationCondition condition =
+            _automation.CreatePropertyCondition(30011, "num5Button");
+
+        try
+        {
+            IUIAutomationElementArray matches =
+                root.FindAll(TreeScope.TreeScope_Descendants, condition);
+            int length = matches.Length;
+            Marshal.ReleaseComObject(matches);
+
+            return length;
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(condition);
+            Marshal.ReleaseComObject(root);
+        }
+    }
 
     /// <summary>The same find through FlaUI — the floor.</summary>
     [Benchmark(Description = "FlaUI: find by automation id")]

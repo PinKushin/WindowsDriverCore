@@ -135,6 +135,61 @@ public sealed class UiaElementFinderTests
         result.ElementIds.ShouldBeEmpty();
     }
 
+    [TestCase(LocatorKind.AutomationId, "num5Button")]
+    [TestCase(LocatorKind.ControlType, "Button")]
+    [TestCase(LocatorKind.ControlType, "Text")]
+    public void FindFirst_AgreesWithTheFirstResultOfFindAll(LocatorKind kind, string value)
+    {
+        // The claim that makes FindFirst safe to use for POST /element: UIA
+        // returns matches in tree order for both calls, so "first" means the
+        // same thing. That is a statement about UIA, not about this code, so it
+        // is asserted against a real tree rather than assumed.
+        //
+        // ControlType cases matter more than the automation id: with one match
+        // the two cannot disagree, so a single-match locator is an input where
+        // correct and broken predict the same answer. Buttons and Texts have
+        // many.
+        FindResult all = _finder.FindAll(_window, kind, value);
+        FindResult first = _finder.FindFirst(_window, kind, value);
+
+        all.Failure.ShouldBe(FindFailure.None);
+        first.Failure.ShouldBe(FindFailure.None);
+        all.ElementIds.ShouldNotBeEmpty();
+
+        first.ElementIds.Count.ShouldBe(1, "FindFirst returns at most one");
+        first.ElementIds[0].ShouldBe(
+            all.ElementIds[0],
+            $"{kind} '{value}' matched {all.ElementIds.Count} elements and the two " +
+            "calls disagree about which is first");
+    }
+
+    [Test]
+    public void FindFirst_WithNoMatch_IsEmpty_NotAFailure()
+    {
+        FindResult result = _finder.FindFirst(_window, LocatorKind.AutomationId, "NoSuchThing");
+
+        result.Failure.ShouldBe(FindFailure.None);
+        result.ElementIds.ShouldBeEmpty();
+    }
+
+    [Test]
+    public void FindFirst_ByRuntimeId_StillFindsTheRightElement()
+    {
+        // The one case that cannot stop early. UIA rejects RuntimeId in a
+        // property condition, so a search by id runs a true condition and
+        // compares — stopping at the first match would stop at the first element
+        // in the tree, which is almost never the one asked for.
+        FindResult found = _finder.FindAll(_window, LocatorKind.AutomationId, "num7Button");
+        found.ElementIds.ShouldNotBeEmpty();
+
+        string wanted = found.ElementIds[0];
+
+        FindResult byId = _finder.FindFirst(_window, LocatorKind.RuntimeId, wanted);
+
+        byId.Failure.ShouldBe(FindFailure.None);
+        byId.ElementIds.ShouldBe([wanted]);
+    }
+
     [Test]
     public void FindAll_ByRuntimeId_RoundTripsAnIdThisDriverReturned()
     {

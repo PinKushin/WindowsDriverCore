@@ -67,13 +67,17 @@ public sealed class CachingElementResolverTests : IDisposable
     [OneTimeTearDown]
     public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
 
-    private string Find(string automationId)
-    {
-        FindResult found = _finder.FindAll(_window, LocatorKind.AutomationId, automationId);
-        found.ElementIds.ShouldNotBeEmpty();
-
-        return found.ElementIds[0];
-    }
+    /// <summary>Waits for a control and returns its id.</summary>
+    /// <remarks>
+    /// Waits rather than asserts. A launched application has a window before it
+    /// has a full control tree, and asserting immediately turns that gap into an
+    /// intermittent failure that reads as a driver defect — seen as
+    /// "clearButton must exist" and as an id that would not resolve moments
+    /// after being issued.
+    /// </remarks>
+    private string Find(string automationId) =>
+        UiSettle.UntilSomethingMatches(
+            _finder, _window, LocatorKind.AutomationId, automationId)[0];
 
     [Test]
     public void ASecondResolveOfTheSameElement_AnswersTheSameElement()

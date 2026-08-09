@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
@@ -8,6 +9,7 @@ using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
 
@@ -46,6 +48,16 @@ public sealed class UiaElementResolverTests
         }
 
         _window = launched.Application.WindowHandle;
+
+        // Wait for the tree to exist and stop moving. Without it,
+        // Resolve_RoundTripsEveryIdTheFinderIssued intermittently failed with an
+        // id that would not resolve moments after the finder issued it — the
+        // application was still building its control tree between the two calls.
+        UiSettle.UntilBoundsAreStable(
+            new UiaElementInspector(automation, _resolver),
+            _window,
+            UiSettle.UntilSomethingMatches(
+                _finder, _window, LocatorKind.AutomationId, "num5Button")[0]);
     }
 
     [OneTimeTearDown]
@@ -78,10 +90,10 @@ public sealed class UiaElementResolverTests
         // returned the first descendant would satisfy "not null" for both, and
         // would satisfy "Name is Five" for one of them by luck. It cannot
         // satisfy both rows.
-        FindResult found = _finder.FindAll(_window, LocatorKind.AutomationId, automationId);
-        found.ElementIds.ShouldNotBeEmpty();
+        IReadOnlyList<string> found = UiSettle.UntilSomethingMatches(
+            _finder, _window, LocatorKind.AutomationId, automationId);
 
-        using ElementLookupResult resolved = _resolver.Resolve(_window, found.ElementIds[0]);
+        using ElementLookupResult resolved = _resolver.Resolve(_window, found[0]);
 
         resolved.Outcome.ShouldBe(ElementLookupOutcome.Resolved);
         resolved.Element.ShouldNotBeNull();
@@ -96,10 +108,11 @@ public sealed class UiaElementResolverTests
         // comparison ever drift apart, every element command breaks at once
         // while find keeps working — a failure that would look like a UIA
         // problem rather than a formatting one.
-        FindResult found = _finder.FindAll(_window, LocatorKind.ControlType, "Button");
-        found.ElementIds.Count.ShouldBeGreaterThan(5);
+        IReadOnlyList<string> buttons = UiSettle.UntilSomethingMatches(
+            _finder, _window, LocatorKind.ControlType, "Button");
+        buttons.Count.ShouldBeGreaterThan(5);
 
-        foreach (string elementId in found.ElementIds)
+        foreach (string elementId in buttons)
         {
             using ElementLookupResult resolved = _resolver.Resolve(_window, elementId);
 

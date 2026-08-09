@@ -114,13 +114,17 @@ public sealed class UiaElementInspectorTests
         SetWindowPos(_window, 0, x, y, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate)
             .ShouldBeTrue("the window must actually move or this measures nothing");
 
-    private string Find(string automationId)
-    {
-        FindResult found = _finder.FindAll(_window, LocatorKind.AutomationId, automationId);
-        found.ElementIds.ShouldNotBeEmpty($"{automationId} must exist for this test to mean anything");
-
-        return found.ElementIds[0];
-    }
+    /// <summary>Waits for a control and returns its id.</summary>
+    /// <remarks>
+    /// Waits rather than asserts. A launched application has a window before it
+    /// has a full control tree, and asserting immediately turns that gap into an
+    /// intermittent failure that reads as a driver defect — seen as
+    /// "clearButton must exist" and as an id that would not resolve moments
+    /// after being issued.
+    /// </remarks>
+    private string Find(string automationId) =>
+        UiSettle.UntilSomethingMatches(
+            _finder, _window, LocatorKind.AutomationId, automationId)[0];
 
     [TestCase("num5Button", "ControlType.Button")]
     [TestCase("CalculatorResults", "ControlType.Text")]

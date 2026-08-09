@@ -105,8 +105,8 @@ public sealed class LongLivedSessionTests : IDisposable
 
         for (int index = 0; index < Elements; index++)
         {
-            _finder.FindAll(Window, LocatorKind.AutomationId, $"control{index}")
-                .Returns(FindResult.Matched([ElementId(index)]));
+            _finder.FindAll(Window, LocatorKind.AutomationId, $"control{index}").Returns(FindResult.Matched([ElementId(index)]));
+            _finder.FindFirst(Window, LocatorKind.AutomationId, $"control{index}").Returns(FindResult.Matched([ElementId(index)]));
 
             (await Find($"control{index}")).StatusCode.ShouldBe(HttpStatusCode.OK);
         }
@@ -123,8 +123,8 @@ public sealed class LongLivedSessionTests : IDisposable
         // matters. A suite that hammers the same few controls — which is what
         // most page-object suites do — costs a constant, not one record per
         // command.
-        _finder.FindAll(Window, LocatorKind.AutomationId, "num5Button")
-            .Returns(FindResult.Matched([ElementId(5)]));
+        _finder.FindAll(Window, LocatorKind.AutomationId, "num5Button").Returns(FindResult.Matched([ElementId(5)]));
+        _finder.FindFirst(Window, LocatorKind.AutomationId, "num5Button").Returns(FindResult.Matched([ElementId(5)]));
 
         for (int attempt = 0; attempt < 2000; attempt++)
         {
@@ -144,8 +144,8 @@ public sealed class LongLivedSessionTests : IDisposable
         // once the page changed — the wrong error, on the common path.
         IReadOnlyList<string> ids = [.. Enumerable.Range(0, 500).Select(ElementId)];
 
-        _finder.FindAll(Window, LocatorKind.AutomationId, "row")
-            .Returns(FindResult.Matched(ids));
+        _finder.FindAll(Window, LocatorKind.AutomationId, "row").Returns(FindResult.Matched(ids));
+        _finder.FindFirst(Window, LocatorKind.AutomationId, "row").Returns(FindResult.Matched(ids));
 
         HttpResponseMessage response = await _client.PostAsJsonAsync(
             new Uri($"/session/{SessionId}/elements", UriKind.Relative),
@@ -164,8 +164,8 @@ public sealed class LongLivedSessionTests : IDisposable
         // colliding — would fail here and nowhere else.
         for (int index = 0; index < 2000; index++)
         {
-            _finder.FindAll(Window, LocatorKind.AutomationId, $"control{index}")
-                .Returns(FindResult.Matched([ElementId(index)]));
+            _finder.FindAll(Window, LocatorKind.AutomationId, $"control{index}").Returns(FindResult.Matched([ElementId(index)]));
+            _finder.FindFirst(Window, LocatorKind.AutomationId, $"control{index}").Returns(FindResult.Matched([ElementId(index)]));
 
             await Find($"control{index}");
         }
@@ -195,8 +195,8 @@ public sealed class LongLivedSessionTests : IDisposable
         // across many suites must not keep the first suite's ids.
         for (int index = 0; index < 500; index++)
         {
-            _finder.FindAll(Window, LocatorKind.AutomationId, $"control{index}")
-                .Returns(FindResult.Matched([ElementId(index)]));
+            _finder.FindAll(Window, LocatorKind.AutomationId, $"control{index}").Returns(FindResult.Matched([ElementId(index)]));
+            _finder.FindFirst(Window, LocatorKind.AutomationId, $"control{index}").Returns(FindResult.Matched([ElementId(index)]));
 
             await Find($"control{index}");
         }

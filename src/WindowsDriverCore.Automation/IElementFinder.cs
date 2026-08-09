@@ -60,4 +60,25 @@ public interface IElementFinder
     /// <param name="value">The value to match.</param>
     /// <returns>The matching element ids, or why the search could not run.</returns>
     FindResult FindAll(nint searchRoot, LocatorKind kind, string value);
+
+    /// <summary>Finds the first element matching a locator.</summary>
+    /// <param name="searchRoot">The window to search within.</param>
+    /// <param name="kind">What to match on.</param>
+    /// <param name="value">The value to match.</param>
+    /// <returns>At most one element id, or why the search could not run.</returns>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="FindAll"/> because UIA can stop at the first
+    /// match, and <c>POST /element</c> never uses more than one. Measured on
+    /// Calculator: an exhaustive walk is 12.0 ms and a first-match walk is
+    /// 9.8 ms, which is roughly three quarters of the gap to FlaUI.
+    /// </para>
+    /// <para>
+    /// It must agree with <c>FindAll(...).ElementIds[0]</c>. UIA returns matches
+    /// in tree order for both, so "first" means the same thing — but that is a
+    /// claim about UIA rather than about this code, so a test asserts it against
+    /// a real application.
+    /// </para>
+    /// </remarks>
+    FindResult FindFirst(nint searchRoot, LocatorKind kind, string value);
 }
