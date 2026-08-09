@@ -138,6 +138,48 @@ performance argument does not motivate it either.
 
 ---
 
+## Tooling that is configured but does not run
+
+**Stryker.NET 4.16 cannot analyse this solution.** Three ways tried on
+2026-08-09, all failing at project analysis before any mutant is generated:
+
+| Attempt | Result |
+|---|---|
+| `dotnet stryker` with `solution: WindowsDriverCore.slnx` | `No project found` — 4.16 does not read the `.slnx` solution format |
+| `--project` / `--test-project` from the repository root | Same; it rediscovers the `.slnx` from the working directory regardless of configuration |
+| Run from the test project directory, no solution present | `Analyzing 1 test project(s)` then `No project found` — Buildalyzer fails on this project, most likely the .NET 10 SDK or the `net10.0-windows` target |
+
+The debug log adds nothing beyond the warning. `stryker-config.json` is kept
+pointing at the solution so it works the day the tool does.
+
+**This matters less than it looks, because mutation testing here has been
+manual and has been the most productive practice in the project.** Deliberate
+mutations, each confirmed to compile cleanly and to fail the intended test, have
+so far found: a `/location` test that passed with the coordinate subtraction
+removed, a `/text` rule with no test at all, a property test blind to the exact
+bug it was written for, and a click assertion that would have passed against a
+no-op. Stryker would automate the search; it would not have supplied the
+judgement about which survivors matter.
+
+One hazard learned the hard way: a mutation must **compile cleanly**. The first
+attempt at removing the runtime-id separator used `&& false` and was rejected by
+SonarAnalyzer S1125 — a build failure that looks exactly like an uncaught
+mutation if the build output is not read.
+
+**Fuzzing and benchmarking are scaffolding.** `bench/WindowsDriverCore.Fuzz`
+and `bench/WindowsDriverCore.Benchmarks` reference SharpFuzz, BenchmarkDotNet,
+FlaUI and the Appium client, and both `Program.cs` files throw
+`NotImplementedException`. Nothing has been fuzzed and no benchmark has been
+run. The FlaUI floor comparison, which is the number that would say how much
+headroom is left, does not exist yet.
+
+**What does run:** the .NET analyzers, Roslynator and SonarAnalyzer, with
+`TreatWarningsAsErrors`, `AnalysisModeSecurity=All` and `NuGetAudit` at `low`.
+These are not decoration — they failed the build roughly eight times in one
+session, including on test code and on a deliberate mutation.
+
+---
+
 ## Deliberate divergences
 
 **W3C `capabilities.alwaysMatch` is rejected.** WinAppDriver understands only
