@@ -97,7 +97,11 @@ public sealed class ElementLookupResult : IDisposable
     /// <summary>Releases the element.</summary>
     public void Dispose()
     {
-        if (_owned && _element is not null)
+        // IsComObject guards the same case CachingElementResolver does: this
+        // type is public and can legitimately be handed a managed element by a
+        // substituted resolver, and ReleaseComObject throws on anything that is
+        // not a runtime callable wrapper.
+        if (_owned && _element is not null && Marshal.IsComObject(_element))
         {
             Marshal.ReleaseComObject(_element);
         }
