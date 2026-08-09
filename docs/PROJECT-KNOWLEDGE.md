@@ -40,6 +40,29 @@ Every correct answer this project has came from running something: recording rea
 responses, walking a live UIA tree, driving a real app step by step. Every wrong
 one came from reading a summary and reasoning forward.
 
+### The mistake that keeps recurring, in four disguises
+
+Every wrong claim in the table above is the same error underneath: **an
+observation for which the correct and the broken implementation predict the same
+thing.** It is worth naming, because it has now appeared four times in different
+clothes and was not recognised as the same thing until the third.
+
+| Where | The blind observation | What discriminated |
+|---|---|---|
+| `tag name` locator comment | The example `"Button"` — a Button's localized type differs from its programmatic name only by case | `ListItem` against `list item` |
+| `/location` bounds test | Two elements have the *same* offset — which is `0 == 0` when the subtraction is removed | Assert the offset is also **non-zero** |
+| `Format_IsInjective` property test | Two independently generated runtime ids — they never share a digit concatenation, so the region where the hypotheses differ has measure zero | Construct the colliding pair: the same digits partitioned two ways |
+| Cache eviction test | "Is the kept element cached at the end?" — under first-in-first-out it is evicted, re-resolved and re-added, so it usually is | Count how many times the inner resolver was asked for it: one, or many |
+
+Three of the four were **written specifically to catch the bug they missed**, and
+all four passed against a deliberately broken implementation. Randomising the
+input does not help; two of them generated thousands of cases.
+
+**The question to ask before writing the assertion is not "what should be true"
+but "is there an input where correct and broken differ, and does my observation
+see it?"** Sabotage the code and watch the test fail; a test that stays green
+under sabotage is measuring something else, however well its name reads.
+
 **A claim written in this repository is not evidence.** The recordings, the
 measured numbers and `LIMITATIONS.md` were produced by running something.
 Treat everything else as a hypothesis until it has been — `CLAUDE.md` included.
