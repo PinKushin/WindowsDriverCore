@@ -28,6 +28,7 @@ public static class JsonWireRoutes
 
         app.MapSessionRoutes();
         app.MapElementRoutes();
+        app.MapElementPropertyRoutes();
 
         // Anything not matched above. WinAppDriver answers an unrecognised route
         // with status 9 and a message naming the method and path — not with an

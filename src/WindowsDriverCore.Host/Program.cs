@@ -67,6 +67,9 @@ public partial class Program
         builder.Services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<IElementFinder, UiaElementFinder>();
+        builder.Services.AddSingleton<IElementResolver, UiaElementResolver>();
+        builder.Services.AddSingleton<IElementInspector, UiaElementInspector>();
+        builder.Services.AddSingleton<IElementRegistry, ElementRegistry>();
 
         WebApplication app = builder.Build();
 
