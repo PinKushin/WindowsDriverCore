@@ -310,6 +310,71 @@ but the **server** sends only `Invalid XPath expression: {expr}`. The client app
 - `window_handle` returns a hex string with the `0x` prefix and uppercase digits: `"0x01BF112C"`.
 - `element/{id}/name` returns the tag name as `"ControlType.Button"`.
 - `element/{id}/size` serialises **height before width**.
+- `element/{id}/rect` is **501**. It is W3C-only; WinAppDriver does not implement it.
+- `element/{id}/clear` on an element with no ValuePattern returns **200**, not an error.
+
+### Element geometry uses two different coordinate spaces
+
+Measured on one element, read back to back, 2026-08-08:
+
+| Reading | Value |
+|---|---|
+| `/location` and `/location_in_view` | `{x: 203, y: 419}` |
+| `/size` | `{width: 97, height: 35}` |
+| `/attribute/BoundingRectangle` | `Left:257 Top:616 Width:97 Height:35` |
+| `/attribute/ClickablePoint` | `305,633` |
+| `/window/current/position` | `{x: 54, y: 197}` |
+
+`257 − 203 = 54` and `616 − 419 = 197` — exactly the window origin. So
+**`/location` is relative to the session window**, while `BoundingRectangle`,
+`ClickablePoint` and all synthesized input are in **screen** coordinates. `/size`
+is unaffected, being a difference.
+
+This matters for the click ladder: feeding `/location` to `SendInput` is off by
+the window origin, and is invisible on a window at the top-left of the primary
+display. A guard written against the wrong space passes while the click lands
+somewhere else.
+
+The first attempt to explain the disagreement guessed DPI scaling. The ratios did
+not match (`257/203 = 1.27` against `616/419 = 1.47`), and asking the window where
+it was settled it in a single request. Cheaper than the theory.
+
+### `/text` is ValuePattern first, then Selection, then Name
+
+Calculator cannot show this — every element there has a Name and no ValuePattern,
+so "value if available" and "always name" predict the same answer. Settings'
+search box has both, and starts empty:
+
+| Subject | Name | Value | `/text` |
+|---|---|---|---|
+| Settings search box (Edit) | `Search box, Find a setting` | *(empty)* | `""` |
+| …after typing `printers` | unchanged | `printers` | `printers` |
+| Settings minimize button (control) | `Minimize Settings` | no ValuePattern | `Minimize Settings` |
+
+An **empty** value beating a non-empty Name is the decisive part: the rule keys on
+pattern availability, not on whether the string is empty. The button in the same
+window at the same moment is the control that rules out a session-wide or
+window-wide explanation.
+
+The Selection rung — a List returning its selected item's value — comes from
+Microsoft's own `ElementText.GetElementText` (`MinuteLoopingSelector.Text == "00"`),
+not from a measurement here.
+
+Note a divergence between two routes reading the same property: `/text` returns
+`""` for an empty value, while `/attribute/Value.Value` returns `null`.
+
+### `/attribute/{name}` is an open UIA surface, not a fixed list
+
+28 names measured. Strings verbatim; booleans as `"True"`/`"False"`; integers as
+decimal strings; `RuntimeId` dot-separated; `ClickablePoint` as `"305,633"`;
+`BoundingRectangle` as `"Left:257 Top:616 Width:97 Height:35"`; `ControlType` as
+`"ControlType.Button"` and `LocalizedControlType` as `"button"`; pattern
+availability as `Is{Pattern}PatternAvailable`; pattern-qualified names work
+(`SelectionItem.IsSelected`, `Value.Value`, `Value.IsReadOnly`).
+
+An **unset** property and an **unknown** attribute name both return `null` with
+HTTP 200 — indistinguishable to a caller. An **empty** attribute name is 400,
+status 100, `"Attribute command takes exactly one argument namely the attribute name"`.
 
 ### A caution about how these were obtained
 
@@ -334,13 +399,26 @@ prefixing. The recordings are what the server sends.
 | FindElementByClassName | `class name` | ClassName |
 | FindElementById | `id` | RuntimeId |
 | FindElementByName | `name` | Name |
-| FindElementByTagName | `tag name` | **LocalizedControlType, upper camel case** |
+| FindElementByTagName | `tag name` | **ControlType programmatic name, case-sensitive, unprefixed** |
 | FindElementByXPath | `xpath` | Any |
 
 Two traps:
 
-1. `tag name` matches **LocalizedControlType** (a localized string), *not* `UIA_ControlTypePropertyId`
-   integers. The old code mapped to control-type ids — wrong property entirely.
+1. `tag name` matches the **ControlType** enum's programmatic name — `Button`,
+   `ListItem`, `Text` — case-sensitively and *without* the `ControlType.` prefix.
+   Measured 2026-08-08: `Button` 200 / `button` 404, `ListItem` 200 / `list item`
+   404, `ControlType.Button` 404.
+
+   An earlier version of this table said LocalizedControlType, and this file
+   argued for it. **It was wrong, and the reason it survived is instructive:**
+   the example used to justify it was `"Button"`, an input where the two
+   hypotheses predict the same observation, because a Button's localized type
+   differs from its programmatic name only by case. `ListItem` versus
+   `list item` is the input where they differ, and it takes one request to
+   settle. A confidently-worded comment is not a measurement.
+
+   The prefixed form is real, but it belongs to a different route — `/name`
+   returns `ControlType.Button`. Locator unprefixed, tag-name response prefixed.
 2. An unknown tag name **must throw**. The old code fell back to `UIA_CustomControlTypeId`, which
    can silently succeed. `Element.cs:142` (`FindElementError_NoSuchElementByTagName`) and `:156`
    (`…ByTagNameMalformed`) both require an exception. This is part of the 23

@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-08-08T18:52:38.0101792-04:00",
+  "recordedAt": "2026-08-08T21:27:08.0799081-04:00",
   "winAppDriverVersion": "1.2.2009.02003",
   "os": "10.0.26200.0",
   "note": "Raw responses from real WinAppDriver. This is the contract; do not edit by hand.",
@@ -61,14 +61,6 @@
       "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"LANDSCAPE\"}"
     },
     {
-      "name": "window.size",
-      "method": "GET",
-      "path": "/session/{sessionId}/window/size",
-      "requestBody": null,
-      "httpStatus": 200,
-      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"height\":534,\"width\":502}}"
-    },
-    {
       "name": "element.find.byAccessibilityId",
       "method": "POST",
       "path": "/session/{sessionId}/element",
@@ -123,14 +115,6 @@
       "requestBody": null,
       "httpStatus": 200,
       "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"height\":51,\"width\":122}}"
-    },
-    {
-      "name": "element.attribute.AutomationId",
-      "method": "GET",
-      "path": "/session/{sessionId}/element/42.19466560.4.73/attribute/AutomationId",
-      "requestBody": null,
-      "httpStatus": 200,
-      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"num5Button\"}"
     },
     {
       "name": "element.selected",
@@ -483,6 +467,614 @@
       "requestBody": "{\"desiredCapabilities\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\",\"platformName\":\"Windows\",\"deviceName\":\"WindowsPC\"}}",
       "httpStatus": 200,
       "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"app\":\"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App\",\"platformName\":\"Windows\"}}"
+    },
+    {
+      "name": "element.name.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"ControlType.Button\"}"
+    },
+    {
+      "name": "element.name.CalculatorResults",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"ControlType.Text\"}"
+    },
+    {
+      "name": "element.text.Header",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Scientific\"}"
+    },
+    {
+      "name": "element.name.Header",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"ControlType.Text\"}"
+    },
+    {
+      "name": "element.attribute.Name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Five\"}"
+    },
+    {
+      "name": "element.attribute.AutomationId",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/AutomationId",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"num5Button\"}"
+    },
+    {
+      "name": "element.attribute.ClassName",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/ClassName",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Button\"}"
+    },
+    {
+      "name": "element.attribute.FrameworkId",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/FrameworkId",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"XAML\"}"
+    },
+    {
+      "name": "element.attribute.LegacyName",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/LegacyName",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Five\"}"
+    },
+    {
+      "name": "element.attribute.IsEnabled",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsEnabled",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"True\"}"
+    },
+    {
+      "name": "element.attribute.IsKeyboardFocusable",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsKeyboardFocusable",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"True\"}"
+    },
+    {
+      "name": "element.attribute.IsControlElement",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsControlElement",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"True\"}"
+    },
+    {
+      "name": "element.attribute.IsContentElement",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsContentElement",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"True\"}"
+    },
+    {
+      "name": "element.attribute.IsOffscreen",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsOffscreen",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"False\"}"
+    },
+    {
+      "name": "element.attribute.ProcessId",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/ProcessId",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"3155156\"}"
+    },
+    {
+      "name": "element.attribute.RuntimeId",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/RuntimeId",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"42.61409678.4.100\"}"
+    },
+    {
+      "name": "element.attribute.ControlType",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/ControlType",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"ControlType.Button\"}"
+    },
+    {
+      "name": "element.attribute.LocalizedControlType",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/LocalizedControlType",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"button\"}"
+    },
+    {
+      "name": "element.attribute.HelpText",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/HelpText",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.attribute.AcceleratorKey",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/AcceleratorKey",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.attribute.AccessKey",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/AccessKey",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.attribute.Orientation",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Orientation",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"None\"}"
+    },
+    {
+      "name": "element.attribute.IsInvokePatternAvailable",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsInvokePatternAvailable",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"True\"}"
+    },
+    {
+      "name": "element.attribute.IsSelectionItemPatternAvailable",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsSelectionItemPatternAvailable",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"False\"}"
+    },
+    {
+      "name": "element.attribute.IsValuePatternAvailable",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsValuePatternAvailable",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"False\"}"
+    },
+    {
+      "name": "element.attribute.SelectionItem.IsSelected",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/SelectionItem.IsSelected",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"False\"}"
+    },
+    {
+      "name": "element.attribute.Value.Value",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.Value",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.attribute.Value.IsReadOnly",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.IsReadOnly",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"True\"}"
+    },
+    {
+      "name": "element.attribute.InvalidAttributeName",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/InvalidAttributeName",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.attribute.EMPTY",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/",
+      "requestBody": null,
+      "httpStatus": 400,
+      "responseBody": "{\"status\":100,\"value\":{\"error\":\"invalid argument\",\"message\":\"Attribute command takes exactly one argument namely the attribute name\"}}"
+    },
+    {
+      "name": "element.enabled.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/enabled",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":true}"
+    },
+    {
+      "name": "element.displayed.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/displayed",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":true}"
+    },
+    {
+      "name": "element.selected.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/selected",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":false}"
+    },
+    {
+      "name": "element.location_in_view.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/location_in_view",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"x\":203,\"y\":419}}"
+    },
+    {
+      "name": "element.rect.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/rect",
+      "requestBody": null,
+      "httpStatus": 501,
+      "responseBody": "Command not implemented: GET: /session/{sessionId}/element/42.61409678.4.100/rect"
+    },
+    {
+      "name": "element.click.enabled",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/click",
+      "requestBody": "{}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "find.tagName.button",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"using\":\"tag name\",\"value\":\"button\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "find.tagName.ControlType_Button",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"using\":\"tag name\",\"value\":\"ControlType.Button\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "find.tagName.ListItem",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"using\":\"tag name\",\"value\":\"ListItem\"}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"ELEMENT\":\"42.33490734.4.49\"}}"
+    },
+    {
+      "name": "find.tagName.list_item",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"using\":\"tag name\",\"value\":\"list item\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "find.tagName.ListViewItem",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"using\":\"tag name\",\"value\":\"ListViewItem\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "find.tagName.text",
+      "method": "POST",
+      "path": "/session/{sessionId}/element",
+      "requestBody": "{\"using\":\"tag name\",\"value\":\"text\"}",
+      "httpStatus": 404,
+      "responseBody": "{\"status\":7,\"value\":{\"error\":\"no such element\",\"message\":\"An element could not be located on the page using the given search parameters.\"}}"
+    },
+    {
+      "name": "element.location.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/location",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"x\":203,\"y\":419}}"
+    },
+    {
+      "name": "element.size.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/size",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"height\":35,\"width\":97}}"
+    },
+    {
+      "name": "element.attribute.BoundingRectangle",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/BoundingRectangle",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Left:257 Top:616 Width:97 Height:35\"}"
+    },
+    {
+      "name": "element.attribute.ClickablePoint",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/ClickablePoint",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"305,633\"}"
+    },
+    {
+      "name": "window.position",
+      "method": "GET",
+      "path": "/session/{sessionId}/window/current/position",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"x\":54,\"y\":197}}"
+    },
+    {
+      "name": "window.size",
+      "method": "GET",
+      "path": "/session/{sessionId}/window/current/size",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":{\"height\":534,\"width\":502}}"
+    },
+    {
+      "name": "element.text.num5Button",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Five\"}"
+    },
+    {
+      "name": "element.attribute.num5Button.Name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Five\"}"
+    },
+    {
+      "name": "element.attribute.num5Button.ValueValue",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.Value",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.text.CalculatorResults",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Display is 0\"}"
+    },
+    {
+      "name": "element.attribute.CalculatorResults.Name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Display is 0\"}"
+    },
+    {
+      "name": "element.attribute.CalculatorResults.ValueValue",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.Value",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.text.TogglePaneButton",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Open Navigation\"}"
+    },
+    {
+      "name": "element.attribute.TogglePaneButton.Name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Open Navigation\"}"
+    },
+    {
+      "name": "element.attribute.TogglePaneButton.ValueValue",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.Value",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.text.clearButton",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Clear\"}"
+    },
+    {
+      "name": "element.attribute.clearButton.Name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Clear\"}"
+    },
+    {
+      "name": "element.attribute.clearButton.ValueValue",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.Value",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "element.clear.button",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/clear",
+      "requestBody": "{}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "settings.edit.text",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"\"}"
+    },
+    {
+      "name": "settings.edit.attribute.Name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Search box, Find a setting\"}"
+    },
+    {
+      "name": "settings.edit.attribute.ValueValue",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.Value",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":null}"
+    },
+    {
+      "name": "settings.edit.attribute.IsValuePatternAvailable",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsValuePatternAvailable",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"True\"}"
+    },
+    {
+      "name": "settings.edit.attribute.ControlType",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/ControlType",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"ControlType.Edit\"}"
+    },
+    {
+      "name": "settings.edit.name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"ControlType.Edit\"}"
+    },
+    {
+      "name": "settings.edit.sendKeys",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/value",
+      "requestBody": "{\"value\":[\"printers\"]}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "settings.edit.text.afterTyping",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"printers\"}"
+    },
+    {
+      "name": "settings.edit.attribute.Name.afterTyping",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Search box, Find a setting\"}"
+    },
+    {
+      "name": "settings.edit.attribute.ValueValue.afterTyping",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Value.Value",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"printers\"}"
+    },
+    {
+      "name": "settings.edit.clear",
+      "method": "POST",
+      "path": "/session/{sessionId}/element/{elementId}/clear",
+      "requestBody": "{}",
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0}"
+    },
+    {
+      "name": "settings.edit.text.afterClear",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"\"}"
+    },
+    {
+      "name": "settings.button.text",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/text",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Minimize Settings\"}"
+    },
+    {
+      "name": "settings.button.attribute.Name",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/Name",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"Minimize Settings\"}"
+    },
+    {
+      "name": "settings.button.attribute.IsValuePatternAvailable",
+      "method": "GET",
+      "path": "/session/{sessionId}/element/{elementId}/attribute/IsValuePatternAvailable",
+      "requestBody": null,
+      "httpStatus": 200,
+      "responseBody": "{\"sessionId\":\"{sessionId}\",\"status\":0,\"value\":\"False\"}"
     }
   ]
 }
