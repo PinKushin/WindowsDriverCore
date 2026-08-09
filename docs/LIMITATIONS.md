@@ -243,6 +243,28 @@ attempt at removing the runtime-id separator used `&& false` and was rejected by
 SonarAnalyzer S1125 — a build failure that looks exactly like an uncaught
 mutation if the build output is not read.
 
+**When the fuzzer is built, its corpus should be captured client traffic, not
+synthetic input.** Field evidence from a sibling project: a 300+MB corpus of real
+files has found more bugs there than any other analysis, static or otherwise.
+Real input hits shapes nobody thinks to write, which is a different activity from
+testing a hypothesis.
+
+The equivalent here is the other direction of a trick this repository already
+uses. `winappdriver-responses.json` records what the real server *sends*; the
+fuzz corpus should record what real clients *send us* — request bodies,
+capability dictionaries, element ids, locator values, in the shapes the Appium
+and Selenium clients actually emit. Those are the untrusted-input boundaries, and
+one of them reaches `Process.Start`.
+
+**Corpus size and mutation testing want opposite things, and should not share a
+run.** A corpus earns its size by finding unknown-unknowns. Mutation testing only
+needs inputs that reach the code, and a mutant surviving one representative input
+will survive a thousand. Running a large corpus once per mutant pays exploration
+cost to buy discrimination signal — the sibling project's mutation runs take 60
+to 90 minutes for exactly this reason, with `--since` already in use. The split
+is a coverage-minimized subset for mutation runs and the full corpus on its own
+schedule.
+
 **Fuzzing and benchmarking are scaffolding.** `bench/WindowsDriverCore.Fuzz`
 and `bench/WindowsDriverCore.Benchmarks` reference SharpFuzz, BenchmarkDotNet,
 FlaUI and the Appium client, and both `Program.cs` files throw
