@@ -200,6 +200,23 @@ spent five minutes launching Calculator on repeat.
 Before any run, read the analysis output and confirm which test projects it
 picked rather than trusting the configuration.
 
+**Full mutation runs are long enough to need a diff mode.** A sibling repo of
+comparable size takes 60 to 90 minutes for a full run, which is too long to sit
+in front of and long enough that it competes for a machine somebody is using.
+
+`--since[:<committish>]` mutates only code changed against a baseline, which is
+minutes for a normal edit:
+
+```bash
+dotnet stryker --since:main
+```
+
+It is a per-change gate, not a score: mutants outside the diff are not tested, so
+the percentage it reports is not the repository's. Run it on every change, and a
+full run occasionally when the number itself is wanted. `--mutation-level Basic`
+generates fewer mutants than the default `Standard`; `--concurrency` trades wall
+time for cores and is the worse lever on a long run.
+
 **Two operating rules for these tools, learned the same way.** Mutation testing
 gives each mutant a time budget and marks anything slower as `Timeout`, so a busy
 machine turns real survivors into false timeouts — the result is wrong, not just
