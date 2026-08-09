@@ -76,7 +76,8 @@ public static class SessionRoutes
                     .Select(session => new SessionListEntry(session.Capabilities, session.Id))
                     .ToList())));
 
-        app.MapDelete("/session/{sessionId}", (string sessionId, ISessionStore sessions) =>
+        app.MapDelete("/session/{sessionId}",
+            (string sessionId, ISessionStore sessions, IElementRegistry elements) =>
         {
             // Remove returns the session so teardown does not need a second
             // lookup, which could race another request deleting the same id.
@@ -90,6 +91,12 @@ public static class SessionRoutes
                         $"No active session with ID {sessionId}"),
                     statusCode: WebDriverFault.InvalidSessionId.HttpStatus);
             }
+
+            // The ids this session was handed can never resolve again, so
+            // keeping them would grow for the server's lifetime and would let a
+            // later session with a colliding runtime id read "stale" for an
+            // element it never saw.
+            elements.Forget(sessionId);
 
             // Shutting the application down belongs here and is not implemented
             // yet — the launcher arrives with POST /session. Removing the session

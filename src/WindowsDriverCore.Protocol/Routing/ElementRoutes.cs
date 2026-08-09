@@ -37,7 +37,7 @@ public static class ElementRoutes
         ArgumentNullException.ThrowIfNull(app);
 
         app.MapPost("/session/{sessionId}/element",
-            async (HttpContext context, IElementFinder finder) =>
+            async (HttpContext context, IElementFinder finder, IElementRegistry registry) =>
             {
                 (LocatorParseResult locator, IResult? rejection) = await ReadLocator(context)
                     .ConfigureAwait(false);
@@ -57,16 +57,26 @@ public static class ElementRoutes
                 // A single find with no match is an error; the plural form is
                 // not. Measured: POST /element answers 404 status 7, while
                 // POST /elements answers 200 with an empty array.
-                return found.ElementIds.Count == 0
-                    ? Fault(WebDriverFault.NoSuchElement, NoSuchElementMessage)
-                    : Results.Json(JsonWireResponse.ForSession(
-                        session.Id,
-                        new ElementReference(found.ElementIds[0])));
+                if (found.ElementIds.Count == 0)
+                {
+                    return Fault(WebDriverFault.NoSuchElement, NoSuchElementMessage);
+                }
+
+                // Recording what was handed out is what lets a later command
+                // tell a stale element from an id this server never issued.
+                // Only the id that is actually returned: recording all the
+                // matches would report "stale" for elements the client was
+                // never told about.
+                registry.Record(session.Id, found.ElementIds[0]);
+
+                return Results.Json(JsonWireResponse.ForSession(
+                    session.Id,
+                    new ElementReference(found.ElementIds[0])));
             })
             .RequiresSession();
 
         app.MapPost("/session/{sessionId}/elements",
-            async (HttpContext context, IElementFinder finder) =>
+            async (HttpContext context, IElementFinder finder, IElementRegistry registry) =>
             {
                 (LocatorParseResult locator, IResult? rejection) = await ReadLocator(context)
                     .ConfigureAwait(false);
@@ -81,6 +91,11 @@ public static class ElementRoutes
                 if (found.Failure != FindFailure.None)
                 {
                     return FailureResponse(found.Failure, locator.Value);
+                }
+
+                foreach (string id in found.ElementIds)
+                {
+                    registry.Record(session.Id, id);
                 }
 
                 return Results.Json(JsonWireResponse.ForSession(

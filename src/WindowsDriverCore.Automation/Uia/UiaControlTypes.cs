@@ -90,4 +90,25 @@ internal static class UiaControlTypes
     /// </remarks>
     internal static bool TryGetId(string name, out int controlTypeId) =>
         ByName.TryGetValue(name, out controlTypeId);
+
+    private static readonly FrozenDictionary<int, string> ById =
+        ByName.ToFrozenDictionary(entry => entry.Value, entry => entry.Key);
+
+    /// <summary>The tag name for a control type, as <c>GET /name</c> reports it.</summary>
+    /// <param name="controlTypeId">The UIA control type id.</param>
+    /// <returns><c>ControlType.Button</c>, or <c>ControlType.Custom</c> for anything unrecognised.</returns>
+    /// <remarks>
+    /// Prefixed here and unprefixed in <see cref="TryGetId"/>, which is not a
+    /// slip: the locator takes <c>Button</c> and the tag-name route answers
+    /// <c>ControlType.Button</c>. Both measured.
+    ///
+    /// An unknown id falls back to <c>ControlType.Custom</c> because that is what
+    /// UIA itself uses for an element with no standard type, and because the
+    /// alternative — returning the raw integer — would put a number where every
+    /// client expects a name.
+    /// </remarks>
+    internal static string TagName(int controlTypeId) =>
+        ById.TryGetValue(controlTypeId, out string? name)
+            ? $"ControlType.{name}"
+            : "ControlType.Custom";
 }

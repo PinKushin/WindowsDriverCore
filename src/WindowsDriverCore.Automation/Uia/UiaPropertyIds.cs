@@ -46,4 +46,22 @@ internal static class UiaPropertyIds
 
     /// <summary>Whether the element has keyboard focus.</summary>
     internal const int HasKeyboardFocus = 30026;
+
+    /// <summary>Whether the element exposes the SelectionItem pattern.</summary>
+    internal const int IsSelectionItemPatternAvailable = 30036;
+
+    /// <summary>Whether the element exposes the Selection pattern.</summary>
+    internal const int IsSelectionPatternAvailable = 30037;
+
+    /// <summary>Whether the element exposes the Value pattern.</summary>
+    internal const int IsValuePatternAvailable = 30043;
+
+    /// <summary>ValuePattern's value, as a string.</summary>
+    internal const int ValueValue = 30045;
+
+    /// <summary>SelectionPattern's selected children, as an element array.</summary>
+    internal const int SelectionSelection = 30059;
+
+    /// <summary>Whether a SelectionItem is selected.</summary>
+    internal const int SelectionItemIsSelected = 30079;
 }

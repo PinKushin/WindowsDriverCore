@@ -11,6 +11,32 @@ namespace WindowsDriverCore.Protocol.Responses;
 public sealed record ElementReference(
     [property: JsonPropertyName("ELEMENT")] string Element);
 
+/// <summary>The <c>value</c> of <c>GET /element/{id}/location</c>.</summary>
+/// <param name="X">Left edge, <b>relative to the window</b>, not the screen.</param>
+/// <param name="Y">Top edge, relative to the window.</param>
+/// <remarks>
+/// Measured: an element at screen <c>Left:257 Top:616</c> in a window at
+/// <c>{54, 197}</c> reports <c>{x:203, y:419}</c>. Carries no size, which is why
+/// it is a separate record from <see cref="ElementSize"/> rather than a
+/// projection of one rectangle type.
+/// </remarks>
+public sealed record ElementLocation(
+    [property: JsonPropertyName("x")] int X,
+    [property: JsonPropertyName("y")] int Y);
+
+/// <summary>The <c>value</c> of <c>GET /element/{id}/size</c>.</summary>
+/// <param name="Height">Height.</param>
+/// <param name="Width">Width.</param>
+/// <remarks>
+/// <b>Height before width</b>, which is the declaration order here and therefore
+/// the serialisation order. Measured: WinAppDriver emits
+/// <c>{"height":35,"width":97}</c>. Reversing these two lines changes the wire
+/// format, so they are not alphabetical by accident.
+/// </remarks>
+public sealed record ElementSize(
+    [property: JsonPropertyName("height")] int Height,
+    [property: JsonPropertyName("width")] int Width);
+
 /// <summary>A response to a session-scoped command that returns a value.</summary>
 /// <typeparam name="T">The value type.</typeparam>
 /// <param name="SessionId">The session the command ran against.</param>
