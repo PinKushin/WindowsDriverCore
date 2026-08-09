@@ -254,8 +254,8 @@ public sealed class ElementPropertyRouteTests : IDisposable
         // The destructive behaviour, end to end. Measured against WinAppDriver:
         // the first touch of a dead element answers 400/10 and every touch after
         // it answers 404/7, against the same id.
-        _finder.FindAll(Window, LocatorKind.AutomationId, "num5Button")
-            .Returns(FindResult.Matched([ElementId]));
+        _finder.FindAll(Window, LocatorKind.AutomationId, "num5Button").Returns(FindResult.Matched([ElementId]));
+        _finder.FindFirst(Window, LocatorKind.AutomationId, "num5Button").Returns(FindResult.Matched([ElementId]));
 
         await _client.PostAsJsonAsync(
             new Uri($"/session/{SessionId}/element", UriKind.Relative),

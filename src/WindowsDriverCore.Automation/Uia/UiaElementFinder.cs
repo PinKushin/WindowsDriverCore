@@ -43,7 +43,23 @@ public sealed class UiaElementFinder : IElementFinder
     }
 
     /// <inheritdoc />
-    public FindResult FindAll(nint searchRoot, LocatorKind kind, string value)
+    public FindResult FindAll(nint searchRoot, LocatorKind kind, string value) =>
+        Find(searchRoot, kind, value, exhaustive: true);
+
+    /// <inheritdoc />
+    public FindResult FindFirst(nint searchRoot, LocatorKind kind, string value) =>
+        Find(searchRoot, kind, value, exhaustive: false);
+
+    /// <summary>
+    /// One search, stopping at the first match or enumerating everything.
+    /// </summary>
+    /// <remarks>
+    /// The two differ only in the UIA call. Everything around it — the XPath
+    /// refusal, the window failure, the control-type lookup, the runtime-id
+    /// filter — is identical, and duplicating it is how the singular and plural
+    /// paths of WinAppDriver's own XPath drifted apart into issue #1079.
+    /// </remarks>
+    private FindResult Find(nint searchRoot, LocatorKind kind, string value, bool exhaustive)
     {
         ArgumentNullException.ThrowIfNull(value);
 
@@ -96,11 +112,15 @@ public sealed class UiaElementFinder : IElementFinder
 
             using ComScope<IUIAutomationCondition> condition = new(built);
 
-            IUIAutomationElementArray matches = root.FindAll(
-                TreeScope.TreeScope_Descendants,
-                condition.Value);
+            // A search by element id has to enumerate whatever the condition
+            // matched and compare, because UIA rejects RuntimeId in a property
+            // condition — so stopping at the first match would stop at the wrong
+            // element.
+            bool mustEnumerate = exhaustive || kind == LocatorKind.RuntimeId;
 
-            IReadOnlyList<string> ids = ReadRuntimeIds(matches);
+            IReadOnlyList<string> ids = mustEnumerate
+                ? ReadRuntimeIds(root.FindAll(TreeScope.TreeScope_Descendants, condition.Value))
+                : ReadFirstRuntimeId(root.FindFirst(TreeScope.TreeScope_Descendants, condition.Value));
 
             return FindResult.Matched(
                 kind == LocatorKind.RuntimeId
@@ -145,6 +165,25 @@ public sealed class UiaElementFinder : IElementFinder
         // locator kind added without a condition, which is a bug rather than input.
         _ => throw new NotSupportedException($"No UIA condition for locator kind {kind}."),
     };
+
+    private static List<string> ReadFirstRuntimeId(IUIAutomationElement? match)
+    {
+        if (match is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            string? runtimeId = UiaRuntimeId.Read(match);
+
+            return runtimeId is null ? [] : [runtimeId];
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(match);
+        }
+    }
 
     private static List<string> ReadRuntimeIds(IUIAutomationElementArray? matches)
     {

@@ -104,7 +104,28 @@ said find should come out roughly equal because both are dominated by the same
 cross-process tree walk. FlaUI is consistently faster, and the ratio is stable
 across runs, so it is not noise.
 
-**A candidate cause, not yet tested:** `POST /element` calls `FindAll` and then
+**TESTED, and it was most of the gap.** `POST /element` now calls `FindFirst`.
+The decomposition, in-process, same HWND:
+
+| | before | after |
+|---|---|---|
+| ours, singular find | 11.9 ms | **10.4 ms** |
+| raw COM `FindAll`, no id reads | 12.0 ms | 12.3 ms |
+| raw COM `FindFirst` | 9.8 ms | 10.2 ms |
+| FlaUI | 9.0 ms | 9.3 ms |
+
+Two things fall out. **Our layer costs about 2%** — the finder is within noise of
+raw `FindFirst`, so there is nothing to optimise in the wrapper. And **the
+remaining ~10% is inside the UIA call itself**, since raw `FindFirst` is still
+slower than FlaUI's `FindFirstDescendant`. That is not our code, and the next
+hypothesis is that FlaUI searches a narrower tree view or uses a cache request.
+Untested.
+
+`FindAll` stays for `POST /elements`, which cannot stop early, and for search by
+element id, which must enumerate and compare because UIA rejects RuntimeId in a
+property condition.
+
+**The superseded candidate, kept because it was wrong in an instructive way:** `POST /element` calls `FindAll` and then
 reads `GetRuntimeId` for every match, when the route uses only the first.
 FlaUI's `FindFirstDescendant` stops at the first hit. On a locator matching one
 element the two should be close, so this predicts the gap widens with match
