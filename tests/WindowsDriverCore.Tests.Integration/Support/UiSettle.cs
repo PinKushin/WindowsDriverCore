@@ -1,3 +1,5 @@
+using System;
+using System.Diagnostics;
 using NUnit.Framework;
 using WindowsDriverCore.Automation;
 
@@ -29,7 +31,23 @@ namespace WindowsDriverCore.Tests.Integration.Support;
 /// </remarks>
 internal static class UiSettle
 {
-    private const int MaxObservations = 500;
+    /// <summary>
+    /// How long to keep observing before giving up.
+    /// </summary>
+    /// <remarks>
+    /// <b>A time bound, not a count.</b> It was 500 observations, which is a
+    /// bound on work for something bounded by time: a cold application laying
+    /// itself out. 500 tight UIA reads is roughly a quarter of a second, and a
+    /// packaged application starting from a cold page cache can take longer than
+    /// that to lay out its first element — so the helper written to remove a
+    /// flake could produce one, on the first run after a build and never on a
+    /// warm re-run.
+    ///
+    /// This is still not a sleep and still not "usually long enough". The loop
+    /// synchronises on the observation; the deadline exists only so a hang fails
+    /// with a diagnosis instead of running forever.
+    /// </remarks>
+    private static readonly TimeSpan GiveUpAfter = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Blocks until the element is displayed and two consecutive readings of its
@@ -43,9 +61,13 @@ internal static class UiSettle
     {
         ElementBounds previous = default;
         bool havePrevious = false;
+        int observations = 0;
+        Stopwatch elapsed = Stopwatch.StartNew();
 
-        for (int observation = 0; observation < MaxObservations; observation++)
+        while (elapsed.Elapsed < GiveUpAfter)
         {
+            observations++;
+
             ElementRead<bool> displayed = inspector.IsDisplayed(window, elementId);
             ElementRead<ElementBounds> bounds = inspector.ScreenBounds(window, elementId);
 
@@ -70,7 +92,8 @@ internal static class UiSettle
         }
 
         Assert.Fail(
-            $"Element {elementId} never settled: last bounds {previous}. " +
+            $"Element {elementId} never settled in {elapsed.Elapsed.TotalSeconds:F1}s " +
+            $"across {observations} observations. Last bounds {previous}. " +
             "The window is still moving, or the element is not being laid out.");
     }
 }

@@ -199,6 +199,22 @@ while WinAppDriver ran over HTTP and re-clicked through its own element lookup
 each iteration. It is a signal worth chasing in the benchmark project, not a
 benchmark result.
 
+**One integration failure on 2026-08-09 was never identified.** A full-solution
+run reported 1 failed of 82; the run had no trx logger, so the test name was
+lost, and it did not recur in seven subsequent runs.
+
+The most likely cause, fixed on the strength of the reasoning rather than a
+reproduction: `UiSettle` bounded its wait at 500 *observations* rather than by
+time. That is a bound on work for something bounded by time — a cold application
+laying itself out — and 500 tight UIA reads is roughly a quarter of a second.
+It fits every observation: a `OneTimeSetUp` failure counted as one test, on the
+first run after a build, never on a warm re-run. It is now a 30-second deadline,
+and the failure message reports elapsed time and observation count so a
+recurrence is diagnosable rather than anonymous.
+
+**Not claimed as fixed.** The cause is plausible and unconfirmed. Run the suite
+with `--logger trx` so the next occurrence names itself.
+
 **Splash-screen handling is partial.** The window search prefers a titled window,
 which avoids the common case WinAppDriver is documented as failing. A splash
 screen *with* a title still wins.
