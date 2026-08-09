@@ -173,17 +173,35 @@ public sealed class ElementAttributeTests
     {
         // The numbers depend on where the window is, so the check is against
         // this driver's own ScreenBounds rather than against a recorded literal.
-        // That also makes it a cross-check: two paths to the same rectangle,
-        // one through the attribute renderer and one through the bounds reader.
+        // That also makes it a cross-check: two paths to the same rectangle, one
+        // through the attribute renderer and one through the bounds reader.
+        //
+        // Both now read UIA's integer rectangle through the same function, so
+        // the ONLY way they can disagree is that the rectangle changed between
+        // the two calls. That is what was happening: Top 615 against 616, Width
+        // 96 against 97 — a window still settling after launch, reported
+        // faithfully at two different moments.
+        //
+        // Settling once in OneTimeSetUp is not enough, because other tests in
+        // the run move windows around and a freshly placed window keeps adjusting
+        // for a while afterwards. Wait immediately before measuring.
+        UiSettle.UntilBoundsAreStable(_inspector, _window, _five);
+
+        string? rendered = Attribute("BoundingRectangle");
         ElementBounds bounds = _inspector.ScreenBounds(_window, _five).Value;
 
-        Attribute("BoundingRectangle").ShouldBe(
-            $"Left:{bounds.X} Top:{bounds.Y} Width:{bounds.Width} Height:{bounds.Height}");
+        rendered.ShouldBe(
+            $"Left:{bounds.X} Top:{bounds.Y} Width:{bounds.Width} Height:{bounds.Height}",
+            "both readings come from the same function, so a difference means the " +
+            "window moved between them rather than that the renderer is wrong");
     }
 
     [Test]
     public void ClickablePoint_IsCommaSeparated_AndSitsInsideTheElement()
     {
+        // Same reason as above: two readings of a live rectangle.
+        UiSettle.UntilBoundsAreStable(_inspector, _window, _five);
+
         // Comma, not the dots RuntimeId uses — two integer-ish properties with
         // two different separators, and getting them the same way round is the
         // kind of thing only an assertion catches.

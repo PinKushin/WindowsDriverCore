@@ -231,6 +231,23 @@ Fixed by rendering that one attribute from the same source `/location` and
 `round(right) - round(left)` and `round(width)` are not the same number, so
 agreement needs one source rather than matching arithmetic.
 
+**That was half of it. The rest was the test.** With both routes on the same
+function the failure recurred with the same shape — `Top 615` against `616`,
+`Width 96` against `97` — which is impossible unless the rectangle changed
+between the two calls. It did: the window was still settling. A freshly placed
+window keeps adjusting by a pixel or two for a while, and other tests in the run
+move windows about, so settling once in `OneTimeSetUp` does not cover a test
+that measures later.
+
+The repository owner saw the same thing from the outside: *"when you try to move
+the calculator and in some of the tests all I see is a blue block"* — a window
+that has been moved before it has painted. Both readings were faithful; they
+were taken at two different moments.
+
+Both geometry tests now settle immediately before measuring. Five consecutive
+clean whole-solution runs after the change, against roughly one failure in two
+before it.
+
 **Two earlier candidates, both wrong, both worth keeping.** A count-based rather
 than time-based wait in `UiSettle`, and:
 
