@@ -8,11 +8,15 @@
     encoded here rather than retyped each time. Three of them were learned the
     hard way on 2026-08-10.
 
-    RESETTING THE ALARM STORE IS NOT TIDINESS. The suite creates alarms
-    (LongTapTest, PenBarrelButtonTest) faster than it deletes them. Roughly 162
-    accumulated across one day, Alarms & Clock hit its cap, and the cap disables
-    ONLY "Add new alarm" - measured, with its siblings and the whole command bar
-    still enabled. Nine tests need that button, and they are exactly the nine
+    RESETTING THE ALARM STORE IS NOT TIDINESS, AND IT IS A WORKAROUND FOR OUR
+    OWN GAP. The suite's cleanup works: WinAppDriver runs the whole suite from a
+    fresh store and leaves exactly the one default alarm. Under our driver ~162
+    accumulate, because DeletePreviouslyCreatedAlarmEntry calls FindElementByXPath
+    (status 19, unimplemented) and Mouse.ContextClick - /moveto then /click
+    (status 9, command not recognized) - inside a catch { break }, so every
+    failure is silent. Once XPath and the mouse routes land, delete this reset.
+    With that many alarms the app disables ONLY "Add new alarm" - measured, with
+    its siblings and the whole command bar still enabled. Nine tests need that button, and they are exactly the nine
     that separated a 133 run from every 124 run afterwards. A run without this
     reset does not measure the driver; it measures how much junk the previous
     runs left behind. The alarms live in the UWP settings hive,
