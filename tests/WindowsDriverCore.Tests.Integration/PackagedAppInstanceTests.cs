@@ -102,6 +102,80 @@ public sealed class PackagedAppInstanceTests
     }
 
     [Test]
+    [Ignore("Known defect, not a flaw in the test: the waiter returns the hosted " +
+            "CoreWindow instead of its ApplicationFrameWindow. Three fixes were " +
+            "tried and each regressed element finds; see MainWindowWaiter and " +
+            "docs/LIMITATIONS.md. Ignored rather than weakened, because this is " +
+            "the specification for the fix.")]
+    public void APackagedApplicationsWindow_IsNeverTheHostedCoreWindow()
+    {
+        // Measured 2026-08-10 in the Windows 10 guest, three cold starts of
+        // Alarms & Clock: the session was handed class Windows.UI.Core.CoreWindow
+        // while the real top-level window was an ApplicationFrameWindow. A
+        // CoreWindow is briefly top-level before being reparented into its frame,
+        // so a COLD start can catch it; a warm one cannot, which is why this only
+        // ever showed up as the first test of a run failing with "Currently
+        // selected window has been closed" long afterwards.
+        //
+        // HONEST LIMIT OF THIS TEST ON A FAST DESKTOP, and the reason is NOT the
+        // one first written here. Measured on Windows 11, 2026-08-10: Calculator
+        // is a UWP application hosted in an ApplicationFrameWindow with a
+        // Windows.UI.Core.CoreWindow child, exactly as on Windows 10 —
+        //
+        //   frame  hwnd=0x00070CB6 pid=14284 class=ApplicationFrameWindow
+        //   child               pid=29016 class=Windows.UI.Core.CoreWindow
+        //
+        // so the claim that it is WinUI 3 and owns its window directly is false.
+        // The architecture is the same on both; only the TIMING differs. A fast
+        // machine has reparented the CoreWindow into its frame before the waiter
+        // looks, so it is never enumerated as top-level and the bug cannot be
+        // observed. A slow one — a VM, or a cold start — catches it mid-flight.
+        //
+        // So this test is a race detector, not an architecture check. It can pass
+        // here and still be a real assertion; do not read a local pass as proof
+        // the defect is gone.
+        AppLifetime.KillAll(CalculatorProcessNameFragment);
+
+        ApplicationLauncher launcher = new(
+            new MainWindowWaiter(TimeProvider.System), new WindowLocator());
+
+        LaunchResult launched = launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
+        if (launched.Application is null)
+        {
+            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+        }
+
+        ClassNameOf(launched.Application.WindowHandle).ShouldNotBe(
+            "Windows.UI.Core.CoreWindow",
+            "a CoreWindow is about to be reparented into its frame and later " +
+            "destroyed, so handing one to a client is handing out a window that dies");
+    }
+
+    /// <summary>Reads a window's class name.</summary>
+    /// <param name="window">The window.</param>
+    /// <returns>The class name.</returns>
+    /// <remarks>
+    /// Declared here rather than reused from Platform because that type is
+    /// internal, and widening it so a test can see it would be the test changing
+    /// the production surface.
+    /// </remarks>
+    private static string ClassNameOf(nint window)
+    {
+        char[] buffer = new char[256];
+        int copied = GetClassName(window, buffer, buffer.Length);
+        return copied == 0 ? string.Empty : new string(buffer, 0, copied);
+    }
+
+    // DllImport, not LibraryImport: the source generator emits unsafe code and
+    // would require AllowUnsafeBlocks on this test project. Turning unsafe on
+    // across a whole assembly to read one class name is a worse trade than the
+    // marshalling cost of a call made twice in the suite.
+    [System.Runtime.InteropServices.DllImport(
+        "user32.dll", EntryPoint = "GetClassNameW", CharSet =
+            System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetClassName(nint window, char[] className, int maxCount);
+
+    [Test]
     public void ActivatingAPackagedApplicationTwice_GivesTwoApplications()
     {
         AppLifetime.KillAll(CalculatorProcessNameFragment);

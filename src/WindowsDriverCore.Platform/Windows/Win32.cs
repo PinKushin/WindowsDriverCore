@@ -54,6 +54,17 @@ internal static partial class Win32
     [LibraryImport("user32.dll")]
     internal static partial nint GetWindow(nint hWnd, uint command);
 
+    /// <summary>Walks to a window's root, parent or owner.</summary>
+    /// <remarks>
+    /// Used with <see cref="GA_ROOT"/> to turn a UWP <c>CoreWindow</c> into the
+    /// <c>ApplicationFrameWindow</c> that actually hosts it. The parent link is
+    /// the exact answer for THAT window; searching for a frame by process id
+    /// instead can match a different instance of the same application, which was
+    /// measured doing exactly that.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetAncestor(nint hWnd, uint flags);
+
     /// <summary>Length of a window's title.</summary>
     /// <param name="hWnd">The window.</param>
     /// <returns>The length in characters, excluding the terminator.</returns>
@@ -268,4 +279,7 @@ internal static partial class Win32
 
     /// <summary>GetWindow: fetch the owner window.</summary>
     internal const uint GW_OWNER = 4;
+
+    /// <summary>GetAncestor flag: the root window of the chain.</summary>
+    internal const uint GA_ROOT = 2;
 }
