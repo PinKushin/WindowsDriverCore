@@ -107,6 +107,18 @@ public sealed class MainWindowWaiter
         return 0;
     }
 
+    /// <summary>The process's window right now, without a before-snapshot.</summary>
+    /// <param name="processId">The process.</param>
+    /// <returns>A window handle, or zero.</returns>
+    /// <remarks>
+    /// For re-resolving a session whose window was destroyed. The "a window that
+    /// did not exist before" stage is deliberately skipped: the replacement
+    /// window is not new relative to anything this call knows about, and that
+    /// stage is the loose one that a busy desktop can get wrong.
+    /// </remarks>
+    public static nint FindCurrentWindow(int processId) =>
+        FindWindow(processId, new HashSet<nint>());
+
     private static nint FindWindow(int processId, IReadOnlySet<nint> before)
     {
         nint owned = FindVisibleWindowOwnedByAnyOf([processId]);

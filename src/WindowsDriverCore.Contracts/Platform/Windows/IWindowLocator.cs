@@ -75,6 +75,28 @@ public interface IWindowLocator
     /// types into whatever the user last clicked.
     /// </remarks>
     bool BringToForeground(nint handle);
+
+    /// <summary>The process's current top-level window, or zero.</summary>
+    /// <param name="processId">The process that owns the application.</param>
+    /// <returns>A window handle, or zero when the process has none right now.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A session's window is not fixed for the session's life.</b> Measured
+    /// 2026-08-10: a packaged application's <c>Windows.UI.Core.CoreWindow</c> is
+    /// top-level and its own root at launch, and is later DESTROYED — not
+    /// reparented — when the application is rehosted into its
+    /// <c>ApplicationFrameWindow</c>. A session holding the original handle then
+    /// answers "Currently selected window has been closed" to everything, which
+    /// is what killed every <c>ActionsError_*</c> test at <c>TestInit</c>.
+    /// </para>
+    /// <para>
+    /// Fixing it at attach time is impossible, because at that instant the frame
+    /// does not exist yet — three attempts to prefer or wait for it all timed out
+    /// and handed back window 0. So the session re-resolves instead, and this is
+    /// how it asks.
+    /// </para>
+    /// </remarks>
+    nint FindMainWindow(int processId);
 }
 
 /// <summary>A window's position and size, in screen pixels.</summary>
