@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-net/master/src/Stryker.Core/Stryker.Core/Schemas/stryker-config-schema.json",
+  "stryker-config": {
+    "project": "WindowsDriverCore.Automation.csproj",
+    "target-framework": "net10.0-windows",
+    "reporters": ["html", "progress", "cleartext"],
+    "thresholds": { "high": 80, "low": 60, "break": 0 },
+    "concurrency": 1,
+    "additional-timeout": 60000,
+    "mutate": [
+      "Uia/UiaElementFinder.cs",
+      "Uia/UiaElementResolver.cs",
+      "Uia/UiaElementInspector.cs",
+      "Uia/UiaElementInteractor.cs",
+      "Uia/CachingElementResolver.cs",
+      "Uia/UiaRuntimeId.cs"
+    ]
+  }
+}
