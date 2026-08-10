@@ -37,10 +37,19 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class PackagedAppInstanceTests
 {
+    /// <summary>Matches Windows 10's "Calculator" and Windows 11's "CalculatorApp".</summary>
+    /// <remarks>
+    /// This fixture measures how many instances an activation produces, so it
+    /// must start from a machine with none running. On Windows 10 the exact name
+    /// "CalculatorApp" matches nothing, and the fixture would have counted
+    /// instances left over from earlier tests as if they were its own.
+    /// </remarks>
+    private const string CalculatorProcessNameFragment = "Calculator";
+
     private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
     [OneTimeTearDown]
-    public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
+    public void CloseCalculator() => AppLifetime.KillAll(CalculatorProcessNameFragment);
 
     [Test]
     public void APackagedApplicationsWindowIsFound_EvenWhenItIsNotNew()
@@ -62,7 +71,7 @@ public sealed class PackagedAppInstanceTests
         // The condition here reproduces it without depending on either
         // behaviour: launch, then ask the waiter to find that same window with a
         // snapshot taken AFTER it exists.
-        AppLifetime.KillAll("CalculatorApp");
+        AppLifetime.KillAll(CalculatorProcessNameFragment);
 
         MainWindowWaiter waiter = new(TimeProvider.System);
         ApplicationLauncher launcher = new(waiter, new WindowLocator());
@@ -95,7 +104,7 @@ public sealed class PackagedAppInstanceTests
     [Test]
     public void ActivatingAPackagedApplicationTwice_GivesTwoApplications()
     {
-        AppLifetime.KillAll("CalculatorApp");
+        AppLifetime.KillAll(CalculatorProcessNameFragment);
 
         ApplicationLauncher launcher = new(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator());
