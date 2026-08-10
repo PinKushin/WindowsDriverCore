@@ -37,6 +37,40 @@ configuration-shaped and did nothing, and only a test-count check revealed it.
 verification. 87 is Automation via the unit tests; 106 is Protocol. Anything near
 294 means the scoping failed and the desktop is about to be driven.
 
+## First results, 2026-08-09
+
+| Project | mutants | before | after |
+|---|---|---|---|
+| Protocol | 302 | 63.68% | **67.95%** |
+| Automation | 635 | 17.96% | **41.69%** |
+
+**Neither number is a quality score, and Automation's especially is not.** These
+runs use the headless suites only. `UiaElementFinder`, `UiaElementInspector`,
+`UiaElementInteractor` and `UiaElementResolver` are covered by the integration
+suite, which is excluded, so their mutants report `NoCoverage` and drag the
+figure down without meaning anything about them. Read the per-file survivors,
+not the headline.
+
+Two real gaps came out of the first run and are now closed:
+
+- **The nested-find routes had no protocol tests.** 18 `NoCoverage` mutants in
+  `ElementRoutes.cs`. They had integration tests, which do not run here, so the
+  route behaviour — scope, the empty-array asymmetry, registry recording — was
+  unguarded at the protocol level.
+- **`UiaProperties` had no test at all**: 157 survived, 0 killed.
+
+**What was deliberately not done about the property table.** The obvious fix is
+to assert all ~150 ids. That is a change-detector test — it fails whenever the
+table is edited and detects no defect, because the assertion is a copy of the
+thing it checks. Instead the tests assert what a wrong id actually violates:
+distinctness (two names on one id means one silently reads the wrong property),
+range (a transposed digit lands outside it — Microsoft's own tables contain two
+such typos), the twenty ids measured end to end against real WinAppDriver, and
+case sensitivity.
+
+That killed most of the 157 anyway, which is the point: the property worth
+asserting was cheaper *and* stronger than the enumeration.
+
 ## Path globs are project-relative
 
 `mutate` patterns resolve against the **mutated project's** directory, not the
