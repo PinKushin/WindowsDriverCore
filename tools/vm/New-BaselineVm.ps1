@@ -151,8 +151,23 @@ Set-VM -VM $vm -ProcessorCount $ProcessorCount -AutomaticCheckpointsEnabled $fal
 Set-VMMemory -VM $vm -DynamicMemoryEnabled $true `
     -MinimumBytes 2GB -StartupBytes $StartupMemory -MaximumBytes $MaximumMemory
 
-# Windows 10 boots fine under Secure Boot with the Microsoft template.
-Set-VMFirmware -VM $vm -EnableSecureBoot On -SecureBootTemplate MicrosoftWindows
+# SECURE BOOT OFF, and it has to be. Measured 2026-08-10: with the
+# MicrosoftWindows template the firmware reported
+#
+#     1. SCSI DVD (0,1)   The boot loader failed.
+#
+# "failed", not "not found" — the firmware reached the ISO and refused its
+# loader. The ISO is fine: bootx64.efi, cdboot.efi and bootmgr.efi are all
+# present and it is a stock Media Creation Tool image.
+#
+# The cause is the BlackLotus revocations (KB5025885). Windows 10 22H2 media
+# carries the pre-revocation bootmgr, the updated DBX blocklists it, and a
+# Windows 11 host enforces that. So EVERY Windows 10 installer fails Secure Boot
+# on a current host — this is not something a different ISO fixes.
+#
+# Acceptable here because the guest is a disposable measurement rig on an
+# internal switch. It would not be acceptable for anything that mattered.
+Set-VMFirmware -VM $vm -EnableSecureBoot Off
 
 Add-VMDvdDrive -VM $vm -Path $IsoPath
 Add-VMDvdDrive -VM $vm -Path $answerIso
@@ -170,9 +185,22 @@ Start-VM -VM $vm
 $credentialPath = Join-Path $vmRoot "credential.txt"
 "tester`n$password" | Set-Content -LiteralPath $credentialPath -Encoding UTF8
 
+Start-Process vmconnect.exe -ArgumentList "localhost", $VMName -ErrorAction SilentlyContinue
+
 Write-Host ""
-Write-Host "Started. The install is unattended and takes roughly 15 minutes."
+Write-Host "  >>> PRESS A KEY IN THE VM WINDOW WHEN IT SAYS 'Press any key to" -ForegroundColor Yellow
+Write-Host "  >>> boot from CD or DVD'. It appears about 10 seconds in and lasts" -ForegroundColor Yellow
+Write-Host "  >>> about 5 seconds. Miss it and the VM falls through to PXE." -ForegroundColor Yellow
+Write-Host ""
+# This cannot be automated from here. Msvm_Keyboard's TypeKey is deprecated: it
+# returns success and does nothing on a current host, measured across 40
+# keypresses that changed the screen not at all. Removing the prompt instead
+# means repacking the ISO with efisys_noprompt.bin, which needs oscdimg from the
+# Windows ADK — not installed, and a large dependency for one keystroke.
+#
+# Everything after this keystroke is unattended.
+Write-Host "That keystroke is the only manual step. The install then runs"
+Write-Host "unattended for roughly 15 minutes."
+Write-Host ""
 Write-Host "Account 'tester', password written to $credentialPath"
-Write-Host ""
-Write-Host "Watch it:      vmconnect.exe localhost '$VMName'"
-Write-Host "When it idles: .\Initialize-BaselineGuest.ps1 -VMName '$VMName'"
+Write-Host "When it idles at the desktop: .\Initialize-BaselineGuest.ps1 -VMName '$VMName'"
