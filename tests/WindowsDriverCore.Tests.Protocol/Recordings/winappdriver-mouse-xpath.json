@@ -1,0 +1,203 @@
+[
+    {
+        "label":  "xpath.matches",
+        "method":  "POST",
+        "path":  "/session/{id}/element",
+        "request":  {
+                        "value":  "//ListItem[starts-with(@Name, \"Good morning\")]",
+                        "using":  "xpath"
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0,\"value\":{\"ELEMENT\":\"42.2362276.4.19\"}}"
+    },
+    {
+        "label":  "xpath.noMatch",
+        "method":  "POST",
+        "path":  "/session/{id}/element",
+        "request":  {
+                        "value":  "//ListItem[starts-with(@Name, \"NoSuchAlarmXYZ\")]",
+                        "using":  "xpath"
+                    },
+        "httpStatus":  404,
+        "response":  ""
+    },
+    {
+        "label":  "xpath.elements",
+        "method":  "POST",
+        "path":  "/session/{id}/elements",
+        "request":  {
+                        "value":  "//ListItem",
+                        "using":  "xpath"
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0,\"value\":[{\"ELEMENT\":\"42.2362276.4.6\"},{\"ELEMENT\":\"42.2362276.4.7\"},{\"ELEMENT\":\"42.2362276.4.8\"},{\"ELEMENT\":\"42.2362276.4.9\"},{\"ELEMENT\":\"42.2362276.4.19\"}]}"
+    },
+    {
+        "label":  "xpath.malformed",
+        "method":  "POST",
+        "path":  "/session/{id}/element",
+        "request":  {
+                        "value":  "//ListItem[",
+                        "using":  "xpath"
+                    },
+        "httpStatus":  500,
+        "response":  ""
+    },
+    {
+        "label":  "xpath.simpleByType",
+        "method":  "POST",
+        "path":  "/session/{id}/element",
+        "request":  {
+                        "value":  "//Button",
+                        "using":  "xpath"
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0,\"value\":{\"ELEMENT\":\"42.1903366.4.1\"}}"
+    },
+    {
+        "label":  "xpath.attrEquals",
+        "method":  "POST",
+        "path":  "/session/{id}/element",
+        "request":  {
+                        "value":  "//Button[@AutomationId=\"AddAlarmButton\"]",
+                        "using":  "xpath"
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0,\"value\":{\"ELEMENT\":\"42.2362276.4.27\"}}"
+    },
+    {
+        "label":  "moveto.element",
+        "method":  "POST",
+        "path":  "/session/{id}/moveto",
+        "request":  {
+                        "element":  "42.2362276.4.27"
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "moveto.elementOffset",
+        "method":  "POST",
+        "path":  "/session/{id}/moveto",
+        "request":  {
+                        "yoffset":  5,
+                        "xoffset":  5,
+                        "element":  "42.2362276.4.27"
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "moveto.offsetOnly",
+        "method":  "POST",
+        "path":  "/session/{id}/moveto",
+        "request":  {
+                        "yoffset":  10,
+                        "xoffset":  10
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "moveto.nullElement",
+        "method":  "POST",
+        "path":  "/session/{id}/moveto",
+        "request":  {
+                        "yoffset":  3,
+                        "xoffset":  3,
+                        "element":  null
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "moveto.badElement",
+        "method":  "POST",
+        "path":  "/session/{id}/moveto",
+        "request":  {
+                        "element":  "99999"
+                    },
+        "httpStatus":  404,
+        "response":  ""
+    },
+    {
+        "label":  "moveto.empty",
+        "method":  "POST",
+        "path":  "/session/{id}/moveto",
+        "request":  {
+
+                    },
+        "httpStatus":  400,
+        "response":  ""
+    },
+    {
+        "label":  "click.default",
+        "method":  "POST",
+        "path":  "/session/{id}/click",
+        "request":  {
+
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "click.left",
+        "method":  "POST",
+        "path":  "/session/{id}/click",
+        "request":  {
+                        "button":  0
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "click.right",
+        "method":  "POST",
+        "path":  "/session/{id}/click",
+        "request":  {
+                        "button":  2
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "click.badButton",
+        "method":  "POST",
+        "path":  "/session/{id}/click",
+        "request":  {
+                        "button":  9
+                    },
+        "httpStatus":  400,
+        "response":  ""
+    },
+    {
+        "label":  "buttondown.default",
+        "method":  "POST",
+        "path":  "/session/{id}/buttondown",
+        "request":  {
+
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "buttonup.default",
+        "method":  "POST",
+        "path":  "/session/{id}/buttonup",
+        "request":  {
+
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    },
+    {
+        "label":  "doubleclick",
+        "method":  "POST",
+        "path":  "/session/{id}/doubleclick",
+        "request":  {
+
+                    },
+        "httpStatus":  200,
+        "response":  "{\"sessionId\":\"ED5E9855-A3F4-4E4F-B052-F0DF5A5CD4CE\",\"status\":0}"
+    }
+]

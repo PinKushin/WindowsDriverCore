@@ -107,6 +107,75 @@ public interface IPointerInput
     /// <param name="y">Screen y, in pixels.</param>
     /// <returns>True if the input was accepted by the system.</returns>
     bool ClickAt(int x, int y);
+
+    /// <summary>Moves the cursor to a screen coordinate.</summary>
+    /// <param name="x">Screen x, in pixels.</param>
+    /// <param name="y">Screen y, in pixels.</param>
+    /// <returns>True if the input was accepted by the system.</returns>
+    /// <remarks>
+    /// The JSON Wire Protocol's <c>/moveto</c> and <c>/click</c> are separate
+    /// commands, and the position that <c>/click</c> acts on is simply wherever
+    /// the cursor now is. So this really moves the pointer rather than recording
+    /// a coordinate for later — no session state, and the same thing a hand
+    /// would do.
+    /// </remarks>
+    bool MoveTo(int x, int y);
+
+    /// <summary>Presses and releases a button at the current position.</summary>
+    /// <param name="button">Which button.</param>
+    /// <returns>True if the input was accepted by the system.</returns>
+    bool Click(PointerButton button);
+
+    /// <summary>Presses a button and holds it, at the current position.</summary>
+    /// <param name="button">Which button.</param>
+    /// <returns>True if the input was accepted by the system.</returns>
+    bool Press(PointerButton button);
+
+    /// <summary>Releases a held button, at the current position.</summary>
+    /// <param name="button">Which button.</param>
+    /// <returns>True if the input was accepted by the system.</returns>
+    bool Release(PointerButton button);
+
+    /// <summary>Reads where the pointer is now.</summary>
+    /// <param name="x">Receives screen x, in pixels.</param>
+    /// <param name="y">Receives screen y, in pixels.</param>
+    /// <returns>True if the position could be read.</returns>
+    /// <remarks>
+    /// On the contract rather than reached for directly, because
+    /// <c>/moveto</c> with offsets and no element means "from where the pointer
+    /// is now", and the protocol layer must not know how a pointer is read.
+    /// </remarks>
+    bool TryGetPosition(out int x, out int y);
+
+    /// <summary>Clicks twice at the current position.</summary>
+    /// <param name="button">Which button.</param>
+    /// <returns>True if the input was accepted by the system.</returns>
+    /// <remarks>
+    /// Both clicks go in one <c>SendInput</c> batch. Two separate calls would let
+    /// the user's own mouse movement land between them, which turns a double
+    /// click into two single clicks — and the whole reason this exists is that
+    /// the application must see the pair.
+    /// </remarks>
+    bool DoubleClick(PointerButton button);
+}
+
+/// <summary>Which pointer button an action applies to.</summary>
+/// <remarks>
+/// The values are the JSON Wire Protocol's, sent as the <c>button</c> field of
+/// <c>/click</c>, <c>/buttondown</c> and <c>/buttonup</c>. They are NOT the
+/// order a person would guess — middle is 1 and right is 2 — so they are named
+/// here rather than passed around as bare integers.
+/// </remarks>
+public enum PointerButton
+{
+    /// <summary>The primary button. The protocol's default when none is sent.</summary>
+    Left = 0,
+
+    /// <summary>The middle button, or wheel press.</summary>
+    Middle = 1,
+
+    /// <summary>The secondary button — what opens a context menu.</summary>
+    Right = 2,
 }
 
 /// <summary>Sends real keyboard input to whatever has focus.</summary>
