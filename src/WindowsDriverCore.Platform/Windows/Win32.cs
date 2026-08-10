@@ -80,6 +80,17 @@ internal static partial class Win32
     internal static partial bool SetWindowPos(
         nint hWnd, nint insertAfter, int x, int y, int width, int height, uint flags);
 
+    /// <summary>Reads the cursor's current screen position.</summary>
+    /// <remarks>
+    /// Needed because the protocol's <c>/moveto</c> with offsets and no element
+    /// means "from where the pointer is now". The driver keeps no cursor
+    /// position of its own — the system's is the only one that cannot go stale
+    /// when the user moves the mouse.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetCursorPos(out Point point);
+
     /// <summary>Shows, hides or maximizes a window.</summary>
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -210,6 +221,14 @@ internal static partial class Win32
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    /// <summary>Win32 <c>POINT</c>.</summary>
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    internal struct Point
+    {
+        public int X;
+        public int Y;
     }
 
     /// <summary>Reads a window's class name.</summary>

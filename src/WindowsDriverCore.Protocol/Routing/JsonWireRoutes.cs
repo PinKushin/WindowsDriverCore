@@ -34,6 +34,7 @@ public static class JsonWireRoutes
         app.MapKeyboardRoutes();
         app.MapElementPropertyRoutes();
         app.MapElementActionRoutes();
+        app.MapMouseRoutes();
 
         // Anything not matched above. WinAppDriver answers an unrecognised route
         // with status 9 and a message naming the method and path — not with an
