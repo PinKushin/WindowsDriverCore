@@ -68,16 +68,6 @@ public sealed class UiaElementFinder : IElementFinder
     {
         ArgumentNullException.ThrowIfNull(value);
 
-        if (kind == LocatorKind.XPath)
-        {
-            // Not implemented. UIA has no XPath; WinAppDriver evaluates its own
-            // over the tree, which is a piece of work in its own right. Reporting
-            // every expression as invalid is wrong for valid ones, but it is
-            // wrong loudly — the alternative, silently matching nothing, would
-            // look like a correct search that found no elements.
-            return FindResult.Failed(FindFailure.XPathLookupError);
-        }
-
         // A nested search roots at the container element; everything else about
         // the search is identical, which is the point — the singular and plural
         // XPath paths of WinAppDriver drifted apart precisely because they were
@@ -111,6 +101,14 @@ public sealed class UiaElementFinder : IElementFinder
         if (root is null)
         {
             return FindResult.Failed(FindFailure.NoSuchWindow);
+        }
+
+        if (kind == LocatorKind.XPath)
+        {
+            // Rooted at whatever the scope resolved to, so a nested XPath find
+            // searches inside the container like every other locator rather than
+            // silently restarting at the window.
+            return EvaluateXPath(root, value);
         }
 
         try
@@ -189,6 +187,48 @@ public sealed class UiaElementFinder : IElementFinder
         // locator kind added without a condition, which is a bug rather than input.
         _ => throw new NotSupportedException($"No UIA condition for locator kind {kind}."),
     };
+
+    /// <summary>Evaluates an XPath expression and returns the matched ids.</summary>
+    /// <param name="root">The subtree to search.</param>
+    /// <param name="expression">The expression.</param>
+    /// <returns>The matched element ids, or an XPath lookup failure.</returns>
+    /// <remarks>
+    /// Runtime ids are read only for the MATCHES. RuntimeId cannot be cached, so
+    /// each one costs a crossing — but the matched set is small where the
+    /// projected tree is not.
+    /// </remarks>
+    private FindResult EvaluateXPath(IUIAutomationElement root, string expression)
+    {
+        UiaXPathEvaluator evaluator = new(_automation);
+
+        if (!evaluator.TrySelect(root, expression, out List<IUIAutomationElement> matched))
+        {
+            return FindResult.Failed(FindFailure.XPathLookupError);
+        }
+
+        List<string> ids = [];
+
+        try
+        {
+            foreach (IUIAutomationElement element in matched)
+            {
+                string? id = UiaRuntimeId.Read(element);
+                if (id is not null)
+                {
+                    ids.Add(id);
+                }
+            }
+        }
+        finally
+        {
+            foreach (IUIAutomationElement element in matched)
+            {
+                Marshal.ReleaseComObject(element);
+            }
+        }
+
+        return FindResult.Matched(ids);
+    }
 
     private static List<string> ReadFirstRuntimeId(IUIAutomationElement? match)
     {
