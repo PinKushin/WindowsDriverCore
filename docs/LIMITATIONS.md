@@ -13,6 +13,36 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## Correction: the suite varies by about 1 test, not 9
+
+**The section below was published after a single accidental observation and is
+wrong.** Four repeats of the same commit, measured deliberately afterwards:
+
+```
+ours19  a8d61ee   124
+ours20  b4ed054   125      (docs-only change on top of a8d61ee)
+ours21  b4ed054   125
+ours22  b4ed054   124
+```
+
+**Spread of one.** Within a batch the suite is tight, and small deltas are more
+interpretable than the retraction below claimed.
+
+**So what was the 133 versus 124?** Both were commit `6956530`, and the boundary
+between them is exactly where the guest agent was replaced — the old one piped
+job output through `Tee-Object` from a call operator, the new one uses
+`Start-Process` with redirection. That is a change in the environment the tests
+run in, not noise and not the driver. A control run pinned to `6956530` under the
+new agent separates the two, and until it lands neither explanation is
+established.
+
+**What survives from the mistake:** a delta of one is not evidence either, the
+per-test diff remains the only interpretable output, and a runner that cannot
+report its own commit must abort. Run 18 named its results `run--120221.trx` with
+an empty sha and I read past it.
+
+---
+
 ## The compatibility suite varies by about 9 tests run to run
 
 **Measured 2026-08-10, by accident, which is the only reason it was noticed.**
