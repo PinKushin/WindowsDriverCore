@@ -187,6 +187,7 @@ public sealed class HeldElementLivenessTests
         // Only this instance. Killing by name would destroy the fixture's shared
         // Calculator and couple this test to the order it runs in.
         AppLifetime.KillProcess(launched.Application.ProcessId);
+        AppLifetime.WaitUntilWindowIsGone(doomed);
 
         COMException? failure = Should.Throw<COMException>(
             () => _ = held.Element.CurrentName,

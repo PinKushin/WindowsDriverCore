@@ -159,13 +159,22 @@ public sealed class CachingElementResolver : IElementResolver, IElementHandleCac
                 return false;
             }
 
-            // The identity check. A handle is only usable if it still names the
-            // element the caller asked for; anything else — a destroyed element,
-            // a provider that has gone away — evicts and falls through to the
-            // walk, which reaches the right answer on its own.
+            // Two checks, and the first one is the one that was missing.
+            //
+            // **Liveness must cross to the provider.** GetRuntimeId is answered
+            // from the proxy, so a handle to an element in a CLOSED WINDOW still
+            // reports its id happily — measured 2026-08-10: window gone, a fresh
+            // walk correctly reporting NoSuchWindow, and this cache handing back
+            // a resolved element. Reading a Current* property is what actually
+            // reaches the application and throws UIA_E_ELEMENTNOTAVAILABLE when
+            // there is nothing there.
+            //
+            // Then identity: the handle must still name the element the caller
+            // asked for, which guards against a recycled runtime id.
             string? currentId;
             try
             {
+                _ = node.Value.Element.CurrentProcessId;
                 currentId = UiaRuntimeId.Read(node.Value.Element);
             }
             catch (COMException)

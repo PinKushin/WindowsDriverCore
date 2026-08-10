@@ -354,6 +354,47 @@ session, including on test code and on a deliberate mutation.
 
 ---
 
+## A cache bug the suite found, and the check that missed it
+
+**`CachingElementResolver` served elements from closed windows.** Found
+2026-08-10. The diagnostic, printed rather than guessed:
+
+```
+window alive: False   cached entries: 1   via cache: Resolved   via fresh walk: NoSuchWindow
+```
+
+A fresh walk answered correctly. The cache handed back a live-looking element for
+a window that no longer existed — the exact failure the whole handle-caching
+design was justified against.
+
+**The cause was the validation property.** Each cache hit checked identity with
+`GetRuntimeId()`, which UIA answers **from the proxy** without contacting the
+application, so a handle whose window had been destroyed reported its id happily.
+`HeldElementLivenessTests` had already measured that a `Current*` read throws
+`UIA_E_ELEMENTNOTAVAILABLE` on a dead element — the liveness evidence existed, and
+the check used the one property that does not exercise it.
+
+Fixed by probing `CurrentProcessId` before comparing the runtime id: liveness has
+to cross to the provider, identity can stay local.
+
+**The test that caught it, and the one that did not.** Seven unit tests cover
+this cache with a substituted resolver, including one for "a handle whose
+identity changed". All passed throughout — a substituted element cannot die, so
+no unit test could reach this. It took a real application being closed.
+
+**And the assertion is now the right one.** It was
+`viaCache.ShouldBe(NoSuchWindow)`. It is now
+`viaCache.ShouldBe(viaWalk)` first: a cache is only ever allowed to be faster,
+never to give a different answer, and comparing the two paths states that
+directly instead of restating one path's expected value.
+
+**Wrong instrument, fifth instance.** `GetRuntimeId` stood in for "is this
+element alive", and the two are decoupled exactly when the element dies — the
+same shape as bytes standing in for content, and presence standing in for
+never-evicted. See `PROJECT-KNOWLEDGE.md` section 0.
+
+---
+
 ## Deliberate divergences
 
 **W3C `capabilities.alwaysMatch` is rejected.** WinAppDriver understands only
