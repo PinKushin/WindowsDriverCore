@@ -1,12 +1,9 @@
-using System;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
@@ -34,7 +31,6 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class NestedFindTests
 {
-    private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
     private UiaElementFinder _finder = null!;
     private nint _window;
@@ -47,16 +43,12 @@ public sealed class NestedFindTests
         UiaElementResolver resolver = new(automation);
         _finder = new UiaElementFinder(automation, resolver);
 
-        LaunchResult launched = new ApplicationLauncher(
-            new MainWindowWaiter(TimeProvider.System), new WindowLocator())
-            .Launch(new ApplicationTarget(CalculatorAumid, null, null));
-
-        if (launched.Application is null)
+        // One Calculator for the whole run. See SharedCalculator.
+        _window = SharedCalculator.Window();
+        if (_window == 0)
         {
-            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+            Assert.Ignore("Calculator is not available.");
         }
-
-        _window = launched.Application.WindowHandle;
 
         _keypad = UiSettle.UntilSomethingMatches(
             _finder, _window, LocatorKind.AutomationId, "NumberPad")[0];
@@ -64,9 +56,6 @@ public sealed class NestedFindTests
         UiSettle.UntilBoundsAreStable(
             new UiaElementInspector(automation, resolver), _window, _keypad);
     }
-
-    [OneTimeTearDown]
-    public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
 
     [Test]
     public void ANestedFind_FindsSomethingInsideTheContainer()

@@ -6,8 +6,6 @@ using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
@@ -33,7 +31,6 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class ElementCommandCostTests : IDisposable
 {
-    private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
     private const int Samples = 20;
 
     private CUIAutomationClass _automation = null!;
@@ -51,16 +48,12 @@ public sealed class ElementCommandCostTests : IDisposable
         _walking = new UiaElementResolver(_automation);
         _caching = new CachingElementResolver(_walking);
 
-        LaunchResult launched = new ApplicationLauncher(
-            new MainWindowWaiter(TimeProvider.System), new WindowLocator())
-            .Launch(new ApplicationTarget(CalculatorAumid, null, null));
-
-        if (launched.Application is null)
+        // One Calculator for the whole run. See SharedCalculator.
+        _window = SharedCalculator.Window();
+        if (_window == 0)
         {
-            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+            Assert.Ignore("Calculator is not available.");
         }
-
-        _window = launched.Application.WindowHandle;
 
         FindResult found = _finder.FindAll(_window, LocatorKind.AutomationId, "num5Button");
         found.ElementIds.ShouldNotBeEmpty();
@@ -71,10 +64,12 @@ public sealed class ElementCommandCostTests : IDisposable
     }
 
     [OneTimeTearDown]
-    public void CloseCalculator()
+    public void ReleaseCache()
     {
+        // The Calculator is shared and outlives this fixture, so only the cache
+        // is released here. Killing it by name would close the instance other
+        // fixtures are still using.
         Dispose();
-        AppLifetime.KillAll("CalculatorApp");
     }
 
     /// <summary>Releases the cache and its handles.</summary>

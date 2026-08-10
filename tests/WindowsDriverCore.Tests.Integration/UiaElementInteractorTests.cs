@@ -1,12 +1,9 @@
-using System;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
@@ -32,7 +29,6 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class UiaElementInteractorTests
 {
-    private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
     private CUIAutomationClass _automation = null!;
     private UiaElementFinder _finder = null!;
@@ -50,21 +46,14 @@ public sealed class UiaElementInteractorTests
         _inspector = new UiaElementInspector(_automation, resolver);
         _interactor = new UiaElementInteractor(_automation, resolver);
 
-        LaunchResult launched = new ApplicationLauncher(
-            new MainWindowWaiter(TimeProvider.System), new WindowLocator())
-            .Launch(new ApplicationTarget(CalculatorAumid, null, null));
-
-        if (launched.Application is null)
+        // One Calculator for the whole run. See SharedCalculator.
+        _window = SharedCalculator.Window();
+        if (_window == 0)
         {
-            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+            Assert.Ignore("Calculator is not available.");
         }
-
-        _window = launched.Application.WindowHandle;
         UiSettle.UntilBoundsAreStable(_inspector, _window, Find("num5Button"));
     }
-
-    [OneTimeTearDown]
-    public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
 
     /// <summary>Waits for a control and returns its id.</summary>
     /// <remarks>

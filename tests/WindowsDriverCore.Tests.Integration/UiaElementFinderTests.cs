@@ -6,8 +6,8 @@ using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
+
+using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
 
@@ -23,9 +23,7 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class UiaElementFinderTests
 {
-    private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
-    private ApplicationLauncher _launcher = null!;
     private UiaElementFinder _finder = null!;
     private nint _window;
 
@@ -34,17 +32,14 @@ public sealed class UiaElementFinderTests
     [OneTimeSetUp]
     public void LaunchCalculator()
     {
-        WindowLocator windows = new();
-        _launcher = new ApplicationLauncher(new MainWindowWaiter(TimeProvider.System), windows);
         _finder = new UiaElementFinder(SharedAutomation, new UiaElementResolver(SharedAutomation));
 
-        LaunchResult launched = _launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
-        if (launched.Application is null)
+        // One Calculator for the whole run. See SharedCalculator.
+        _window = SharedCalculator.Window();
+        if (_window == 0)
         {
-            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+            Assert.Ignore("Calculator is not available.");
         }
-
-        _window = launched.Application.WindowHandle;
     }
 
     [OneTimeTearDown]

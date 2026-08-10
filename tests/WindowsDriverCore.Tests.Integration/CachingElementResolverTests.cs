@@ -33,6 +33,9 @@ public sealed class CachingElementResolverTests : IDisposable
     private CachingElementResolver _caching = null!;
     private nint _window;
 
+    /// <summary>This fixture's own Calculator, killed by id rather than by name.</summary>
+    private int _processId;
+
     [OneTimeSetUp]
     public void LaunchCalculator()
     {
@@ -50,6 +53,7 @@ public sealed class CachingElementResolverTests : IDisposable
         }
 
         _window = launched.Application.WindowHandle;
+        _processId = launched.Application.ProcessId;
 
         UiSettle.UntilBoundsAreStable(
             new UiaElementInspector(_automation, _walking), _window, Find("num5Button"));
@@ -65,7 +69,16 @@ public sealed class CachingElementResolverTests : IDisposable
     public void Dispose() => _caching?.Dispose();
 
     [OneTimeTearDown]
-    public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
+    public void CloseCalculator()
+    {
+        // BY ID, not by name. This fixture launches its own Calculator because
+        // it destroys windows deliberately; KillAll would also close the shared
+        // instance other fixtures are using, and a developer's own Calculator.
+        if (_processId != 0)
+        {
+            AppLifetime.KillProcess(_processId);
+        }
+    }
 
     /// <summary>Waits for a control and returns its id.</summary>
     /// <remarks>
