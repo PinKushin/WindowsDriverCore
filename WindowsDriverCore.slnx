@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/WindowsDriverCore.Host/WindowsDriverCore.Host.csproj" />
+    <Project Path="src/WindowsDriverCore.Contracts/WindowsDriverCore.Contracts.csproj" />
     <Project Path="src/WindowsDriverCore.Protocol/WindowsDriverCore.Protocol.csproj" />
     <Project Path="src/WindowsDriverCore.Automation/WindowsDriverCore.Automation.csproj" />
     <Project Path="src/WindowsDriverCore.Platform/WindowsDriverCore.Platform.csproj" />

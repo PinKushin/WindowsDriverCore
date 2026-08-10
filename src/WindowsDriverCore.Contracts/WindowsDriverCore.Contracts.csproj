@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Literal, not inherited: Buildalyzer reads this textually. See Directory.Build.props. -->
+    <!--
+      PLAIN net10.0, AND THAT IS THE ENTIRE POINT OF THIS PROJECT.
+
+      Everything else here targets net10.0-windows because the automation layer
+      is raw IUIAutomation COM. Protocol did too, purely because it referenced
+      Automation and Platform for their INTERFACES — and that made the whole
+      dependency graph Windows-bound, including the fuzz target, which references
+      only Protocol.
+
+      Measured before the split: retargeting Protocol or Fuzz to net10.0 failed
+      with NU1201 on both Automation and Platform. libFuzzer and the SharpFuzz
+      toolchain are Linux-first, so a Windows-bound fuzz target cannot run in WSL
+      or on an ubuntu runner at all.
+
+      If a Windows-only type ever needs to appear here, it belongs in Automation
+      or Platform instead. A compile error is the intended outcome.
+    -->
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <!--
+    NO ProjectReferences, and no PackageReferences. This is the bottom of the
+    graph. Everything above depends on it; it depends on nothing.
+  -->
+
+</Project>

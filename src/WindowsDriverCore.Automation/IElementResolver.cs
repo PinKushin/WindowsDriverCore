@@ -111,23 +111,6 @@ public sealed class ElementLookupResult : IDisposable
 }
 
 /// <summary>
-/// Releases element handles a driver is holding.
-/// </summary>
-/// <remarks>
-/// Separate from <see cref="IElementResolver"/> because most resolvers hold
-/// nothing and should not be asked to implement this. The protocol layer calls
-/// it when a session ends: every handle keeps a provider object alive inside the
-/// application under test, and a driver that outlives many sessions would
-/// otherwise pin objects in applications that have closed.
-/// </remarks>
-public interface IElementHandleCache
-{
-    /// <summary>Releases every handle held for a window.</summary>
-    /// <param name="searchRoot">The window whose session is ending.</param>
-    void Forget(nint searchRoot);
-}
-
-/// <summary>
 /// Turns an element id back into a live element.
 /// </summary>
 /// <remarks>
