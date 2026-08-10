@@ -13,6 +13,33 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## The published exe will not start unless .NET is where it expects
+
+**Measured 2026-08-10 in the Windows 10 guest.** `dotnet publish` produced
+`WindowsDriverCore.exe`, it launched, and it exited immediately — nothing ever
+listened on the port and the harness sat in its connect loop looking like a hang.
+
+The cause is the apphost. The guest's SDK was installed by Microsoft's
+`dotnet-install.ps1` into `C:\dotnet`, which does **not** register the runtime
+globally, so the apphost looks in the default location, finds nothing, and dies.
+Running `dotnet WindowsDriverCore.dll` instead works, because that skips apphost
+resolution entirely.
+
+**This is a shipping problem, not a test-rig quirk.** A user whose .NET lives
+anywhere non-standard gets an executable that starts and vanishes with no
+message. WinAppDriver has no equivalent failure — it ships self-contained.
+
+Options, none taken yet: publish self-contained, publish AOT, or detect the
+missing runtime and say so instead of exiting silently. The last one is the
+cheapest and would turn an invisible failure into a sentence.
+
+**Nothing caught this until an integration test ran the actual executable.**
+Every earlier test either drove the automation layer directly or hosted the
+pipeline in-process with `WebApplicationFactory`, and none of those run the
+apphost, bind a socket, or parse an argument.
+
+---
+
 ## The matched comparison: 19/290 against WinAppDriver's 281/290
 
 **Measured 2026-08-10, both drivers in the same Windows 10 22H2 guest, same
