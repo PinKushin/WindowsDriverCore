@@ -95,35 +95,6 @@ internal static class UiSettle
         return [];
     }
 
-    /// <summary>Spins until a condition holds, or fails the test.</summary>
-    /// <param name="condition">What the caller is waiting for.</param>
-    /// <param name="timeout">How long to keep observing.</param>
-    /// <param name="what">Named in the failure message.</param>
-    /// <remarks>
-    /// Synchronise on the condition, never on the clock: a sleep long enough for
-    /// a fast desktop is not long enough for a loaded one, and a sleep long
-    /// enough for both wastes the difference on every run.
-    /// </remarks>
-    internal static void Until(
-        Func<bool> condition,
-        TimeSpan timeout,
-        string what = "the condition")
-    {
-        ArgumentNullException.ThrowIfNull(condition);
-
-        Stopwatch clock = Stopwatch.StartNew();
-
-        while (clock.Elapsed < timeout)
-        {
-            if (condition())
-            {
-                return;
-            }
-        }
-
-        Assert.Fail($"Timed out after {timeout.TotalSeconds:F0}s waiting for {what}.");
-    }
-
     /// <summary>
     /// Blocks until the element is displayed and two consecutive readings of its
     /// bounds agree.
