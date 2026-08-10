@@ -32,10 +32,11 @@ public sealed record ServerAddress(string Host, int Port, string? BasePath)
     /// <remarks>
     /// <para>
     /// 4723 is shared with WinAppDriver <b>and</b> with Appium, so on a working
-    /// machine it is frequently already taken — which means this driver cannot
-    /// run beside the thing it is measured against. That comparison is how the
-    /// project knows where it stands, so being unable to run both at once is a
-    /// real cost rather than a nuisance.
+    /// machine it is frequently already taken. A concrete case from the sibling
+    /// project: its Android suite runs on 4723 and its Windows suite on 4724, so
+    /// this driver's default collides with Android rather than with the server it
+    /// replaces. People already move one of them by hand; a variable is a better
+    /// place for that than an argument a suite would have to learn.
     /// </para>
     /// <para>
     /// An environment variable rather than a new switch, because the point is to

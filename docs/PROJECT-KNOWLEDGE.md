@@ -102,6 +102,23 @@ busy" is not. The mechanism then gets fixed, or worse, designed around.
 Before theorising about a mechanism from a timing observation, ask what else was
 running. It is one question and it is free.
 
+**Better than a habit: gate on setup duration.** From the sibling project, whose
+Appium setup runs **9.7 s healthy and 67 s when the machine is loaded**, and
+where the slow case reliably precedes a poisoned run. Setup is the fragile
+window — an emulator booting or another suite starting is enough — and its
+duration is a leading indicator *regardless of the cause*, which is exactly what
+makes it useful. You do not have to know what the load was.
+
+`FindBenchmarks` now refuses to report if setup exceeds ten seconds, because for
+a benchmark **load does not make a number slow, it makes it wrong**, and a wrong
+number that looks plausible is worse than no number. The same logic applies to
+mutation runs, where load converts real survivors into false timeouts.
+
+**The diagnosis that produced this was wrong twice**, and the author's own note on
+why is worth keeping: both times they reasoned from a plausible mechanism instead
+of reading the setup code, which took one grep. Same failure as everything else in
+this section — a satisfying explanation preferred to a cheap observation.
+
 **A claim written in this repository is not evidence.** The recordings, the
 measured numbers and `LIMITATIONS.md` were produced by running something.
 Treat everything else as a hypothesis until it has been — `CLAUDE.md` included.
