@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using WindowsDriverCore.Platform.Windows;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Automation;
@@ -44,10 +45,19 @@ public sealed class ElementPropertyRouteTests : IDisposable
         _inspector = Substitute.For<IElementInspector>();
         _finder = Substitute.For<IElementFinder>();
 
+        // These fixtures use a made-up window handle, so the real
+        // WindowLocator correctly says no such window exists — and an
+        // element command now answers "the window has been closed" for
+        // that, which outranks stale or unknown. They are about an element
+        // being gone from a LIVE window, so the window has to be alive.
+        IWindowLocator windowsAlive = Substitute.For<IWindowLocator>();
+        windowsAlive.Exists(Arg.Any<nint>()).Returns(true);
+
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
                 services.AddSingleton(_inspector);
+                    services.AddSingleton(windowsAlive);
                 services.AddSingleton(_finder);
             }));
 

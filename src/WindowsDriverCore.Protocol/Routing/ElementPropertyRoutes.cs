@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -75,6 +76,7 @@ public static class ElementPropertyRoutes
                 HttpContext context,
                 IElementInspector inspector,
                 IElementRegistry registry,
+                IWindowLocator windows,
                 string elementId,
                 string? name) =>
             {
@@ -92,7 +94,7 @@ public static class ElementPropertyRoutes
 
                 return result.Outcome == ElementReadOutcome.Read
                     ? Results.Json(JsonWireResponse.ForSession(session.Id, result.Value))
-                    : ElementFault.For(result.Outcome, session.Id, elementId, registry);
+                    : ElementFault.For(result.Outcome, session, elementId, registry, windows);
             })
             .RequiresSession();
     }
@@ -113,14 +115,18 @@ public static class ElementPropertyRoutes
         Func<IElementInspector, nint, string, ElementRead<T>> read)
     {
         app.MapGet($"/session/{{sessionId}}/element/{{elementId}}/{suffix}",
-            (HttpContext context, IElementInspector inspector, IElementRegistry registry, string elementId) =>
+            (HttpContext context,
+             IElementInspector inspector,
+             IElementRegistry registry,
+             IWindowLocator windows,
+             string elementId) =>
             {
                 DriverSession session = context.GetSession();
                 ElementRead<T> result = read(inspector, session.WindowHandle, elementId);
 
                 return result.Outcome == ElementReadOutcome.Read
                     ? Results.Json(JsonWireResponse.ForSession(session.Id, result.Value))
-                    : ElementFault.For(result.Outcome, session.Id, elementId, registry);
+                    : ElementFault.For(result.Outcome, session, elementId, registry, windows);
             })
             .RequiresSession();
     }
