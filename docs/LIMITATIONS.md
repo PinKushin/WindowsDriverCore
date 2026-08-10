@@ -101,6 +101,36 @@ it is to build the pristine tree and re-run.
 
 ---
 
+## Cold start: we attach to the CoreWindow, not the frame window
+
+Measured 2026-08-10, three cold starts through our own driver:
+
+```
+session window_handle=0x0025073E  class='Windows.UI.Core.CoreWindow'  title='Alarms & Clock'
+   +0s  IsWindow=True visible=True   find AddAlarmButton -> status=7
+   +2s  IsWindow=True visible=True   find AddAlarmButton -> status=0
+  real top-level window: hwnd=0x00170B7A class=ApplicationFrameWindow name='Alarms  Clock'
+```
+
+**The handle is not dead** — the hypothesis that a transient window was adopted
+and then closed is wrong. Two separate defects instead:
+
+1. **We attach to the wrong window.** `MainWindowWaiter` tries "a visible window
+   owned by the launched process" *before* "the frame window hosting it". For a
+   packaged application the `Windows.UI.Core.CoreWindow` is owned by the app and
+   the `ApplicationFrameWindow` is owned by `ApplicationFrameHost`, so the check
+   that looks the most precise is the one that picks the wrong window. A
+   CoreWindow is destroyed and recreated when the app is rehosted or resumed; the
+   frame window persists. That is what later surfaces as "Currently selected
+   window has been closed", which is why it appears on a long run and not on a
+   short probe.
+
+2. **The tree is not ready at +0s.** Two of three cold starts could not find
+   `AddAlarmButton` immediately, and all three could by +2s. A session created
+   the instant a window appears hands back a window whose content has not
+   arrived. Our finds are ~33 ms, so we reach it inside the gap that a ~1070 ms
+   driver never sees.
+
 ## SOLVED: the score is controlled by the alarm store and app warmth
 
 Four explanations were published for one moving number and **all four were
@@ -122,10 +152,41 @@ passes an **identical set of 133 tests**, not merely the same count.
 So 133 was never an anomaly. It was the only earlier run that happened to have a
 warm app and a store not yet at the cap.
 
-### 1. The suite fills Alarms & Clock until "Add new alarm" dies
+### 1. WE break the suite's cleanup, so alarms accumulate until "Add new alarm" dies
 
-The suite creates alarms (`LongTapTest`, `PenBarrelButtonTest`) faster than it
-deletes them. At the cap the app disables **only** `AddAlarmButton`:
+**Corrected — the earlier claim here was wrong and blamed the wrong party.** It
+said the suite "creates alarms faster than it deletes them". It does not. It
+deletes them perfectly: WinAppDriver runs the whole suite from a fresh store and
+leaves **exactly the one default alarm**. Under our driver ~162 pile up.
+
+`DeletePreviouslyCreatedAlarmEntry` is:
+
+```csharp
+while (true) {
+    try {
+        var e = session.FindElementByXPath($"//ListItem[starts-with(@Name, \"{name}\")]");
+        session.Mouse.ContextClick(e.Coordinates);
+        session.FindElementByName("Delete").Click();
+    } catch { break; }
+}
+```
+
+Measured against our driver:
+
+```
+xpath //ListItem[starts-with(@Name,"Good morning")]   -> status 19  Invalid XPath expression
+name  'Alarm'                                         -> status 0   (reachable another way)
+POST /moveto /click /buttondown /buttonup /doubleclick -> status 9   Command not recognized
+```
+
+It fails on the **first** call, the bare `catch` swallows it, and nothing is ever
+deleted. Two unimplemented features — XPath and the mouse command family — with a
+blast radius far outside their own tests: they silently disable the suite's
+cleanup, which then degrades every later run.
+
+Once those land, the accumulation stops and the reset below becomes unnecessary.
+
+With enough alarms the app disables **only** `AddAlarmButton`:
 
 ```
 AddAlarmButton                  enabled=False   <- only this one
@@ -134,8 +195,14 @@ MoreButton                      enabled=True
 AlarmCollectionPageCommandBar   enabled=True
 ```
 
-Nothing looks broken, and the nine tests that need that button all fail. The
-alarms are **not** in `LocalState` — clearing that changes nothing, tried first.
+Nothing looks broken, and the nine tests that need that button all fail.
+
+**The threshold and the mechanism are not measured.** ~162 alarms disables it and
+1 alarm enables it; whether Alarms & Clock has a real documented cap, and where
+it is, was never established — "cap" is shorthand for an observed correlation.
+It is academic once the cleanup works.
+
+The alarms are **not** in `LocalState` — clearing that changes nothing, tried first.
 They live in the UWP settings hive,
 `%LOCALAPPDATA%\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe\Settings\settings.dat`.
 

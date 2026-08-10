@@ -12,9 +12,15 @@ directions.
 
 ## 1. The alarm cap silently costs exactly nine tests
 
-The suite creates alarms named `LongTapTest` and `PenBarrelButtonTest` faster
-than it deletes them. About **162** accumulated across one day of runs. Alarms &
-Clock caps the alarm count, and at the cap it disables **only** `AddAlarmButton`:
+**Corrected: the suite's cleanup is fine; we break it.** WinAppDriver runs the
+whole suite from a fresh store and leaves exactly the one default alarm. Under our
+driver about **162** accumulated in a day, because
+`DeletePreviouslyCreatedAlarmEntry` calls `FindElementByXPath` (we answer status
+19) and `Mouse.ContextClick` — `/moveto` then `/click` (we answer status 9,
+command not recognized) — inside a `catch { break; }`, so every failure is silent.
+
+With that many alarms the app disables **only** `AddAlarmButton` (threshold and
+mechanism unmeasured):
 
 ```
 AddAlarmButton                  enabled=False    <- only this one
