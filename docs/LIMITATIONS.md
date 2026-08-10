@@ -197,10 +197,15 @@ AlarmCollectionPageCommandBar   enabled=True
 
 Nothing looks broken, and the nine tests that need that button all fail.
 
-**The threshold and the mechanism are not measured.** ~162 alarms disables it and
-1 alarm enables it; whether Alarms & Clock has a real documented cap, and where
-it is, was never established — "cap" is shorthand for an observed correlation.
-It is academic once the cleanup works.
+**There is a real limit, and it sits near 162.** Filling the list until the
+button refuses *is* how a limit gets measured, and this one was reached the slow
+way: ~162 alarms disables it, 1 alarm enables it, and only that one button is
+affected — which is what an application enforcing a maximum looks like. The
+figure is an estimate from the virtualized list (`VerticalViewSize` 17.33% with
+28 items realized, so 100/17.33 × 28 ≈ 162), not an exact integer, and no
+Microsoft documentation for it was found. **Pin it exactly** once alarm creation
+works: add alarms one at a time and record the count at which `AddAlarmButton`
+goes disabled.
 
 The alarms are **not** in `LocalState` — clearing that changes nothing, tried first.
 They live in the UWP settings hive,
