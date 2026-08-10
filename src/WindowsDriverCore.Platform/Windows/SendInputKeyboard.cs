@@ -23,8 +23,35 @@ namespace WindowsDriverCore.Platform.Windows;
 public sealed class SendInputKeyboard : IKeyboardInput
 {
     private const uint InputKeyboard = 1;
+    private const uint ExtendedKey = 0x0001;
     private const uint KeyUp = 0x0002;
     private const uint Unicode = 0x0004;
+
+    /// <summary>
+    /// Virtual keys that must carry <c>KEYEVENTF_EXTENDEDKEY</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Measured 2026-08-10.</b> Without this flag the navigation and editing
+    /// keys are delivered as their non-extended twins — which share virtual-key
+    /// codes with the numeric keypad — and applications mostly ignore them. The
+    /// symptom was a compatibility test that typed its text successfully and then
+    /// had every Delete, Home and arrow key do nothing:
+    /// <c>SendKeys_NonPrintableKeys</c> expected an edited string and observed
+    /// "aaaaaaaa", the raw text with none of the edits applied.
+    /// </remarks>
+    private static readonly HashSet<ushort> ExtendedKeys =
+    [
+        0x21, // page up
+        0x22, // page down
+        0x23, // end
+        0x24, // home
+        0x25, // left
+        0x26, // up
+        0x27, // right
+        0x28, // down
+        0x2D, // insert
+        0x2E, // delete
+    ];
 
     /// <summary>WebDriver's private-use key codes, as virtual-key codes.</summary>
     private static readonly Dictionary<char, ushort> SpecialKeys = new()
@@ -136,7 +163,7 @@ public sealed class SendInputKeyboard : IKeyboardInput
             {
                 VirtualKey = code,
                 ScanCode = 0,
-                Flags = down ? 0 : KeyUp,
+                Flags = (ExtendedKeys.Contains(code) ? ExtendedKey : 0u) | (down ? 0u : KeyUp),
                 Time = 0,
                 ExtraInfo = 0,
             },

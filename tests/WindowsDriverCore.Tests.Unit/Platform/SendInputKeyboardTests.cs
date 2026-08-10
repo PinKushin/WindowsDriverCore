@@ -34,6 +34,7 @@ public sealed class SendInputKeyboardTests
 
     private const uint KeyUp = 0x0002;
     private const uint Unicode = 0x0004;
+    private const uint Extended = 0x0001;
 
     /// <summary>Builds the batch without sending it.</summary>
     /// <remarks>
@@ -106,6 +107,30 @@ public sealed class SendInputKeyboardTests
         batch.Length.ShouldBe(2);
         batch[0].VirtualKey.ShouldBe((ushort)0x2E);
         (batch[0].Flags & Unicode).ShouldBe(0u);
+    }
+
+    [Test]
+    public void ANavigationKey_CarriesTheExtendedFlag()
+    {
+        // Delete, the arrows, Home, End and the page keys share virtual-key
+        // codes with the numeric keypad. Without KEYEVENTF_EXTENDEDKEY they
+        // arrive as the keypad twin and applications mostly ignore them —
+        // measured as a compatibility test that typed its text and then had
+        // every edit key do nothing.
+        (ushort VirtualKey, ushort ScanCode, uint Flags)[] batch = Batch(Delete.ToString());
+
+        (batch[0].Flags & Extended).ShouldBe(Extended);
+        (batch[1].Flags & Extended).ShouldBe(Extended, "the key-up needs it too");
+    }
+
+    [Test]
+    public void ANonNavigationKey_DoesNotCarryIt()
+    {
+        // The control. Setting the flag on everything would pass the test above
+        // and change what unrelated keys mean.
+        (ushort VirtualKey, ushort ScanCode, uint Flags)[] batch = Batch($"{Shift}a");
+
+        (batch[0].Flags & Extended).ShouldBe(0u, "shift is not an extended key");
     }
 
     [Test]
