@@ -3,27 +3,31 @@ using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace WindowsDriverCore.Tests.Integration.Support;
 
 /// <summary>
-/// One application, launched through the driver, shared by the whole run.
+/// One application, opened through the real server, shared by the whole run.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Replaces SharedCalculator, which launched the application directly.</b>
-/// Doing it through the driver means the lifecycle is the driver's: the session
-/// starts the application and <c>DELETE /session</c> closes it, so no fixture
-/// needs to know a process name or own a teardown. Killing by name was wrong on
-/// Windows 11 (it destroyed the instance other fixtures were using) and silently
-/// did nothing on Windows 10 (where the process is <c>Calculator</c>, not
-/// <c>CalculatorApp</c>).
+/// <b>The real server process, not in-process hosting.</b>
+/// <c>WebApplicationFactory</c> runs the pipeline inside the test process: no
+/// executable, no socket, no argument parsing, no console. Every fixture that
+/// shares this now exercises the thing that actually ships — and the run is
+/// visible while it happens, which it never was before.
+/// </para>
+/// <para>
+/// <b>No fixture knows a process name.</b> The session starts the application
+/// and <c>DELETE /session</c> closes it. Killing by name was wrong in both
+/// directions at once: on Windows 11 it destroyed the instance other fixtures
+/// were using, and on Windows 10 it matched nothing at all, because the process
+/// there is called <c>Calculator</c> rather than <c>CalculatorApp</c>.
 /// </para>
 /// <para>
 /// <b>Fixtures still drive the automation layer directly.</b> This supplies a
-/// window handle and nothing else — what a test measures is unchanged, only who
-/// owns the application. The handle comes back from
+/// window handle and nothing else, so what a test measures is unchanged — only
+/// who owns the application. The handle comes from
 /// <c>GET /session/{id}/window_handle</c>, which is the driver reporting what it
 /// is addressing rather than the test guessing.
 /// </para>
@@ -33,8 +37,7 @@ internal static class SharedDriverSession
     public const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
     private static readonly object Gate = new();
-    private static WebApplicationFactory<WindowsDriverCore.Host.Program>? _factory;
-    private static HttpClient? _client;
+    private static DriverServer? _server;
     private static string? _sessionId;
     private static nint _window;
 
@@ -44,15 +47,22 @@ internal static class SharedDriverSession
     {
         lock (Gate)
         {
+            // Liveness every time rather than a cached handle: a fixture that
+            // destroys windows deliberately would otherwise leave a dead one for
+            // whichever fixture ran next, and that failure moves when tests are
+            // reordered.
             if (_window != 0 && AppLifetime.WindowExists(_window))
             {
                 return _window;
             }
 
-            _factory ??= new WebApplicationFactory<WindowsDriverCore.Host.Program>();
-            _client ??= _factory.CreateClient();
+            _server ??= DriverServer.Start();
+            if (_server is null)
+            {
+                return 0;
+            }
 
-            HttpResponseMessage created = _client.PostAsJsonAsync(
+            HttpResponseMessage created = _server.Client.PostAsJsonAsync(
                 new Uri("/session", UriKind.Relative),
                 new { desiredCapabilities = new { app = CalculatorAumid } })
                 .GetAwaiter().GetResult();
@@ -71,32 +81,31 @@ internal static class SharedDriverSession
         }
     }
 
-    /// <summary>Ends the session, which closes the application.</summary>
+    /// <summary>Ends the session, which closes the application, and stops the server.</summary>
     public static void Close()
     {
         lock (Gate)
         {
-            if (_client is not null && _sessionId is not null)
+            if (_server is not null && _sessionId is not null)
             {
                 // No result check: a session that will not delete is not
-                // something a test teardown can do anything about, and throwing
-                // here would replace a real failure with this one.
-                _client.DeleteAsync(new Uri($"/session/{_sessionId}", UriKind.Relative))
+                // something a teardown can act on, and throwing here would
+                // replace a real failure with this one.
+                _server.Client
+                    .DeleteAsync(new Uri($"/session/{_sessionId}", UriKind.Relative))
                     .GetAwaiter().GetResult().Dispose();
             }
 
             _sessionId = null;
             _window = 0;
-            _client?.Dispose();
-            _client = null;
-            _factory?.Dispose();
-            _factory = null;
+            _server?.Dispose();
+            _server = null;
         }
     }
 
     private static nint ReadWindowHandle()
     {
-        HttpResponseMessage response = _client!
+        HttpResponseMessage response = _server!.Client
             .GetAsync(new Uri($"/session/{_sessionId}/window_handle", UriKind.Relative))
             .GetAwaiter().GetResult();
 
@@ -105,7 +114,7 @@ internal static class SharedDriverSession
 
         string? handle = body.RootElement.GetProperty("value").GetString();
 
-        // "0x00551120" — the 0x prefix has to come off before parsing as hex.
+        // "0x00551120" — the prefix comes off before parsing as hex.
         return handle is not null && handle.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
             ? nint.Parse(handle[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture)
             : 0;
