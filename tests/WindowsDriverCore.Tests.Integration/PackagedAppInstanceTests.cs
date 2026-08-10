@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Platform.Applications;
@@ -40,6 +41,56 @@ public sealed class PackagedAppInstanceTests
 
     [OneTimeTearDown]
     public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
+
+    [Test]
+    public void APackagedApplicationsWindowIsFound_EvenWhenItIsNotNew()
+    {
+        // THE DEFECT BEHIND 19/290. The compatibility suite creates a session per
+        // test class and this driver does not close the application when a
+        // session ends, so from the second class onward the application is
+        // already running and its window already exists. Every stage of the
+        // search then misses it: the window belongs to ApplicationFrameHost so it
+        // is not owned by the activated process or its descendants, and it is not
+        // NEW because it was there before the snapshot. Fifteen fixtures died in
+        // ClassInitialize on "Could not find main window for application".
+        //
+        // Windows 10 hits it on the first re-activation because Calculator is
+        // single-instance there. Windows 11 hid it by starting a second instance,
+        // which is why ActivatingAPackagedApplicationTwice passes on this desktop
+        // and failed in the guest.
+        //
+        // The condition here reproduces it without depending on either
+        // behaviour: launch, then ask the waiter to find that same window with a
+        // snapshot taken AFTER it exists.
+        AppLifetime.KillAll("CalculatorApp");
+
+        MainWindowWaiter waiter = new(TimeProvider.System);
+        ApplicationLauncher launcher = new(waiter, new WindowLocator());
+
+        LaunchResult launched = launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
+        if (launched.Application is null)
+        {
+            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+        }
+
+        int processId = launched.Application.ProcessId;
+
+        // Everything visible right now, which INCLUDES the application's window.
+        IReadOnlySet<nint> afterItExists = MainWindowWaiter.SnapshotTopLevelWindows();
+        afterItExists.ShouldContain(
+            launched.Application.WindowHandle,
+            "the snapshot must contain the window, or this tests nothing");
+
+        nint found = waiter.WaitAsync(
+            processId, afterItExists, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(250))
+            .GetAwaiter().GetResult();
+
+        found.ShouldNotBe(
+            0,
+            "a packaged application's window must be findable when it is already " +
+            "open, or every session after the first fails");
+        found.ShouldBe(launched.Application.WindowHandle);
+    }
 
     [Test]
     public void ActivatingAPackagedApplicationTwice_GivesTwoApplications()
