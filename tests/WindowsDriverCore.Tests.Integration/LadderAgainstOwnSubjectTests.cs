@@ -261,6 +261,34 @@ public sealed class LadderAgainstOwnSubjectTests
     }
 
     [Test]
+    public void ADisabledElement_IsRefused_AndItsAncestorIsLeftAlone()
+    {
+        // Measured against Alarms & Clock on Windows 10, 2026-08-10.
+        // AddAlarmButton was disabled; InvokePattern.Invoke() threw; the ladder
+        // climbed one level to AlarmCollectionPageCommandBar — which advertises
+        // Toggle and ExpandCollapse — toggled the app bar, and answered
+        // status 0. Nine compatibility-suite tests fail from this, and every one
+        // of them is told the click succeeded.
+        string disabled = Id("disabledInsideToggle");
+        string host = Id("toggleHostingDisabled");
+
+        _inspector.Attribute(_window, disabled, "IsEnabled").Value
+            .ShouldBe("False", "the subject must be disabled, or this tests nothing");
+
+        string before = _inspector.Attribute(_window, host, "Toggle.ToggleState").Value ?? "?";
+
+        ElementAction click = _interactor.Click(_window, disabled);
+
+        click.Outcome.ShouldBe(ElementActionOutcome.NotInteractable);
+
+        // The control, and the part that actually caught this. "Refused" and
+        // "climbed and toggled the parent" both leave the disabled button
+        // untouched, so only the bystander distinguishes them.
+        _inspector.Attribute(_window, host, "Toggle.ToggleState").Value
+            .ShouldBe(before, "the ancestor must not have been acted on instead");
+    }
+
+    [Test]
     [Ignore("Known gap: the driver does not foreground the target window, and " +
             "UIA refuses SetFocus against a background one. Measured, cause " +
             "understood, tracked in docs/LIMITATIONS.md.")]
