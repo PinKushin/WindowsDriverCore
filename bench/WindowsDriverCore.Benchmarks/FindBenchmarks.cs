@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
@@ -74,9 +75,36 @@ public class FindBenchmarks
     private AutomationElement _flauiWindow = null!;
     private AutomationElement _flauiElement = null!;
 
+    /// <summary>
+    /// How long setup may take before this run's numbers are refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Setup duration is the leading indicator of a machine too busy to
+    /// measure on</b>, and it is worth gating on because load does not make a
+    /// benchmark slow, it makes it <i>wrong</i> — and a wrong number that looks
+    /// plausible is worse than no number.
+    /// </para>
+    /// <para>
+    /// Borrowed from a sibling project, where an Appium session's setup runs
+    /// 9.7 s healthy and 67 s when the machine is loaded, and the slow case
+    /// reliably precedes a poisoned run. The same shape was seen here from the
+    /// other direction: a find benchmark reading 11.9 ms and 16.5 ms on
+    /// consecutive runs with no code change.
+    /// </para>
+    /// <para>
+    /// Launching Calculator and finding one element is a couple of seconds on an
+    /// idle machine. Ten is generous enough not to fire spuriously and far below
+    /// the point where the numbers stop meaning anything.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan SetupBudget = TimeSpan.FromSeconds(10);
+
     [GlobalSetup]
     public void Setup()
     {
+        Stopwatch startup = Stopwatch.StartNew();
+
         _automation = new CUIAutomationClass();
         _finder = new UiaElementFinder(_automation, new UiaElementResolver(_automation));
         _cachingResolver = new CachingElementResolver(new UiaElementResolver(_automation));
@@ -119,6 +147,18 @@ public class FindBenchmarks
         _flauiElement = _flauiWindow.FindFirstDescendant(
             condition => condition.ByAutomationId("num5Button"))
             ?? throw new InvalidOperationException("FlaUI could not find num5Button.");
+
+        startup.Stop();
+        Console.WriteLine($"setup took {startup.Elapsed.TotalSeconds:F1}s");
+
+        if (startup.Elapsed > SetupBudget)
+        {
+            throw new InvalidOperationException(
+                $"Setup took {startup.Elapsed.TotalSeconds:F1}s against a budget of " +
+                $"{SetupBudget.TotalSeconds:F0}s. The machine is too busy to measure on, and " +
+                "numbers from this run would be wrong rather than merely slow. " +
+                "Stop what else is running and try again.");
+        }
     }
 
     [GlobalCleanup]

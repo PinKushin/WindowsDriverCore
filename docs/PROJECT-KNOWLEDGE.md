@@ -81,6 +81,44 @@ but "is there an input where correct and broken differ, and does my observation
 see it?"** Sabotage the code and watch the test fail; a test that stays green
 under sabotage is measuring something else, however well its name reads.
 
+### Under load, suspect load before mechanism
+
+A loaded machine makes timing-derived diagnoses unreliable, and this project has
+now produced four instances in one session:
+
+- A geometry test that failed roughly one run in two, blamed on a coordinate bug
+  that had already been fixed. It was a window still settling.
+- A find benchmark that read 11.9 ms and 16.5 ms across consecutive runs with no
+  code change.
+- Mutation runs, where a busy machine turns real survivors into false
+  `Timeout`s — the score comes out *wrong*, not merely slow.
+- A 67-second server startup elsewhere, diagnosed as a port collision. There was
+  no collision; the port was already deliberately non-default. It was load.
+
+**The shape is always the same:** a slow or intermittent observation acquires a
+mechanical explanation, because a mechanism is satisfying and "the machine was
+busy" is not. The mechanism then gets fixed, or worse, designed around.
+
+Before theorising about a mechanism from a timing observation, ask what else was
+running. It is one question and it is free.
+
+**Better than a habit: gate on setup duration.** From the sibling project, whose
+Appium setup runs **9.7 s healthy and 67 s when the machine is loaded**, and
+where the slow case reliably precedes a poisoned run. Setup is the fragile
+window — an emulator booting or another suite starting is enough — and its
+duration is a leading indicator *regardless of the cause*, which is exactly what
+makes it useful. You do not have to know what the load was.
+
+`FindBenchmarks` now refuses to report if setup exceeds ten seconds, because for
+a benchmark **load does not make a number slow, it makes it wrong**, and a wrong
+number that looks plausible is worse than no number. The same logic applies to
+mutation runs, where load converts real survivors into false timeouts.
+
+**The diagnosis that produced this was wrong twice**, and the author's own note on
+why is worth keeping: both times they reasoned from a plausible mechanism instead
+of reading the setup code, which took one grep. Same failure as everything else in
+this section — a satisfying explanation preferred to a cheap observation.
+
 **A claim written in this repository is not evidence.** The recordings, the
 measured numbers and `LIMITATIONS.md` were produced by running something.
 Treat everything else as a hypothesis until it has been — `CLAUDE.md` included.

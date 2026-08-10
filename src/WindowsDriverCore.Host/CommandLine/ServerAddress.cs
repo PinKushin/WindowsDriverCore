@@ -20,7 +20,34 @@ public sealed record ServerAddress(string Host, int Port, string? BasePath)
     public const string DefaultHost = "127.0.0.1";
 
     /// <summary>Port bound when no port argument is supplied.</summary>
+    /// <remarks>
+    /// WinAppDriver's port, deliberately. An existing suite has to point at this
+    /// driver unchanged, and every Appium and Selenium sample in the world says
+    /// 4723 — changing it to avoid collisions would trade the product for a
+    /// convenience.
+    /// </remarks>
     public const int DefaultPort = 4723;
+
+    /// <summary>Environment variable overriding <see cref="DefaultPort"/>.</summary>
+    /// <remarks>
+    /// <para>
+    /// 4723 is shared with WinAppDriver <b>and</b> with Appium, so on a working
+    /// machine it is frequently already taken. A concrete case from the sibling
+    /// project: its Android suite runs on 4723 and its Windows suite on 4724, so
+    /// this driver's default collides with Android rather than with the server it
+    /// replaces. People already move one of them by hand; a variable is a better
+    /// place for that than an argument a suite would have to learn.
+    /// </para>
+    /// <para>
+    /// An environment variable rather than a new switch, because the point is to
+    /// move the port <i>without</i> touching the arguments a suite already
+    /// passes.
+    /// </para>
+    /// </remarks>
+    public const string PortEnvironmentVariable = "WINDOWSDRIVERCORE_PORT";
+
+    /// <summary>Environment variable overriding <see cref="DefaultHost"/>.</summary>
+    public const string HostEnvironmentVariable = "WINDOWSDRIVERCORE_HOST";
 
     private const int MinPort = 1;
     private const int MaxPort = 65535;
@@ -37,20 +64,67 @@ public sealed record ServerAddress(string Host, int Port, string? BasePath)
     /// The arguments do not match any documented form, or the port is not a
     /// valid TCP port.
     /// </exception>
-    public static ServerAddress Parse(string[] args)
+    public static ServerAddress Parse(string[] args) =>
+        Parse(args, Environment.GetEnvironmentVariable);
+
+    /// <summary>Parses the arguments against a supplied environment.</summary>
+    /// <param name="args">The process arguments, excluding the executable name.</param>
+    /// <param name="environment">Reads an environment variable.</param>
+    /// <returns>The parsed address.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="FormatException">
+    /// The arguments do not match any documented form, the port is not a valid
+    /// TCP port, or an environment override is not a number.
+    /// </exception>
+    /// <remarks>
+    /// <b>Precedence is argument, then environment, then default.</b> An explicit
+    /// argument must win, or a stray variable in a shell would silently move a
+    /// server somebody asked to be somewhere specific — the quiet kind of wrong
+    /// this project keeps finding.
+    /// </remarks>
+    public static ServerAddress Parse(string[] args, Func<string, string?> environment)
     {
         ArgumentNullException.ThrowIfNull(args);
+        ArgumentNullException.ThrowIfNull(environment);
 
         string[] positional = LeadingPositionalArguments(args);
+        string host = environment(HostEnvironmentVariable) is { Length: > 0 } configuredHost
+            ? configuredHost
+            : DefaultHost;
 
         return positional.Length switch
         {
-            0 => new ServerAddress(DefaultHost, DefaultPort, BasePath: null),
-            1 => FromPortSpecification(DefaultHost, positional[0]),
+            0 => new ServerAddress(host, PortFrom(environment), BasePath: null),
+            1 => FromPortSpecification(host, positional[0]),
             2 => FromPortSpecification(positional[0], positional[1]),
             _ => throw new FormatException(
                 $"Expected at most two arguments ([host] [port[/base/path]]), got {positional.Length}."),
         };
+    }
+
+    /// <summary>The port from the environment, or the default.</summary>
+    /// <remarks>
+    /// An unparseable value throws rather than falling back. Falling back would
+    /// start a server on 4723 for someone who explicitly asked for something
+    /// else, and the only symptom would be a collision somewhere later.
+    /// </remarks>
+    private static int PortFrom(Func<string, string?> environment)
+    {
+        string? configured = environment(PortEnvironmentVariable);
+        if (configured is not { Length: > 0 })
+        {
+            return DefaultPort;
+        }
+
+        if (!int.TryParse(configured, NumberStyles.None, CultureInfo.InvariantCulture, out int port) ||
+            port < MinPort || port > MaxPort)
+        {
+            throw new FormatException(
+                $"{PortEnvironmentVariable} is '{configured}', which is not a TCP port " +
+                $"between {MinPort} and {MaxPort}.");
+        }
+
+        return port;
     }
 
     /// <summary>
