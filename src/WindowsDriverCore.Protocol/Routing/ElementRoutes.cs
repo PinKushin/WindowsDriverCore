@@ -54,6 +54,25 @@ public static class ElementRoutes
 
                 DriverSession session = context.GetSession();
 
+                // BEFORE the retry, not after. A dead window cannot come back
+                // within one request - the session already re-resolved it in
+                // RequiresSession - so retrying against one is 50 pointless
+                // searches at 50 ms apiece.
+                //
+                // Measured 2026-08-10, app killed underneath a live session:
+                // every find took 2578 ms and answered "no such element", where
+                // the truth was available in under a millisecond. Ten finds cost
+                // 25 seconds, and a cold-start compatibility run went from six
+                // minutes to over thirty without finishing.
+                //
+                // The check below survives as well, because the window can die
+                // DURING the retry; this one catches the window that was already
+                // dead when the request arrived.
+                if (!windows.Exists(session.WindowHandle))
+                {
+                    return Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage);
+                }
+
                 // FindFirst, not FindAll: this route uses one match and UIA can
                 // stop as soon as it has one. Measured at 9.8 ms against 12.0 ms
                 // for the exhaustive walk on Calculator.
