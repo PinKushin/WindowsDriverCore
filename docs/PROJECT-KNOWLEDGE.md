@@ -615,8 +615,15 @@ Cross-tabulated:
 | Failed | Failed | 143 | unmeasurable — Alarms fixture defect |
 | Failed | Passed | 35 | artifact of our per-test relaunch bug, not wins |
 
-**"80/290 = 27.6%" was never a meaningful number.** WinAppDriver scores 112, and 112 is itself
-depressed by a fixture defect. Both figures measure a broken harness.
+**"80/290 = 27.6%" was never a meaningful number, and neither was 112/290.**
+Measured 2026-08-10 in a Windows 10 22H2 guest, WinAppDriver scores **281/290** on
+the same suite, from the same binary, with the Windows 11 accommodations still
+stashed. Three of the nine failures are a missing UWP package (`0x80073CF1`) and
+two need an absent browser.
+
+So 112 was a measurement of Windows 11's application redesigns, not of
+WinAppDriver. Every figure from this suite is conditional on the operating
+system and the installed applications; state both or state neither.
 
 The 70-test backlog, grouped: 20 `ActionsError_*` (pure payload validation, no Actions
 implementation needed), 13 window size/position/maximize, 7 touch + mouse, 8 element

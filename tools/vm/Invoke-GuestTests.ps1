@@ -87,12 +87,27 @@ Invoke-Command -VMName $VMName -Credential $credential -ArgumentList $user, $pla
     # the interactive desktop, and the ScheduledTasks module has no equivalent
     # switch. /RU with /IT means "run as this user, in their session, only when
     # they are logged on" — which the answer file's AutoLogon guarantees.
-    schtasks /create /tn WdcTests /f /sc once /st 00:00 /it `
-        /ru $user /rp $password `
-        /tr "powershell.exe -ExecutionPolicy Bypass -WindowStyle Normal -File C:\baseline\run-tests.ps1" | Out-Null
+    #
+    # THE TRIGGER STARTS IT, NOT schtasks /run. An /IT task cannot be started on
+    # demand from session 0: `schtasks /run` answers "ERROR: Element not found"
+    # because Task Scheduler cannot resolve the interactive token across the
+    # session boundary. Measured, with `query session` confirming the console
+    # session was live and Active at the time.
+    #
+    # The time is computed INSIDE the guest. The answer file sets the guest to
+    # UTC and the host may be anything, so formatting a host timestamp here would
+    # schedule the run at the wrong moment or in the past — which is the other
+    # half of this bug: /st 00:00 put the trigger permanently behind the clock
+    # and schtasks warned about exactly that.
+    $when = (Get-Date).AddSeconds(70)
 
-    schtasks /run /tn WdcTests | Out-Null
-} | Out-Null
+    schtasks /create /tn WdcTests /f /sc once /it `
+        /sd $when.ToString("MM/dd/yyyy") /st $when.ToString("HH:mm") `
+        /ru $user /rp $password `
+        /tr "powershell.exe -ExecutionPolicy Bypass -WindowStyle Normal -File C:\baseline\run-tests.ps1" 2>&1 | Out-String
+} | Write-Host
+
+Write-Host "Task registered; its trigger fires in about 70 seconds."
 
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 while ($true) {

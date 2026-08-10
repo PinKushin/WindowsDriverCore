@@ -98,7 +98,12 @@ Nothing here invalidates the work. It changes the claim.
 
 - WinAppDriver is archived and closed-source. Nothing filed against it will ever
   be fixed, including #1079.
-- It scores 112/290 on its own compatibility suite on Windows 11.
+- It scores 112/290 on its own compatibility suite **on Windows 11**, and
+  **281/290 on Windows 10 22H2** (measured 2026-08-10 in a Hyper-V guest). The
+  gap is app drift. This was the fourth inherited claim to fail on contact with a
+  measurement, and it failed the same way as the other three: quoted from an
+  earlier session, never checked, and used as evidence for something it did not
+  support.
 - A find takes roughly 1070 ms through WinAppDriver versus roughly 33 ms here
   (unmatched conditions — see `LIMITATIONS.md` — but a 30x gap is not noise).
 - Its command line, error envelopes and locator semantics are now measured rather
