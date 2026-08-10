@@ -6,6 +6,13 @@
   <!-- Drives a real application through the real driver. Targets apps we
        control and version — not Store apps, which drift underneath the suite.
        Requires a desktop session. -->
+  <!-- Hosts the real server in-process for the session lifecycle test, which
+       is the only integration test that goes over HTTP. Everything else here
+       drives the automation layer directly, on purpose. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\WindowsDriverCore.Host\WindowsDriverCore.Host.csproj" />
     <!-- Build order only. The test subject is launched as a process, so its
