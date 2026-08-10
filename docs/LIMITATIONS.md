@@ -395,6 +395,47 @@ never-evicted. See `PROJECT-KNOWLEDGE.md` section 0.
 
 ---
 
+## The click ladder: six rungs exercised, one still without a subject
+
+A mutation run reported 41 `NoCoverage` mutants in `UiaElementInteractor` —
+Calculator is buttons carrying `InvokePattern` and nothing else, so every click
+test exercised one rung. `ClickLadderTests` drives Settings, which has the shapes
+Calculator lacks.
+
+| Rung | Subject | State |
+|---|---|---|
+| `Invoke` | Calculator buttons | covered |
+| `SelectionItem` | Settings navigation items | covered |
+| `ExpandCollapse` | a Settings combo box | covered |
+| `Focus` for Edit | the Settings search box | covered |
+| **ancestor walk** | a pattern-less element reaching `ancestor:1/Invoke` | covered |
+| refusal (`ElementNotInteractable`) | Settings' pattern-less groups | covered |
+| **`Toggle`** | none | **still uncovered** |
+
+**Toggle has no subject in Settings.** Surveyed rather than guessed:
+`Button 6 (Invoke=6)`, `ComboBox 1 (ExpandCollapse=1)`,
+`ListItem 22 (Invoke=9, SelectionItem=19)`, `Edit 1 (Value=1)`,
+`Text 22 (none)`, `Group 20 (none)`, `Hyperlink 3 (Invoke=3)` — not one toggle,
+on the landing page or the first six pages navigated to.
+
+That matters because **a checkbox exposes Toggle and not Invoke**, so a ladder
+that stopped at Invoke would leave every checkbox unclickable, and nothing here
+would notice. `charmap.exe` has a real Win32 "Advanced view" checkbox and is the
+obvious next subject.
+
+**Tests choose elements by which pattern they advertise, not by name**, so a
+Settings redesign cannot quietly turn one of them into a test of something else.
+They assert the *path* rather than success, because "the click worked" cannot
+distinguish Toggle from a fallback to Invoke, and that distinction is the point.
+
+**Three of these skipped silently before they were fixed**, each because the
+subject was looked for in the wrong place — inside the first selectable item
+rather than any, among Buttons rather than Groups. A skip reads as a pass.
+`SurveyWhatThisApplicationExposes` is kept `[Explicit]` for exactly this: when a
+rung has no subject, measure the application instead of guessing at it.
+
+---
+
 ## Deliberate divergences
 
 **W3C `capabilities.alwaysMatch` is rejected.** WinAppDriver understands only
