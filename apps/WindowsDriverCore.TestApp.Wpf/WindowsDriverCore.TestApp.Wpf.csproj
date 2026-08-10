@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Literal, never inherited from Directory.Build.props: Buildalyzer reads
+         project files textually and Stryker stops working otherwise. The reason
+         is written out in full in the root Directory.Build.props. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+
+    <!-- This is a test subject, not an API. Everything in it is internal and
+         nothing consumes its documentation. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>
