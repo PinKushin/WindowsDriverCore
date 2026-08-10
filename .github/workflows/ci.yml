@@ -1,0 +1,91 @@
+name: CI
+
+# Every push and every pull request. Unit, protocol and integration all run
+# here: the whole suite is roughly 40 seconds locally, so there is no argument
+# for deferring any of it to a schedule. Mutation and fuzzing are the slow ones
+# and they live in their own scheduled workflows.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  test:
+    name: Build and test
+    # windows-latest is not a preference. The automation layer is raw
+    # IUIAutomation COM and every project targets net10.0-windows, so there is
+    # no other runner this can build on, let alone run on.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore WindowsDriverCore.slnx
+
+      # Separate from test so a compile failure is not reported as a test
+      # failure. TreatWarningsAsErrors is on solution-wide, so this step is
+      # also the zero-warnings gate.
+      - name: Build
+        run: dotnet build WindowsDriverCore.slnx --no-restore --configuration Release
+
+      - name: Unit tests
+        run: >
+          dotnet test tests/WindowsDriverCore.Tests.Unit/WindowsDriverCore.Tests.Unit.csproj
+          --no-build --configuration Release
+          --logger "trx;LogFileName=unit.trx"
+
+      - name: Protocol tests
+        run: >
+          dotnet test tests/WindowsDriverCore.Tests.Protocol/WindowsDriverCore.Tests.Protocol.csproj
+          --no-build --configuration Release
+          --logger "trx;LogFileName=protocol.trx"
+
+      # These drive real windows on a real desktop. GitHub's Windows runners
+      # have an interactive session, so this works — but which applications
+      # exist there is not the same as on a developer machine. Fixtures that
+      # cannot find their subject call Assert.Ignore, so watch the skip count:
+      # a suite that silently skips its way to green is the failure mode this
+      # repository has hit before.
+      #
+      # The Comparison category is excluded because it drives real WinAppDriver,
+      # which is not installed here and takes six minutes when it is.
+      - name: Integration and UI tests
+        run: >
+          dotnet test tests/WindowsDriverCore.Tests.Integration/WindowsDriverCore.Tests.Integration.csproj
+          --no-build --configuration Release
+          --filter "TestCategory!=Comparison"
+          --logger "trx;LogFileName=integration.trx"
+
+      # Orphaned test applications survive a cancelled or failed run and the
+      # next job on a fresh runner will not see them — but a self-hosted runner
+      # would. Cheap insurance, and it documents which processes these tests
+      # own.
+      - name: Kill orphaned test applications
+        if: always()
+        run: >
+          Get-Process CalculatorApp,SystemSettings,charmap,WindowsDriverCore.TestApp.Wpf,WinAppDriver
+          -ErrorAction SilentlyContinue | Stop-Process -Force
+        shell: pwsh
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: "**/TestResults/*.trx"
+          # Deliberately NOT ignore. An empty upload here means no test ran,
+          # and a warning that reads "No files were found" is exactly the kind
+          # of annotation that leaves a workflow green while doing nothing.
+          if-no-files-found: error

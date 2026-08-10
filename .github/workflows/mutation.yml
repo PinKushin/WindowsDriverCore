@@ -1,0 +1,73 @@
+name: Mutation
+
+# Scheduled, never on push. A mutation run re-executes the test suite once per
+# surviving mutant, so its cost scales with the suite rather than with the
+# change — putting it in front of a merge would gate a two-line fix behind the
+# whole matrix.
+on:
+  schedule:
+    # Weekly, Monday 05:17 UTC. Off the hour to miss the queue that
+    # on-the-hour schedules join, and a day clear of the fuzz run so two long
+    # jobs are not competing for attention on the same morning.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  mutate:
+    name: Mutate ${{ matrix.project }}
+    runs-on: windows-latest
+
+    strategy:
+      # One job per project rather than one job for both. They are independent,
+      # and a failure in one should not hide the other's report.
+      fail-fast: false
+      matrix:
+        include:
+          - project: Automation
+            directory: tests/WindowsDriverCore.Tests.Unit
+          - project: Protocol
+            directory: tests/WindowsDriverCore.Tests.Protocol
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # Pinned in .config/dotnet-tools.json with rollForward false, so the
+      # version that runs here is the version that ran locally.
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Restore
+        run: dotnet restore WindowsDriverCore.slnx
+
+      # Run from the test project directory, NOT the repository root, and this
+      # is the whole trick. Stryker reads stryker-config.json from the working
+      # directory, and its `mutate` globs are project-relative. Invoked from the
+      # root it discovers every test in the solution — measured at 294, which
+      # includes the integration suite and therefore drives real applications
+      # for the entire run. Per-directory it discovers 87.
+      #
+      # If the discovered test count here ever looks like the whole solution,
+      # the scoping has broken. See docs/STRYKER-NOTES.md.
+      - name: Mutate
+        working-directory: ${{ matrix.directory }}
+        run: dotnet stryker
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report-${{ matrix.project }}
+          path: ${{ matrix.directory }}/StrykerOutput/**
+          if-no-files-found: error
