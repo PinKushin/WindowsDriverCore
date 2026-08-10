@@ -395,6 +395,45 @@ never-evicted. See `PROJECT-KNOWLEDGE.md` section 0.
 
 ---
 
+## Focus cannot fire against a background window
+
+**The driver never brings a window to the foreground, and UIA's `SetFocus()`
+refuses when it is not there.** Measured 2026-08-09 against the WPF test subject:
+
+```
+focusable=True  enabled=True  offscreen=False   and SetFocus still refused
+foreground=131396   window=3343674
+```
+
+Being focusable is not the same as being focusable *right now*. The failure
+arrives as `ArgumentException` (E_INVALIDARG), so the Focus rung falls through
+and the whole click reports `ElementNotInteractable`.
+
+**Settings and Calculator hid this** by grabbing foreground when they launch. A
+small window launched from a test host does not, which is why a purpose-built
+subject found it immediately.
+
+**A test fixture cannot work around it**: Windows refuses `SetForegroundWindow`
+from a process that is not already foreground. That is precisely why the driver
+has to do it, and Microsoft's own `winapp ui click` documents doing exactly that
+— "brings the target to the foreground and fails fast … `foreground_not_target`
+if focus couldn't be transferred".
+
+`LadderAgainstOwnSubjectTests.AnEdit_IsClickedByFocusingIt` is `[Ignore]`d
+against this — asserting the correct behaviour, not the current one, so it is
+the specification for the fix rather than a record of the defect.
+
+---
+
+## Enum-valued attributes come back as raw numbers
+
+`ExpandCollapse.ExpandCollapseState` answers `"1"`, not `"Expanded"`. Same for
+`Toggle.ToggleState`. **Not yet checked against real WinAppDriver** — the
+recordings contain no sample — so it is unknown whether this matches the wire
+contract or diverges from it. Do not "fix" it before recording the real server.
+
+---
+
 ## The click ladder: six rungs exercised, one still without a subject
 
 A mutation run reported 41 `NoCoverage` mutants in `UiaElementInteractor` —
@@ -410,7 +449,7 @@ Calculator lacks.
 | `Focus` for Edit | the Settings search box | covered |
 | **ancestor walk** | a pattern-less element reaching `ancestor:1/Invoke` | covered |
 | refusal (`ElementNotInteractable`) | Settings' pattern-less groups | covered |
-| **`Toggle`** | none | **still uncovered** |
+| **`Toggle`** | charmap, and the WPF subject | covered |
 
 **Toggle has no subject in Settings.** Surveyed rather than guessed:
 `Button 6 (Invoke=6)`, `ComboBox 1 (ExpandCollapse=1)`,
