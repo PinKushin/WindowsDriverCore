@@ -606,6 +606,33 @@ fixtures that silently found no subject in Settings, and an entire CI job.
 
 ---
 
+## SetFocus is refused even with the window foregrounded
+
+**Superseded diagnosis, 2026-08-10.** The section below blamed the window not
+being in the foreground. Foregrounding is now implemented — `AttachThreadInput`
+to the foreground queue, then `SetForegroundWindow` — and it **works**:
+
+```
+DIAG foregrounded=True  target=0xA707C4  actual=0xA707C4
+     focusable=True     typeWorks=True
+```
+
+The window is in front, the element reports focusable, and `SendInput` is
+confirmed working. `SetFocus` is still refused by WPF's provider, which leaves
+it as the only branch that can fail. So foregrounding was necessary and not
+sufficient, and the cause is narrower than "background window".
+
+**Blocks two things:** the Focus rung (`AnEdit_IsClickedByFocusingIt`) and
+element send-keys (`SendKeys_TypesIntoTheElement_...`), both `[Ignore]`d against
+this.
+
+**A click fallback was tried and reverted.** Clicking to focus drags the entire
+ladder in, has side effects on non-text elements, and made an unrelated test take
+30 seconds. Worth revisiting as a *targeted* click on the element's own rect
+rather than a full ladder pass.
+
+---
+
 ## Focus cannot fire against a background window
 
 **The driver never brings a window to the foreground, and UIA's `SetFocus()`

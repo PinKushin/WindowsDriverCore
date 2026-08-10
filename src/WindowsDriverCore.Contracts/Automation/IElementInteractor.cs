@@ -110,4 +110,18 @@ public interface IElementInteractor
     /// silently doing nothing. See <c>docs/LIMITATIONS.md</c>.
     /// </remarks>
     ElementAction SetValue(nint window, string elementId, string value);
+
+    /// <summary>Focuses an element and types at it.</summary>
+    /// <param name="window">The search root.</param>
+    /// <param name="elementId">The element to type into.</param>
+    /// <param name="keys">A WebDriver key sequence, modifiers included.</param>
+    /// <returns>What happened, and by which path.</returns>
+    /// <remarks>
+    /// <b>Not the same operation as <see cref="SetValue"/>, and the difference is
+    /// observable.</b> SetValue replaces the contents through ValuePattern;
+    /// typing sends keystrokes, so Control+A then Delete clears the field and
+    /// Alt+Enter moves focus off it. The compatibility suite asserts exactly
+    /// those, and no ValuePattern call can produce them.
+    /// </remarks>
+    ElementAction SendKeys(nint window, string elementId, string keys);
 }
