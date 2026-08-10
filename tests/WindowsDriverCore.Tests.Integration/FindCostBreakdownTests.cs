@@ -43,9 +43,9 @@ public sealed class FindCostBreakdownTests
     {
         _automation = new CUIAutomationClass();
 
-        // Shared: this fixture only reads, so it does not need its own
-        // Calculator. See SharedCalculator for why liveness is rechecked.
-        _window = SharedCalculator.Window();
+        // Shared, and opened through the driver: the session owns the
+        // application's lifetime. See SharedDriverSession.
+        _window = SharedDriverSession.Window();
         if (_window == 0)
         {
             Assert.Ignore("Calculator is not available.");

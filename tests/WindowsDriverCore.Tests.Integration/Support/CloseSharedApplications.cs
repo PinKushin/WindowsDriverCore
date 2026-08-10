@@ -12,13 +12,13 @@ namespace WindowsDriverCore.Tests.Integration;
 /// than after each one.
 /// </para>
 /// <para>
-/// <b>The per-fixture teardowns it replaces were the problem.</b> Fourteen
-/// fixtures each launched Calculator and most called
-/// <c>AppLifetime.KillAll("CalculatorApp")</c> when they finished, so a run
-/// booted it roughly ten times — most of the suite's runtime, and all of the
-/// window-flashing. Worse, a <c>KillAll</c> from one fixture destroys the
-/// instance another is still using, which is a failure that appears and
-/// disappears with execution order.
+/// <b>Nothing here knows a process name any more, and that is the point.</b>
+/// Fourteen fixtures each launched Calculator and most killed it by name when
+/// they finished. That was wrong twice over: on Windows 11 it destroyed the
+/// instance another fixture was still using, and on Windows 10 it matched
+/// nothing at all, because the process there is called <c>Calculator</c> rather
+/// than <c>CalculatorApp</c>. The shared application is now opened through the
+/// driver and closed by ending its session.
 /// </para>
 /// <para>
 /// Fixtures that deliberately destroy a window — the liveness, cache and
@@ -43,10 +43,9 @@ public sealed class CloseSharedApplications
     [OneTimeTearDown]
     public void CloseEverything()
     {
-        int processId = Support.SharedCalculator.ProcessId;
-        if (processId != 0)
-        {
-            Support.AppLifetime.KillProcess(processId);
-        }
+        // Ends the SESSION, and the driver closes the application it started.
+        // No process name, no process id, nothing for a test to get wrong on a
+        // Windows version where the process is called something else.
+        Support.SharedDriverSession.Close();
     }
 }
