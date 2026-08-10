@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
@@ -54,28 +52,6 @@ public sealed class UiaElementResolverTests
             UiSettle.UntilSomethingMatches(
                 _finder, _window, LocatorKind.AutomationId, "num5Button")[0]);
     }
-
-    [OneTimeTearDown]
-    public void CloseCalculator()
-    {
-        foreach (Process process in Process.GetProcessesByName("CalculatorApp"))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
-            }
-            catch (InvalidOperationException)
-            {
-                // Already gone.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-    }
-
     [TestCase("num5Button", "Five")]
     [TestCase("num7Button", "Seven")]
     public void Resolve_ReturnsTheElementThatIdNames(string automationId, string expectedName)
