@@ -160,6 +160,42 @@ public sealed class LadderAgainstOwnSubjectTests
     }
 
     [Test]
+    public void APatternlessOrphan_IsClickedByTheMouse_WhenTheMouseRungIsWired()
+    {
+        // The last rung. This element has no pattern and no ancestor with one,
+        // so every earlier rung declines and only real mouse input can reach it.
+        // WinAppDriver clicks it; before this rung existed, this driver could
+        // not — which is why the compatibility suite could not even CREATE a
+        // stale element, since it does so by clicking a disabled button.
+        UiaElementInteractor withMouse = new(
+            new CUIAutomationClass(),
+            new UiaElementResolver(new CUIAutomationClass()),
+            new SendInputPointer(),
+            new WindowLocator());
+
+        ElementAction click = withMouse.Click(_window, Id("patternlessOrphan"));
+
+        click.Outcome.ShouldBe(ElementActionOutcome.Performed);
+        click.Path.ShouldBe("mouse", "no pattern can carry this, so only the mouse can");
+    }
+
+    [Test]
+    public void TheMouseRungIsSkippedEntirely_WithoutAWindowLocatorToGuardIt()
+    {
+        // An UNGUARDED coordinate click is worse than no click: it delivers
+        // input to whatever application happens to be under the point. So the
+        // rung is skipped rather than run unguarded, and the ladder refuses.
+        UiaElementInteractor unguarded = new(
+            new CUIAutomationClass(),
+            new UiaElementResolver(new CUIAutomationClass()),
+            new SendInputPointer(),
+            windows: null);
+
+        unguarded.Click(_window, Id("patternlessOrphan")).Outcome
+            .ShouldBe(ElementActionOutcome.NotInteractable);
+    }
+
+    [Test]
     public void APatternlessOrphan_IsRefused()
     {
         // Nothing within three levels carries a pattern. Reporting success here
