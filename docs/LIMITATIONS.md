@@ -395,6 +395,42 @@ never-evicted. See `PROJECT-KNOWLEDGE.md` section 0.
 
 ---
 
+## CI runs 23 of 116 integration tests, because the runner is Windows Server
+
+**Measured on the first CI run, 2026-08-10.** It passed, green tick, zero
+annotations — with 93 of 116 integration tests skipped. 87 of them for one
+reason:
+
+```
+OneTimeSetUp: Calculator is not available: The system cannot find the file specified
+```
+
+`windows-latest` is **Windows Server 2025** (`windows-2025-vs2026`). Server ships
+without the Microsoft Store and without the inbox UWP apps, so Calculator is not
+missing — it is unavailable by construction. No install step fixes it, and no
+newer image will. The packaged-application launch path is unreachable there for
+the same reason.
+
+**What did run tells the story better than what did not.** Settings and charmap
+fixtures executed (their skips are page-specific, not launch failures), and the
+purpose-built WPF subject passed every test it owns. It is the only application
+that exists on both a developer desktop and a Server runner.
+
+**Two consequences:**
+
+- The fix is to move coverage onto the WPF subject, not to fight the image. A
+  ratchet in `ci.yml` fails the build if the skip count rises above today's 93,
+  so the debt can only shrink.
+- Store-app and packaged-launch coverage needs a **client** Windows machine. A
+  self-hosted runner on the Hyper-V VM would cover those *and* supply the matched
+  WinAppDriver baseline that every comparison number in this repository currently
+  lacks.
+
+**A skip reads as a pass.** This repository has now hit that three times: two
+fixtures that silently found no subject in Settings, and an entire CI job.
+
+---
+
 ## Focus cannot fire against a background window
 
 **The driver never brings a window to the foreground, and UIA's `SetFocus()`
