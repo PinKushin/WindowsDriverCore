@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -41,7 +42,8 @@ public static class ElementRoutes
         ArgumentNullException.ThrowIfNull(app);
 
         app.MapPost("/session/{sessionId}/element",
-            async (HttpContext context, IElementFinder finder, IElementRegistry registry) =>
+            async (HttpContext context, IElementFinder finder, IElementRegistry registry,
+                   IWindowLocator windows) =>
             {
                 (LocatorParseResult locator, IResult? rejection) = await ReadLocator(context)
                     .ConfigureAwait(false);
@@ -70,6 +72,19 @@ public static class ElementRoutes
                 // POST /elements answers 200 with an empty array.
                 if (found.ElementIds.Count == 0)
                 {
+                    // An empty result and a dead window look identical to the
+                    // search, so the window has to be asked about separately.
+                    // Answering "no such element" when the window is gone sends
+                    // a client looking for a better locator for something that
+                    // cannot be found by any locator — and a retry loop will keep
+                    // searching a window that no longer exists until it times
+                    // out. Measured: 24 tests on the compatibility suite expect
+                    // "Currently selected window has been closed" here.
+                    if (!windows.Exists(session.WindowHandle))
+                    {
+                        return Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage);
+                    }
+
                     return Fault(WebDriverFault.NoSuchElement, NoSuchElementMessage);
                 }
 
