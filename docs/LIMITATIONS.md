@@ -22,7 +22,30 @@ either driver has had.
 | Driver | Score |
 |---|---|
 | WinAppDriver 1.2.1 | **281/290** |
-| WindowsDriverCore | **19/290** |
+| WindowsDriverCore, run 1 | 19/290 |
+| WindowsDriverCore, run 2 | 19/290 — packaged-window fix |
+| WindowsDriverCore, run 3 | **81/290** — `/timeouts` |
+
+**Run 2 scored the same and was not wasted.** The packaged-window fix took
+"Could not find main window for application" from ~120 failures to **zero**; the
+fixtures simply died one step later, on `/timeouts`. Read the failure
+distribution, not the total — the score only moves when the *last* blocker in a
+chain is removed.
+
+**After `/timeouts` the shape changed.** No single cause dominates any more:
+
+| Cause | Tests |
+|---|---|
+| wrong error-message text (two strings) | 33 |
+| `POST /actions` | 15 |
+| `GET /title` | 14 |
+| `POST /keys` | 12 |
+| `GET /window/current/size` | 11 |
+| `GET /window_handle` | 10 |
+| various `TestInit` failures | ~44 |
+
+**33 of them need no feature at all** — they are two error strings the suite
+matches exactly.
 
 **19/290 is not 271 missing features.** The failures collapse into a handful of
 causes, because a failed `ClassInitialize` takes every test in its class with it:
