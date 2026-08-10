@@ -90,6 +90,21 @@ public sealed class WindowLocator : IWindowLocator
     }
 
     /// <inheritdoc />
+    public nint FindMainWindow(int processId)
+    {
+        if (processId == 0)
+        {
+            return 0;
+        }
+
+        // The same search the launcher uses, minus the "is it new" stage: there
+        // is no before-snapshot to compare against here, and the window being
+        // looked for is by definition NOT new — it is the one that replaced the
+        // handle the session was holding.
+        return MainWindowWaiter.FindCurrentWindow(processId);
+    }
+
+    /// <inheritdoc />
     public bool Close(nint handle) =>
         Exists(handle) && Win32.PostMessage(handle, Win32.WM_CLOSE, 0, 0);
 
