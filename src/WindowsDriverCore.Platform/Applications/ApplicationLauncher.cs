@@ -74,6 +74,18 @@ public sealed class ApplicationLauncher : IApplicationLauncher
         // only thing that covers both.
         IReadOnlySet<nint> windowsBefore = MainWindowWaiter.SnapshotTopLevelWindows();
 
+        // Which processes existed a moment ago, so an activation that ATTACHED
+        // to a running application can be told from one that started it.
+        // Windows 10's Calculator is single-instance and returns the existing
+        // process, and treating that as a launch means the session claims the
+        // right to end an application it did not start.
+        HashSet<int> processesBefore = [];
+        foreach (Process existing in Process.GetProcesses())
+        {
+            processesBefore.Add(existing.Id);
+            existing.Dispose();
+        }
+
         int processId;
         try
         {
@@ -113,7 +125,10 @@ public sealed class ApplicationLauncher : IApplicationLauncher
         int owningProcess = _windows.GetOwningProcessId(window);
 
         return LaunchResult.Success(
-            new LaunchedApplication(owningProcess != 0 ? owningProcess : processId, window));
+            new LaunchedApplication(
+                owningProcess != 0 ? owningProcess : processId,
+                window,
+                Started: !processesBefore.Contains(owningProcess != 0 ? owningProcess : processId)));
     }
 
     /// <summary>
