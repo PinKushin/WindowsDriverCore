@@ -63,4 +63,33 @@ public sealed class WindowLocator : IWindowLocator
             rect.Right - rect.Left,
             rect.Bottom - rect.Top);
     }
+
+    /// <inheritdoc />
+    public bool SetBounds(nint handle, WindowBounds bounds)
+    {
+        ArgumentNullException.ThrowIfNull(bounds);
+
+        return Exists(handle) &&
+               Win32.SetWindowPos(
+                   handle, 0, bounds.X, bounds.Y, bounds.Width, bounds.Height,
+                   Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
+    }
+
+    /// <inheritdoc />
+    public bool Maximize(nint handle)
+    {
+        if (!Exists(handle))
+        {
+            return false;
+        }
+
+        // ShowWindow returns whether the window WAS visible before, not whether
+        // the call worked, so its result says nothing useful here.
+        Win32.ShowWindow(handle, Win32.SW_MAXIMIZE);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public bool Close(nint handle) =>
+        Exists(handle) && Win32.PostMessage(handle, Win32.WM_CLOSE, 0, 0);
 }

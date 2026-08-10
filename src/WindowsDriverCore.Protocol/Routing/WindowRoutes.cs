@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -48,6 +49,10 @@ public sealed record WindowPosition(
 public static class WindowRoutes
 {
     private const string WindowClosedMessage = "Currently selected window has been closed";
+
+    /// <summary>Measured from the real server, not invented.</summary>
+    private const string SwitchFailedMessage =
+        "A request to switch to a window could not be satisfied because the window could not be found.";
 
     /// <summary>Maps the window routes.</summary>
     /// <param name="app">The route builder.</param>
@@ -111,6 +116,114 @@ public static class WindowRoutes
                     session.Id, new WindowPosition(bounds.X, bounds.Y)));
         }).RequiresSession();
 
+        app.MapPost("/session/{sessionId}/window/current/size",
+            async (HttpContext context, IWindowLocator windows) =>
+        {
+            DriverSession session = context.GetSession();
+            WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
+
+            if (bounds is null)
+            {
+                return WindowClosed();
+            }
+
+            using JsonDocument body = await JsonDocument
+                .ParseAsync(context.Request.Body).ConfigureAwait(false);
+
+            if (!Number(body.RootElement, "width", out int width) ||
+                !Number(body.RootElement, "height", out int height))
+            {
+                return BadParameter("width, height");
+            }
+
+            // Position is kept: this route sets SIZE, and moving the window as a
+            // side effect would be a surprise the caller never asked for.
+            return windows.SetBounds(session.WindowHandle, new WindowBounds(bounds.X, bounds.Y, width, height))
+                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                : WindowClosed();
+        }).RequiresSession();
+
+        app.MapPost("/session/{sessionId}/window/current/position",
+            async (HttpContext context, IWindowLocator windows) =>
+        {
+            DriverSession session = context.GetSession();
+            WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
+
+            if (bounds is null)
+            {
+                return WindowClosed();
+            }
+
+            using JsonDocument body = await JsonDocument
+                .ParseAsync(context.Request.Body).ConfigureAwait(false);
+
+            if (!Number(body.RootElement, "x", out int x) ||
+                !Number(body.RootElement, "y", out int y))
+            {
+                return BadParameter("x, y");
+            }
+
+            return windows.SetBounds(session.WindowHandle, new WindowBounds(x, y, bounds.Width, bounds.Height))
+                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                : WindowClosed();
+        }).RequiresSession();
+
+        app.MapPost("/session/{sessionId}/window/current/maximize", (HttpContext context, IWindowLocator windows) =>
+        {
+            DriverSession session = context.GetSession();
+
+            return windows.Maximize(session.WindowHandle)
+                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                : WindowClosed();
+        }).RequiresSession();
+
+        app.MapDelete("/session/{sessionId}/window", (HttpContext context, IWindowLocator windows) =>
+        {
+            DriverSession session = context.GetSession();
+
+            // Closes the WINDOW and leaves the session alive — the suite closes
+            // a window and then keeps using its session id, so this must not be
+            // confused with DELETE /session.
+            return windows.Close(session.WindowHandle)
+                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                : WindowClosed();
+        }).RequiresSession();
+
+        app.MapPost("/session/{sessionId}/window", async (HttpContext context, IWindowLocator windows) =>
+        {
+            DriverSession session = context.GetSession();
+
+            using JsonDocument body = await JsonDocument
+                .ParseAsync(context.Request.Body).ConfigureAwait(false);
+
+            string? name = body.RootElement.TryGetProperty("name", out JsonElement value)
+                ? value.GetString()
+                : null;
+
+            if (name is null)
+            {
+                return BadParameter("name");
+            }
+
+            // Hexadecimal, like every other window handle on this wire. Parsing
+            // it as decimal would silently address a different window.
+            if (!nint.TryParse(
+                    name.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? name[2..] : name,
+                    System.Globalization.NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture,
+                    out nint handle) ||
+                !windows.Exists(handle))
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, SwitchFailedMessage),
+                    statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
+            }
+
+            session.WindowHandle = handle;
+
+            return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
+        }).RequiresSession();
+
         return app;
     }
 
@@ -123,6 +236,32 @@ public static class WindowRoutes
     /// </remarks>
     private static string FormatHandle(nint handle) =>
         "0x" + ((long)handle).ToString("X8", CultureInfo.InvariantCulture);
+
+    /// <summary>Reads an integer that a client may have sent as a double.</summary>
+    /// <remarks>
+    /// A WebDriver client serialises window sizes from doubles, so 500 arrives
+    /// as 500.0. Demanding an integer token would reject a perfectly ordinary
+    /// request.
+    /// </remarks>
+    private static bool Number(JsonElement body, string name, out int value)
+    {
+        value = 0;
+
+        if (!body.TryGetProperty(name, out JsonElement element) ||
+            element.ValueKind != JsonValueKind.Number)
+        {
+            return false;
+        }
+
+        value = (int)Math.Round(element.GetDouble());
+        return true;
+    }
+
+    private static IResult BadParameter(string names) =>
+        Results.Json(
+            JsonWireResponse.ForFault(
+                WebDriverFault.InvalidArgument, $"Missing Command Parameter: {names}"),
+            statusCode: WebDriverFault.InvalidArgument.HttpStatus);
 
     private static IResult WindowClosed() =>
         Results.Json(
