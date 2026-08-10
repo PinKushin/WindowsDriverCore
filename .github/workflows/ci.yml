@@ -68,6 +68,50 @@ jobs:
           --filter "TestCategory!=Comparison"
           --logger "trx;LogFileName=integration.trx"
 
+      # The gate that makes a silently-skipping suite loud.
+      #
+      # The first CI run passed with 23 of 116 integration tests executed and 93
+      # skipped, on a green tick. 87 of those were one cause: "Calculator is not
+      # available: The system cannot find the file specified".
+      #
+      # windows-latest is Windows SERVER 2025 (image windows-2025-vs2026), and
+      # Server ships without the Microsoft Store and without the inbox UWP apps.
+      # Calculator is not missing, it is unavailable by construction, so no
+      # install step fixes this and neither does a newer image. The packaged
+      # application launch path cannot be exercised here for the same reason.
+      #
+      # This is a RATCHET. The number is today's measured debt, not a budget to
+      # spend: it may only ever be lowered, and lowering it means moving a
+      # fixture onto the WPF test subject — the only application that exists on
+      # both a developer desktop and a Server runner, which is the argument for
+      # having built it. A change that pushes the count up fails here rather
+      # than passing quietly.
+      #
+      # The rest needs a client Windows machine: a self-hosted runner on the
+      # Hyper-V VM would cover the Store-app fixtures AND give the matched
+      # WinAppDriver baseline the comparison numbers currently lack.
+      - name: Fail if the suite skipped its way to green
+        if: always()
+        shell: pwsh
+        run: |
+          $budget = 93
+          $trx = Get-ChildItem -Recurse -Filter integration.trx | Select-Object -First 1
+          if (-not $trx) { throw "No integration.trx: the test step did not run." }
+
+          [xml]$results = Get-Content $trx.FullName
+          $counters = $results.TestRun.ResultSummary.Counters
+          $skipped = [int]$counters.total - [int]$counters.executed
+          $passed = [int]$counters.passed
+
+          Write-Host "integration: $passed passed, $skipped skipped of $($counters.total)"
+
+          if ($skipped -gt $budget) {
+            throw "Skipped $skipped, budget is $budget. A skip reads as a pass — find the fixture that stopped finding its subject."
+          }
+          if ($passed -lt 1) {
+            throw "Nothing executed."
+          }
+
       # Orphaned test applications survive a cancelled or failed run and the
       # next job on a fresh runner will not see them — but a self-hosted runner
       # would. Cheap insurance, and it documents which processes these tests
