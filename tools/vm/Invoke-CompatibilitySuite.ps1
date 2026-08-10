@@ -1,0 +1,171 @@
+<#
+.SYNOPSIS
+    Runs WinAppDriver's own compatibility suite in the Windows 10 guest against a
+    chosen driver, and reports the score.
+
+.DESCRIPTION
+    The suite is the scoreboard, so the things that make a run comparable are
+    encoded here rather than retyped each time. Three of them were learned the
+    hard way on 2026-08-10.
+
+    RESETTING THE ALARM STORE IS NOT TIDINESS. The suite creates alarms
+    (LongTapTest, PenBarrelButtonTest) faster than it deletes them. Roughly 162
+    accumulated across one day, Alarms & Clock hit its cap, and the cap disables
+    ONLY "Add new alarm" - measured, with its siblings and the whole command bar
+    still enabled. Nine tests need that button, and they are exactly the nine
+    that separated a 133 run from every 124 run afterwards. A run without this
+    reset does not measure the driver; it measures how much junk the previous
+    runs left behind. The alarms live in the UWP settings hive,
+    Settings\settings.dat, NOT in LocalState - clearing LocalState changes
+    nothing, which was tried first.
+
+    THE COMMIT IS PINNED AND VERIFIED. An earlier run measured an unidentified
+    commit because 'git fetch' failed with "detected dubious ownership" and the
+    error was piped to Out-Null; the trx was named run--120221.trx with an empty
+    sha and nobody noticed until the numbers disagreed. This aborts instead.
+
+    DOTNET_ROOT MUST BE SET. The published exe resolves its framework against
+    C:\Program Files\dotnet, which holds only 5.0.7 in this guest. Without it the
+    host exits immediately with "not possible to find any compatible framework
+    version" and nothing ever listens on 4723 - which reads as a hung run.
+
+    Everything runs through the guest agent queue, because PowerShell Direct
+    lands in session 0 where there is no desktop and no UI test can pass.
+
+.PARAMETER Commit
+    The commit to measure. Pinned deliberately: comparing two runs means changing
+    one thing.
+
+.PARAMETER Driver
+    Which driver answers on 4723 - this project, or WinAppDriver as the baseline.
+
+.EXAMPLE
+    .\Invoke-CompatibilitySuite.ps1 -Commit 21a18dd
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string] $Commit,
+    [ValidateSet('WindowsDriverCore', 'WinAppDriver')][string] $Driver = 'WindowsDriverCore',
+    [string] $VMName = "Win10-Baseline",
+    [string] $Root = "F:\Hyper-V",
+    [int] $TimeoutMinutes = 30
+)
+
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+$credentialPath = Join-Path (Join-Path $Root $VMName) "credential.txt"
+$lines = Get-Content -LiteralPath $credentialPath
+$credential = [System.Management.Automation.PSCredential]::new(
+    $lines[0], (ConvertTo-SecureString $lines[1] -AsPlainText -Force))
+
+$job = @"
+`$ErrorActionPreference = 'Continue'
+`$env:Path = 'C:\dotnet;C:\Program Files\Git\cmd;' + `$env:Path
+`$env:DOTNET_ROOT = 'C:\dotnet'
+`$env:DOTNET_NOLOGO = 'true'
+`$vstest = 'C:\baseline\testplatform\tools\net462\Common7\IDE\Extensions\TestPlatform\vstest.console.exe'
+
+Get-Process Time, Calculator, notepad, WinAppDriver, WindowsDriverCore -ErrorAction SilentlyContinue |
+    Stop-Process -Force
+Start-Sleep -Seconds 4
+
+`$pkg = "`$env:LOCALAPPDATA\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe"
+`$settings = Join-Path `$pkg 'Settings'
+if (Test-Path `$settings) {
+    try {
+        Move-Item -LiteralPath `$settings -Destination "`$settings.reset-`$(Get-Date -Format yyyyMMdd-HHmmss)" -ErrorAction Stop
+        'alarm store reset'
+    } catch { 'alarm store NOT reset: ' + `$_.Exception.Message }
+}
+Get-ChildItem `$pkg -Directory -Filter 'Settings.reset-*' -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -Skip 3 |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+# WARM THE APP, and do not skip this because the reset just closed it.
+# Measured: the first run that reset the store cold-started Alarms & Clock, and
+# every ActionsError_* test then failed in TestInit with "Currently selected
+# window has been closed" - beginning with the FIRST test of the run, so nothing
+# killed it mid-run; the session never had a usable window. Runs before that had
+# quietly inherited a warm app left behind by their predecessor, which is why
+# nobody saw it. Waiting for AddAlarmButton to be ENABLED (not merely present)
+# is the check, because present-but-disabled is exactly the cap state above.
+Start-Process 'shell:AppsFolder\Microsoft.WindowsAlarms_8wekyb3d8bbwe!App'
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+`$AE = [System.Windows.Automation.AutomationElement]
+`$byId = New-Object System.Windows.Automation.PropertyCondition(`$AE::AutomationIdProperty, 'AddAlarmButton')
+`$warm = `$false
+for (`$i = 0; `$i -lt 40; `$i++) {
+    `$b = `$AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants, `$byId)
+    if (`$b -and `$b.Current.IsEnabled) { `$warm = `$true; break }
+    Start-Sleep -Seconds 1
+}
+'app warmed (AddAlarmButton enabled): ' + `$warm
+
+Set-Location 'C:\baseline\WindowsDriverCore'
+& git.exe fetch origin 2>&1 | Out-String | Write-Host
+& git.exe reset --hard $Commit 2>&1 | Out-String | Write-Host
+`$head = (& git.exe rev-parse --short HEAD 2>&1 | Out-String).Trim()
+if (-not `$head) { 'ABORT: HEAD unknown, refusing to measure an unidentified commit'; exit 1 }
+'head: ' + `$head
+
+if ('$Driver' -eq 'WindowsDriverCore') {
+    & C:\dotnet\dotnet.exe publish src\WindowsDriverCore.Host -c Release -o C:\baseline\host --nologo -v q 2>&1 |
+        Select-String -Pattern 'WindowsDriverCore.Host ->|error' | ForEach-Object { `$_.Line }
+    `$srv = Start-Process -FilePath 'C:\baseline\host\WindowsDriverCore.exe' -PassThru
+} else {
+    `$srv = Start-Process -FilePath 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe' -PassThru
+}
+
+`$up = `$false
+for (`$i = 0; `$i -lt 40; `$i++) {
+    try { `$null = Invoke-RestMethod -Uri 'http://127.0.0.1:4723/status' -TimeoutSec 5; `$up = `$true; break }
+    catch { Start-Sleep -Seconds 1 }
+}
+'port 4723 answering: ' + `$up
+if (-not `$up) { 'ABORT: driver never answered'; exit 1 }
+
+`$trx = "run-`$head-$Driver-`$(Get-Date -Format HHmmss).trx"
+'results: ' + `$trx
+& `$vstest 'C:\baseline\WebDriverAPI\WebDriverAPI.dll' "/Logger:trx;LogFileName=`$trx" `
+    /ResultsDirectory:C:\baseline\WindowsDriverCore\TestResults 2>&1 |
+    Select-String -Pattern '^Total tests|^\s+Passed:|^\s+Failed:' | ForEach-Object { `$_.Line }
+
+Stop-Process -Id `$srv.Id -Force -ErrorAction SilentlyContinue
+
+# The nine that depend on "Add new alarm" being enabled. Reported explicitly
+# because they move together and are the fastest signal that the reset worked.
+`$nine = 'ClearElement','GetElementText','FindElements_ByName',
+         'ClearElementError_StaleElement','ClickElementError_StaleElement',
+         'GetElementAttributeError_StaleElement','GetElementDisplayedStateError_StaleElement',
+         'GetElementSelectedStateError_StaleElement','GetElementTextError_StaleElement'
+`$path = "C:\baseline\WindowsDriverCore\TestResults\`$trx"
+if (Test-Path `$path) {
+    [xml]`$x = Get-Content -LiteralPath `$path
+    '=== the nine add-alarm tests ==='
+    foreach (`$n in `$nine) {
+        `$r = `$x.TestRun.Results.UnitTestResult | Where-Object { `$_.testName -eq `$n }
+        '  {0,-44} {1}' -f `$n, `$(if (`$r) { `$r.outcome } else { 'ABSENT' })
+    }
+}
+'run complete'
+"@
+
+$name = "compat-$(Get-Date -Format HHmmss)"
+Invoke-Command -VMName $VMName -Credential $credential -ArgumentList $job, $name -ScriptBlock {
+    param($text, $jobName)
+    [System.IO.File]::WriteAllText("C:\baseline\cmd\$jobName.ps1", $text)
+}
+Write-Host "queued $name ($Driver at $Commit)"
+
+$deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+while ((Get-Date) -lt $deadline) {
+    $log = Invoke-Command -VMName $VMName -Credential $credential -ArgumentList $name -ScriptBlock {
+        param($jobName)
+        if (Test-Path "C:\baseline\cmd\$jobName.done") { Get-Content "C:\baseline\cmd\$jobName.log" -Raw } else { $null }
+    }
+    if ($log) { Write-Host $log; return }
+    Start-Sleep -Seconds 15
+}
+throw "The run did not finish within $TimeoutMinutes minutes."
