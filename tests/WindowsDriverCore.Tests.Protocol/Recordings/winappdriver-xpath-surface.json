@@ -1,0 +1,270 @@
+[
+    {
+        "label":  "descendant //Button",
+        "xpath":  "//Button",
+        "http":  200,
+        "count":  35,
+        "status":  0
+    },
+    {
+        "label":  "descendant-or-self //*",
+        "xpath":  "//*",
+        "http":  200,
+        "count":  51,
+        "status":  0
+    },
+    {
+        "label":  "absolute child /Window",
+        "xpath":  "/Window",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "absolute deep /Window/Custom",
+        "xpath":  "/Window/Custom",
+        "http":  200,
+        "count":  0,
+        "status":  0
+    },
+    {
+        "label":  "wildcard step //Group/*",
+        "xpath":  "//Group/*",
+        "http":  200,
+        "count":  38,
+        "status":  0
+    },
+    {
+        "label":  "node() test //node()",
+        "xpath":  "//node()",
+        "http":  200,
+        "count":  51,
+        "status":  0
+    },
+    {
+        "label":  "self axis //Button/self::Button",
+        "xpath":  "//Button/self::Button",
+        "http":  200,
+        "count":  35,
+        "status":  0
+    },
+    {
+        "label":  "parent .. //Button/..",
+        "xpath":  "//Button/..",
+        "http":  200,
+        "count":  8,
+        "status":  0
+    },
+    {
+        "label":  "parent axis //Button/parent::*",
+        "xpath":  "//Button/parent::*",
+        "http":  200,
+        "count":  8,
+        "status":  0
+    },
+    {
+        "label":  "ancestor axis //Button/ancestor::Window",
+        "xpath":  "//Button/ancestor::Window",
+        "http":  200,
+        "count":  3,
+        "status":  0
+    },
+    {
+        "label":  "child axis explicit //child::Button",
+        "xpath":  "//child::Button",
+        "http":  200,
+        "count":  35,
+        "status":  0
+    },
+    {
+        "label":  "descendant axis //descendant::Button",
+        "xpath":  "//descendant::Button",
+        "http":  200,
+        "count":  35,
+        "status":  0
+    },
+    {
+        "label":  "following-sibling",
+        "xpath":  "//Button/following-sibling::Button",
+        "http":  200,
+        "count":  27,
+        "status":  0
+    },
+    {
+        "label":  "preceding-sibling",
+        "xpath":  "//Button/preceding-sibling::Button",
+        "http":  200,
+        "count":  27,
+        "status":  0
+    },
+    {
+        "label":  "attribute axis",
+        "xpath":  "//Button/attribute::Name",
+        "http":  200,
+        "count":  0,
+        "status":  0
+    },
+    {
+        "label":  "positional [1]",
+        "xpath":  "(//Button)[1]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "positional bare //Button[1]",
+        "xpath":  "//Button[1]",
+        "http":  200,
+        "count":  8,
+        "status":  0
+    },
+    {
+        "label":  "last()",
+        "xpath":  "(//Button)[last()]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "position()\u003e1",
+        "xpath":  "(//Button)[position()\u003e1]",
+        "http":  200,
+        "count":  34,
+        "status":  0
+    },
+    {
+        "label":  "attribute equals",
+        "xpath":  "//Button[@AutomationId=\"num5Button\"]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "attribute exists",
+        "xpath":  "//Button[@AutomationId]",
+        "http":  200,
+        "count":  35,
+        "status":  0
+    },
+    {
+        "label":  "not()",
+        "xpath":  "//Button[not(@AutomationId=\"num5Button\")]",
+        "http":  200,
+        "count":  34,
+        "status":  0
+    },
+    {
+        "label":  "and",
+        "xpath":  "//Button[@AutomationId=\"num5Button\" and @Name=\"Five\"]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "or",
+        "xpath":  "//Button[@AutomationId=\"num5Button\" or @AutomationId=\"num6Button\"]",
+        "http":  200,
+        "count":  2,
+        "status":  0
+    },
+    {
+        "label":  "nested predicate",
+        "xpath":  "//*[@AutomationId=\"NumberPad\"]//Button[@AutomationId=\"num5Button\"]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "starts-with()",
+        "xpath":  "//Button[starts-with(@AutomationId, \"num\")]",
+        "http":  200,
+        "count":  10,
+        "status":  0
+    },
+    {
+        "label":  "contains()",
+        "xpath":  "//Button[contains(@AutomationId, \"um5\")]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "string-length()",
+        "xpath":  "//Button[string-length(@AutomationId)\u003e6]",
+        "http":  200,
+        "count":  34,
+        "status":  0
+    },
+    {
+        "label":  "normalize-space()",
+        "xpath":  "//Button[normalize-space(@Name)=\"Five\"]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "substring()",
+        "xpath":  "//Button[substring(@AutomationId,1,3)=\"num\"]",
+        "http":  200,
+        "count":  10,
+        "status":  0
+    },
+    {
+        "label":  "translate()",
+        "xpath":  "//Button[translate(@AutomationId,\"NUM\",\"num\")=\"num5Button\"]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "concat()",
+        "xpath":  "//Button[@AutomationId=concat(\"num\",\"5Button\")]",
+        "http":  200,
+        "count":  1,
+        "status":  0
+    },
+    {
+        "label":  "union |",
+        "xpath":  "//Button[@AutomationId=\"num5Button\"] | //Button[@AutomationId=\"num6Button\"]",
+        "http":  200,
+        "count":  2,
+        "status":  0
+    },
+    {
+        "label":  "count()",
+        "xpath":  "//*[count(//Button)\u003e0]",
+        "http":  200,
+        "count":  51,
+        "status":  0
+    },
+    {
+        "label":  "text()",
+        "xpath":  "//Text/text()",
+        "http":  200,
+        "count":  0,
+        "status":  0
+    },
+    {
+        "label":  "malformed",
+        "xpath":  "//Button[",
+        "http":  500,
+        "body":  "",
+        "status":  null,
+        "count":  -1
+    },
+    {
+        "label":  "unknown function",
+        "xpath":  "//Button[bogus-function(@Name)]",
+        "http":  500,
+        "body":  "",
+        "status":  null,
+        "count":  -1
+    },
+    {
+        "label":  "unknown control type",
+        "xpath":  "//NoSuchControlType",
+        "http":  200,
+        "count":  0,
+        "status":  0
+    }
+]
