@@ -60,6 +60,30 @@ internal static partial class Win32
     [LibraryImport("user32.dll", EntryPoint = "GetWindowTextLengthW")]
     internal static partial int GetWindowTextLength(nint hWnd);
 
+    /// <summary>Reads a window's title bar text.</summary>
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int GetWindowText(nint hWnd, [Out] char[] text, int maxCount);
+
+    /// <summary>Reads a window's bounding rectangle, in screen coordinates.</summary>
+    /// <remarks>
+    /// Screen coordinates, not client: the protocol reports where the window is
+    /// on the desktop, and GetClientRect would answer relative to the window
+    /// itself and always place it at the origin.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(nint hWnd, out Rect rect);
+
+    /// <summary>Win32 <c>RECT</c>.</summary>
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    internal struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     /// <summary>Reads a window's class name.</summary>
     /// <param name="hWnd">The window.</param>
     /// <param name="className">Receives the class name.</param>

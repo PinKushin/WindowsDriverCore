@@ -25,4 +25,42 @@ public sealed class WindowLocator : IWindowLocator
         Win32.GetWindowThreadProcessId(handle, out uint processId);
         return (int)processId;
     }
+
+    /// <inheritdoc />
+    public string GetTitle(nint handle)
+    {
+        if (!Exists(handle))
+        {
+            return string.Empty;
+        }
+
+        // Length first, then one read. A fixed buffer would truncate a long
+        // title silently, which is the sort of thing that goes unnoticed until a
+        // client matches on it.
+        int length = Win32.GetWindowTextLength(handle);
+        if (length <= 0)
+        {
+            return string.Empty;
+        }
+
+        char[] buffer = new char[length + 1];
+        int written = Win32.GetWindowText(handle, buffer, buffer.Length);
+
+        return written > 0 ? new string(buffer, 0, written) : string.Empty;
+    }
+
+    /// <inheritdoc />
+    public WindowBounds? GetBounds(nint handle)
+    {
+        if (!Exists(handle) || !Win32.GetWindowRect(handle, out Win32.Rect rect))
+        {
+            return null;
+        }
+
+        return new WindowBounds(
+            rect.Left,
+            rect.Top,
+            rect.Right - rect.Left,
+            rect.Bottom - rect.Top);
+    }
 }
