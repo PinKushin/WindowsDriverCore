@@ -87,9 +87,35 @@ internal static class AppLifetime
 
     /// <summary>Kills every process with a name, for fixture teardown.</summary>
     /// <param name="processName">The name, without extension.</param>
+    /// <summary>Ends every process whose name contains <paramref name="processName"/>.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Substring, not exact, and that is a correctness fix rather than
+    /// convenience.</b> Windows 10 names Calculator's process <c>Calculator</c>
+    /// and Windows 11 names it <c>CalculatorApp</c>. An exact match on either
+    /// one silently does nothing on the other Windows: measured 2026-08-10 in
+    /// the Windows 10 guest, where every KillAll("CalculatorApp") in this suite
+    /// matched no process at all and applications accumulated for the whole run.
+    /// </para>
+    /// <para>
+    /// The same mistake made the first WinAppDriver quit probe worthless — it
+    /// counted CalculatorApp on Windows 10, saw zero before and zero after, and
+    /// reported a verdict from a comparison that could not discriminate.
+    /// </para>
+    /// <para>
+    /// Prefer ending a session, or killing a known process id. This exists for
+    /// the fixtures that must start from a machine with none of an application
+    /// running, which is a question about the machine rather than about a
+    /// process this suite owns.
+    /// </para>
+    /// </remarks>
     internal static void KillAll(string processName)
     {
-        foreach (Process process in Process.GetProcessesByName(processName))
+        Process[] matching = Array.FindAll(
+            Process.GetProcesses(),
+            candidate => candidate.ProcessName.Contains(processName, StringComparison.OrdinalIgnoreCase));
+
+        foreach (Process process in matching)
         {
             try
             {
