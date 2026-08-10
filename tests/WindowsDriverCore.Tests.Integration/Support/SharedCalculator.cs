@@ -33,6 +33,19 @@ internal static class SharedCalculator
 
     private static readonly object Gate = new();
     private static nint _window;
+    private static int _processId;
+
+    /// <summary>The process this launched, or zero.</summary>
+    /// <remarks>
+    /// Recorded so teardown can kill THIS Calculator rather than every one on
+    /// the machine. Killing by name would close a Calculator the developer had
+    /// open for their own reasons, which is a test suite reaching outside its
+    /// own blast radius.
+    /// </remarks>
+    public static int ProcessId
+    {
+        get { lock (Gate) { return _processId; } }
+    }
 
     /// <summary>The shared window, launched or relaunched as needed.</summary>
     /// <returns>The window handle, or zero if Calculator is unavailable.</returns>
@@ -50,6 +63,7 @@ internal static class SharedCalculator
 
             LaunchResult launched = launcher.Launch(new ApplicationTarget(Aumid, null, null));
             _window = launched.Application?.WindowHandle ?? 0;
+            _processId = launched.Application?.ProcessId ?? 0;
 
             return _window;
         }

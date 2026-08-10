@@ -53,6 +53,9 @@ public sealed class HeldElementLivenessTests
     private UiaElementInspector _inspector = null!;
     private nint _window;
 
+    /// <summary>This fixture's own Calculator, killed by id rather than by name.</summary>
+    private int _processId;
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(
@@ -76,11 +79,21 @@ public sealed class HeldElementLivenessTests
         }
 
         _window = launched.Application.WindowHandle;
+        _processId = launched.Application.ProcessId;
         UiSettle.UntilBoundsAreStable(_inspector, _window, Find("num5Button"));
     }
 
     [OneTimeTearDown]
-    public void CloseCalculator() => AppLifetime.KillAll("CalculatorApp");
+    public void CloseCalculator()
+    {
+        // BY ID, not by name. This fixture launches its own Calculator because
+        // it destroys windows deliberately; KillAll would also close the shared
+        // instance other fixtures are using, and a developer's own Calculator.
+        if (_processId != 0)
+        {
+            AppLifetime.KillProcess(_processId);
+        }
+    }
 
     /// <summary>Waits for a control and returns its id.</summary>
     /// <remarks>
