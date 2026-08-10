@@ -111,4 +111,16 @@ internal static class UiaControlTypes
         ById.TryGetValue(controlTypeId, out string? name)
             ? $"ControlType.{name}"
             : "ControlType.Custom";
+
+    /// <summary>The bare programmatic name, as an XPath step uses it.</summary>
+    /// <param name="controlTypeId">The UIA control type id.</param>
+    /// <returns><c>Button</c>, or <c>Custom</c> for anything unrecognised.</returns>
+    /// <remarks>
+    /// Unprefixed, because <c>//Button</c> is what a client writes and what
+    /// WinAppDriver matches — measured. <see cref="TagName"/>'s prefixed form is
+    /// for <c>GET /element/{id}/name</c>, which is a different question with a
+    /// different measured answer.
+    /// </remarks>
+    internal static string ElementName(int controlTypeId) =>
+        ById.TryGetValue(controlTypeId, out string? name) ? name : "Custom";
 }
