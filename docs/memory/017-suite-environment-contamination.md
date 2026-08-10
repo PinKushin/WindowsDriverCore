@@ -97,11 +97,15 @@ parent" both leave the disabled button untouched.
 
 ## What this invalidates
 
-**Every compatibility number measured before 2026-08-10 was taken on an
-uncontrolled environment**, including the WinAppDriver comparison: 1.2.1 scored
-281/290 at 06:22Z, before the cap was reached, while our runs came after. The
-comparison is not void — the same suite DLL was used throughout — but it is not
-matched either, and any figure quoted from it needs that caveat.
+**Every compatibility number for THIS driver measured before 2026-08-10 was
+taken on an uncontrolled environment.** The WinAppDriver baseline turned out not
+to be: re-measured with the store freshly reset, 1.2.1 scores **281 again**, the
+same nine failures. Its score does not depend on the contamination — only ours
+did. I had assumed otherwise and written a caveat saying so; measuring it removed
+the caveat rather than confirming it.
+
+The matched pair is therefore **281/290 for WinAppDriver 1.2.1 against 133/290
+for this driver**, same guest, same suite DLL, store reset for both.
 
 The prediction table's large gains (`/timeouts` +62, window reads +28) are far
 outside this effect. The **+15 credited to Actions validation is exactly the

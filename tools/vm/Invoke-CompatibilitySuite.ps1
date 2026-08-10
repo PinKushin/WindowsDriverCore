@@ -39,6 +39,17 @@
 .PARAMETER Driver
     Which driver answers on 4723 - this project, or WinAppDriver as the baseline.
 
+    SWAPPING WINAPPDRIVER VERSIONS IS NOT A PLAIN REINSTALL. The 1.2.99 RC
+    installs to C:\Program Files\Windows Application Driver, while 1.2.1 installs
+    to C:\Program Files (x86)\... - so the path this script uses depends on which
+    one is present. Worse, the RC registers itself twice and its LaunchConditions
+    refuse a downgrade with "A newer version of Windows Application Driver is
+    already installed", which surfaces only as msiexec exit 1603. Uninstall every
+    registered product code first (one of them may answer 1605, "unknown
+    product", which is fine), then install. Elevation is required: the guest
+    agent's desktop session is not elevated, so an install queued through it also
+    returns 1603, for an entirely different reason.
+
 .EXAMPLE
     .\Invoke-CompatibilitySuite.ps1 -Commit 21a18dd
 #>
