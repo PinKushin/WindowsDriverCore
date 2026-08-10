@@ -13,6 +13,46 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## The test harness is worth 9 tests, and that was measured with a control
+
+**The strongest methodological result of 2026-08-10**, and it took three wrong
+explanations to reach.
+
+The same commit scored differently depending on how the guest agent LAUNCHED the
+job:
+
+| Commit | Agent | Score |
+|---|---|---|
+| `6956530` | call operator, `Tee-Object` pipe | **133** |
+| `6956530` | `Start-Process -RedirectStandardOutput` | **124** |
+| `6956530` | `Start-Process`, control re-run | **124** |
+| later commits | `Start-Process` | 124, 125, 125, 124 |
+
+`Start-Process` with redirection forces `UseShellExecute=false`, which changes
+how the job's child applications sit relative to the interactive desktop. For a
+suite that drives real windows, that is worth nine tests.
+
+**Three explanations were offered before the right one, in order:**
+
+1. *"My change regressed it."* Wrong — the commits were identical, which only
+   surfaced because the run wrote `run--120221.trx` with an empty sha after git
+   failed on repository ownership.
+2. *"The suite has a 9 test noise band."* Wrong, and published before being
+   checked. Four repeats gave 124, 125, 125, 124 — a spread of one.
+3. *"The harness changed it."* Right, and only established by pinning the old
+   commit and re-running under the new agent.
+
+**What this costs if forgotten:** every score in this document is conditional on
+the harness as well as the operating system and the applications. A comparison
+between two runs is only meaningful if the launcher is identical, which is now
+one more thing to hold fixed alongside the guest, the build and the app set.
+
+The agent has been restored to the call-operator launch that scored 133, keeping
+the file redirect that fixed the pipe deadlock — the two properties are
+independent and there was no need to trade one for the other.
+
+---
+
 ## Correction: the suite varies by about 1 test, not 9
 
 **The section below was published after a single accidental observation and is
