@@ -1,5 +1,3 @@
-using System;
-using System.Diagnostics;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
@@ -34,35 +32,14 @@ public sealed class UiaElementFinderTests
     {
         _finder = new UiaElementFinder(SharedAutomation, new UiaElementResolver(SharedAutomation));
 
-        // One Calculator for the whole run. See SharedCalculator.
-        _window = SharedCalculator.Window();
+        // One Calculator for the whole run, opened THROUGH THE DRIVER.
+        // See SharedDriverSession.
+        _window = SharedDriverSession.Window();
         if (_window == 0)
         {
             Assert.Ignore("Calculator is not available.");
         }
     }
-
-    [OneTimeTearDown]
-    public void CloseCalculator()
-    {
-        foreach (Process process in Process.GetProcessesByName("CalculatorApp"))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
-            }
-            catch (InvalidOperationException)
-            {
-                // Already gone.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-    }
-
     [Test]
     public void FindAll_ByAutomationId_FindsTheButton()
     {

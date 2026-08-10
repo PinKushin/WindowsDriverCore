@@ -68,9 +68,9 @@ public sealed class UiaElementInspectorTests
         _finder = new UiaElementFinder(automation, new UiaElementResolver(automation));
         _inspector = new UiaElementInspector(automation, new UiaElementResolver(automation));
 
-        // Shared: this fixture only reads, so it does not need its own
-        // Calculator. See SharedCalculator for why liveness is rechecked.
-        _window = SharedCalculator.Window();
+        // Shared, and opened through the driver: the session owns the
+        // application's lifetime. See SharedDriverSession.
+        _window = SharedDriverSession.Window();
         if (_window == 0)
         {
             Assert.Ignore("Calculator is not available.");

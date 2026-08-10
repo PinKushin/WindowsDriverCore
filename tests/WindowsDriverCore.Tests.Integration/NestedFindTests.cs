@@ -43,8 +43,9 @@ public sealed class NestedFindTests
         UiaElementResolver resolver = new(automation);
         _finder = new UiaElementFinder(automation, resolver);
 
-        // One Calculator for the whole run. See SharedCalculator.
-        _window = SharedCalculator.Window();
+        // One Calculator for the whole run, opened THROUGH THE DRIVER.
+        // See SharedDriverSession.
+        _window = SharedDriverSession.Window();
         if (_window == 0)
         {
             Assert.Ignore("Calculator is not available.");
