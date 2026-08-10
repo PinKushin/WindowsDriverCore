@@ -74,9 +74,10 @@ page's controls are not findable — `AlarmNameTextBox` for `ClearElement`,
 same way. WinAppDriver passes all nine on this machine, so the page does open for
 it.
 
-Whether our click fails to open the page, or the page opens somewhere our find
-does not look, is **not yet measured** — a probe is what settles it, not this
-document.
+**Answered:** neither. `AddAlarmButton` was *disabled* — the app had hit its
+alarm cap — so `Invoke` threw and the click ladder toggled the command bar
+instead, reporting success. See "SOLVED: the score is controlled by the alarm
+store and app warmth" below for the measurement and the fix.
 
 ## The suite DLL in the VM is not the pristine suite
 
@@ -100,164 +101,104 @@ it is to build the pristine tree and re-run.
 
 ---
 
-## Retracted: the harness claim below is wrong too. 133 never reproduced.
+## SOLVED: the score is controlled by the alarm store and app warmth
 
-**Restoring the call-operator agent did not restore the score.** Current HEAD
-under the restored launcher scored **124**, which disproves the section below.
+Four explanations were published for one moving number and **all four were
+wrong**. The cause is environmental, completely determinate, and reproduces
+test-for-test.
 
-Everything measured on this question, in one place:
+**Controlled, all on commit `21a18dd`, one variable at a time:**
 
-| Commit | Agent | Score |
+| Alarm store | Alarms & Clock | Score |
 |---|---|---|
-| `6956530` | original (call operator + pipe) | **133** |
-| `6956530` | `Start-Process` + redirect | 124 |
-| `6956530` | `Start-Process` + redirect | 124 |
-| `a8d61ee` | `Start-Process` + redirect | 124 |
-| `b4ed054` | `Start-Process` + redirect | 125 |
-| `b4ed054` | `Start-Process` + redirect | 125 |
-| `b4ed054` | `Start-Process` + redirect | 124 |
-| `21a18dd` | restored call operator | **124** |
+| capped (~162 alarms) | warm | 124 |
+| clean | **cold** | 118 |
+| clean | warm | **133** |
 
-**133 was observed once and has never reproduced** — not on its own commit, not
-under its own launcher. Seven runs across three commits and two launchers all sit
-at 124–125.
+Against the capped run, the clean+warm run **gained exactly the nine and lost
+nothing**. Against run 17 — a different commit, `6956530` — the clean+warm run
+passes an **identical set of 133 tests**, not merely the same count.
 
-**The honest score is 124–125.** Treat 133 as an anomaly of unknown cause.
+So 133 was never an anomaly. It was the only earlier run that happened to have a
+warm app and a store not yet at the cap.
 
-**This is the fourth explanation offered for one number, and the third wrong
-one:**
+### 1. The suite fills Alarms & Clock until "Add new alarm" dies
 
-1. "my change regressed it" — wrong, commits were identical
-2. "the suite has a 9 test noise band" — wrong, four repeats spread by one
-3. "the harness caused it" — wrong, restoring the harness changed nothing
-4. "133 was an anomaly" — what the evidence supports, and it explains nothing
-
-**What this costs, concretely:** the guarded mouse rung was reported as +8 on the
-strength of 125 → 133. That 133 is this value. **The mouse rung's effect on the
-suite is unmeasured**, and the same caution applies to anything else ranked
-against a single run.
-
-The three large gains — `/timeouts` +62, window reads +28, Actions validation
-+15 — are unaffected. They are far outside anything seen here and were each
-measured against several runs on both sides.
-
----
-
-## The test harness is worth 9 tests, and that was measured with a control
-
-**The strongest methodological result of 2026-08-10**, and it took three wrong
-explanations to reach.
-
-The same commit scored differently depending on how the guest agent LAUNCHED the
-job:
-
-| Commit | Agent | Score |
-|---|---|---|
-| `6956530` | call operator, `Tee-Object` pipe | **133** |
-| `6956530` | `Start-Process -RedirectStandardOutput` | **124** |
-| `6956530` | `Start-Process`, control re-run | **124** |
-| later commits | `Start-Process` | 124, 125, 125, 124 |
-
-`Start-Process` with redirection forces `UseShellExecute=false`, which changes
-how the job's child applications sit relative to the interactive desktop. For a
-suite that drives real windows, that is worth nine tests.
-
-**Three explanations were offered before the right one, in order:**
-
-1. *"My change regressed it."* Wrong — the commits were identical, which only
-   surfaced because the run wrote `run--120221.trx` with an empty sha after git
-   failed on repository ownership.
-2. *"The suite has a 9 test noise band."* Wrong, and published before being
-   checked. Four repeats gave 124, 125, 125, 124 — a spread of one.
-3. *"The harness changed it."* Right, and only established by pinning the old
-   commit and re-running under the new agent.
-
-**What this costs if forgotten:** every score in this document is conditional on
-the harness as well as the operating system and the applications. A comparison
-between two runs is only meaningful if the launcher is identical, which is now
-one more thing to hold fixed alongside the guest, the build and the app set.
-
-The agent has been restored to the call-operator launch that scored 133, keeping
-the file redirect that fixed the pipe deadlock — the two properties are
-independent and there was no need to trade one for the other.
-
----
-
-## Correction: the suite varies by about 1 test, not 9
-
-**The section below was published after a single accidental observation and is
-wrong.** Four repeats of the same commit, measured deliberately afterwards:
+The suite creates alarms (`LongTapTest`, `PenBarrelButtonTest`) faster than it
+deletes them. At the cap the app disables **only** `AddAlarmButton`:
 
 ```
-ours19  a8d61ee   124
-ours20  b4ed054   125      (docs-only change on top of a8d61ee)
-ours21  b4ed054   125
-ours22  b4ed054   124
+AddAlarmButton                  enabled=False   <- only this one
+SelectAlarmsButton              enabled=True
+MoreButton                      enabled=True
+AlarmCollectionPageCommandBar   enabled=True
 ```
 
-**Spread of one.** Within a batch the suite is tight, and small deltas are more
-interpretable than the retraction below claimed.
+Nothing looks broken, and the nine tests that need that button all fail. The
+alarms are **not** in `LocalState` — clearing that changes nothing, tried first.
+They live in the UWP settings hive,
+`%LOCALAPPDATA%\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe\Settings\settings.dat`.
 
-**So what was the 133 versus 124?** Both were commit `6956530`, and the boundary
-between them is exactly where the guest agent was replaced — the old one piped
-job output through `Tee-Object` from a call operator, the new one uses
-`Start-Process` with redirection. That is a change in the environment the tests
-run in, not noise and not the driver. A control run pinned to `6956530` under the
-new agent separates the two, and until it lands neither explanation is
-established.
+### 2. Resetting the store cold-starts the app, which costs sixteen more
 
-**What survives from the mistake:** a delta of one is not evidence either, the
-per-test diff remains the only interpretable output, and a runner that cannot
-report its own commit must abort. Run 18 named its results `run--120221.trx` with
-an empty sha and I read past it.
-
----
-
-## The compatibility suite varies by about 9 tests run to run
-
-**Measured 2026-08-10, by accident, which is the only reason it was noticed.**
-
-Run 18 scored **124** against run 17's **133** and was read as a 9 test
-regression from the change under test. It was not. `git fetch` and
-`git reset --hard` had both failed with
+The first reset run scored **118**, *below* the 124 it replaced, despite gaining
+the nine. All sixteen `ActionsError_*` tests flipped to failing:
 
 ```
-fatal: detected dubious ownership in repository at 'C:/baseline/WindowsDriverCore'
-owned by: BUILTIN/Administrators, current user: WIN10-BASELINE/tester
+Initialization method WebDriverAPI.Actions.TestInit threw exception.
+System.InvalidOperationException: Currently selected window has been closed.
 ```
 
-and the script piped them to `Out-Null`, so the run built **the same commit as
-run 17** and scored nine tests lower.
+Beginning with the **first test of the run** — so nothing killed the window
+mid-run; the session never had a usable one. Every earlier run had silently
+inherited a warm app left behind by its predecessor.
 
-**Identical binary, 133 then 124.** Every delta smaller than that is inside the
-noise band, and several of today's were read as signal:
+**So a run must reset the store AND warm the app**, waiting for `AddAlarmButton`
+to be *enabled* rather than merely present, since present-but-disabled is the cap
+state. `tools/vm/Invoke-CompatibilitySuite.ps1` does both and pins the commit.
 
-| Change | Delta | Verdict now |
-|---|---|---|
-| `/timeouts` | +62 | real |
-| window read routes | +28 | real |
-| Actions validation | +15 | real |
-| guarded mouse rung | +8 | **within noise** |
-| keys route | −1 | within noise |
-| extended keys | 0 | within noise |
-| element window-closed | +1 | within noise |
+### 3. What this invalidates, and what it does not
 
-The large gains stand. The small ones were never distinguishable from variance,
-and the per-test diff is the only thing that made any of them interpretable — it
-showed run 16 to 17 changing exactly one test, and run 17 to 18 changing nine
-with no code difference at all.
+**Every compatibility number taken before this was measured on an uncontrolled
+environment**, including the WinAppDriver comparison: 1.2.1 scored 281/290 at
+`06:22Z`, before the cap was reached, while our runs came after. The same suite
+DLL was used throughout so the comparison is not void, but it is **not matched**,
+and needs that caveat wherever it is quoted.
 
-**What follows:**
+The `/timeouts` +62 and window-reads +28 gains are far outside this effect and
+stand. **The +15 credited to Actions validation also stands** — those sixteen
+tests all pass in the clean+warm run; they simply need a live window to be
+observable at all, which is a fact about the harness rather than about the code.
 
-- **Never read a delta under ~10 as an effect.** Use the per-test diff, and
-  prefer a cause you can name over a number that moved.
-- **The runner now aborts** if it cannot determine HEAD, rather than measuring an
-  unknown commit. Silence on a failed checkout is how this cost a whole run.
-- The likely sources are the applications, not the driver: the suite leaves
-  Calculator, Notepad and Alarms running between runs, and a stale window changes
-  what later tests find.
+Note also that `6956530` and `21a18dd` pass an identical set. Everything merged
+between them moved the compatibility score by **zero**.
 
----
+### 4. The driver bug this was hiding
+
+With `AddAlarmButton` disabled, `InvokePattern.Invoke()` threw, the click ladder
+fell through to its ancestor walk, reached `AlarmCollectionPageCommandBar` —
+which advertises `Toggle` and `ExpandCollapse` — and toggled it. The app bar
+opened and closed across three probe attempts (`MoreButton` alternating between
+"More app bar" and "Less app bar", an `OverflowPopup` appearing and vanishing)
+while the driver answered `status 0`.
+
+Fixed: a disabled element is refused with `NotInteractable` before any rung runs,
+before scrolling and before foregrounding, so a refusal has no side effects. The
+regression test asserts a **bystander** — the hosting control's `ToggleState` —
+because "refused" and "climbed and toggled the parent" both leave the disabled
+button untouched.
+
+### 5. The four wrong explanations, kept deliberately
+
+1. "my change regressed it" — wrong, the commits were identical
+2. "the suite has a 9-test noise band" — wrong, four repeats spread by one
+3. "the guest agent's launcher caused it" — wrong, restoring it changed nothing
+4. "it was an anomaly" — wrong, and worst of the four because it *ends* the search
+
+Each was reasoned from a single observation and written up before being tested.
+The cause was found by diffing which test **names** moved rather than theorising
+about the count, which took one query and should have been the first move. When a
+number moves: find out which items moved, and whether they form a family.
 
 ## Which predictions have been right, measured across seventeen runs
 
@@ -349,7 +290,14 @@ apphost, bind a socket, or parse an argument.
 
 ---
 
-## The matched comparison: 19/290 against WinAppDriver's 281/290
+## The matched comparison: 133/290 against WinAppDriver's 281/290
+
+> **Caveat added 2026-08-10 after the fact, and it matters.** These two runs were
+> *not* on equal environments. WinAppDriver ran at `06:22Z`, before the suite had
+> filled Alarms & Clock to its alarm cap; our runs came afterwards. Under
+> controlled conditions — store reset, app warmed — this driver scores **133**,
+> not the 19 this section was first written around. Re-measure WinAppDriver the
+> same way before quoting the gap.
 
 **Measured 2026-08-10, both drivers in the same Windows 10 22H2 guest, same
 WebDriverAPI.dll, same applications, same session.** The first like-for-like
