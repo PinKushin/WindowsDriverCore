@@ -114,7 +114,19 @@ public static class SessionRoutes
             // not die is not a reason to keep the session. The client asked for
             // it to be gone, and a second delete must report it unknown rather
             // than hand back a session addressing a half-dead application.
-            if (removed.OwnsApplication)
+            // ONLY if no other live session is still addressing the same
+            // process. Windows 10's Calculator is single-instance, so two
+            // sessions for the same application share one process — closing it
+            // when the first ends takes the application out from under the
+            // second. Measured: session shutdown cost 4 tests on the
+            // compatibility suite until this check existed, because that is
+            // exactly what the suite does.
+            //
+            // The last session out closes it, so nothing leaks either.
+            bool anotherSessionIsUsingIt = sessions.All()
+                .Any(other => other.ProcessId == removed.ProcessId);
+
+            if (removed.OwnsApplication && !anotherSessionIsUsingIt)
             {
                 terminator.Terminate(removed.ProcessId);
             }

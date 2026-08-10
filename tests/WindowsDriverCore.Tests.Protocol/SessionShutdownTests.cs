@@ -131,6 +131,29 @@ public sealed class SessionShutdownTests : IDisposable
     }
 
     [Test]
+    public async Task WhenTwoSessionsShareOneProcess_DeletingTheFirstLeavesItRunning()
+    {
+        // Windows 10's Calculator is single-instance, so two sessions for the
+        // same application address the SAME process. Closing it when the first
+        // session ends takes the application out from under the second — which
+        // is what the compatibility suite does, and why session shutdown has
+        // cost 4 tests since it was added.
+        string first = await NewSession(
+            new { app = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" });
+        string second = await NewSession(
+            new { app = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" });
+
+        await Delete(first);
+
+        _terminator.DidNotReceive().Terminate(Arg.Any<int>());
+
+        // And the last one out does close it, or the application leaks instead.
+        await Delete(second);
+
+        _terminator.Received(1).Terminate(LaunchedProcess);
+    }
+
+    [Test]
     public async Task TheSessionIsStillRemoved_EvenIfTerminationFails()
     {
         // A process that will not die is not a reason to keep the session. The
