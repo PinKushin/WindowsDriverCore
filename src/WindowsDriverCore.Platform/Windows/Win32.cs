@@ -117,6 +117,48 @@ internal static partial class Win32
     /// <summary>Asks a window to close.</summary>
     internal const uint WM_CLOSE = 0x0010;
 
+    /// <summary>Screen metrics, including the virtual desktop's extent.</summary>
+    [LibraryImport("user32.dll")]
+    internal static partial int GetSystemMetrics(int index);
+
+    /// <summary>Injects synthetic input.</summary>
+    /// <remarks>
+    /// DllImport rather than LibraryImport: the array parameter of a struct
+    /// containing an explicit-layout union is not something the source generator
+    /// will marshal, and forcing it produces worse code than the runtime
+    /// marshaller does here.
+    /// </remarks>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern uint SendInput(uint count, Input[] inputs, int size);
+
+    /// <summary>Win32 <c>INPUT</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Input
+    {
+        public uint Type;
+        public InputUnion Union;
+    }
+
+    /// <summary>Win32 <c>INPUT</c>'s union. Only the mouse arm is used.</summary>
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct InputUnion
+    {
+        [FieldOffset(0)]
+        public MouseInput Mouse;
+    }
+
+    /// <summary>Win32 <c>MOUSEINPUT</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MouseInput
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public nint ExtraInfo;
+    }
+
     /// <summary>Win32 <c>RECT</c>.</summary>
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     internal struct Rect

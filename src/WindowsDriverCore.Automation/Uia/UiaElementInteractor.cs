@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
+using WindowsDriverCore.Platform.Windows;
 
 namespace WindowsDriverCore.Automation.Uia;
 
@@ -32,18 +33,36 @@ public sealed class UiaElementInteractor : IElementInteractor
 
     private readonly IUIAutomation _automation;
     private readonly IElementResolver _resolver;
+    private readonly IPointerInput? _pointer;
+    private readonly IWindowLocator? _windows;
 
     /// <summary>Creates the interactor.</summary>
     /// <param name="automation">The UI Automation root object.</param>
     /// <param name="resolver">Turns element ids into elements.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    public UiaElementInteractor(IUIAutomation automation, IElementResolver resolver)
+    /// <param name="mouse">
+    /// Real mouse input for the last rung. Optional: without it the ladder ends
+    /// by refusing, which is what it did before the rung existed.
+    /// </param>
+    /// <param name="windows">
+    /// Supplies the window rectangle the click point is checked against. Optional
+    /// for the same reason — and the mouse rung is skipped entirely without it,
+    /// because an unguarded coordinate click is the defect this project exists
+    /// to fix.
+    /// </param>
+    public UiaElementInteractor(
+        IUIAutomation automation,
+        IElementResolver resolver,
+        IPointerInput? mouse = null,
+        IWindowLocator? windows = null)
     {
         ArgumentNullException.ThrowIfNull(automation);
         ArgumentNullException.ThrowIfNull(resolver);
 
         _automation = automation;
         _resolver = resolver;
+        _pointer = mouse;
+        _windows = windows;
     }
 
     /// <inheritdoc />
@@ -168,9 +187,8 @@ public sealed class UiaElementInteractor : IElementInteractor
             }
         }
 
-        // Nothing carried the click. The mouse path belongs here and is not
-        // built yet; until it is, this reports rather than pretends.
-        return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        // Last rung: real mouse input, guarded.
+        return ClickWithTheMouse(element);
     }
 
     /// <summary>
@@ -368,6 +386,105 @@ public sealed class UiaElementInteractor : IElementInteractor
             or NotImplementedException
             or UnauthorizedAccessException
             or InvalidCastException;
+
+    /// <summary>
+    /// The last rung: a real mouse click, refused if it would leave the window.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The guard is the point, not the click.</b> WinAppDriver's mouse path
+    /// dispatches at screen coordinates without checking where they land, and a
+    /// click that leaves the target window is input delivered to another
+    /// application — on a developer's machine it opens whatever is underneath,
+    /// on CI it silently accomplishes nothing. That is the defect documented in
+    /// docs/CLICK-SEMANTICS.md with a reproduction and a measured before/after.
+    /// </para>
+    /// <para>
+    /// <b>The rectangle is re-read here, after the scroll.</b> ScrollIntoView ran
+    /// at the top of the ladder, so a rect captured before it is stale by
+    /// exactly the amount the element moved — which is the amount that matters.
+    /// </para>
+    /// <para>
+    /// Without a pointer or a window locator the rung is skipped and the ladder
+    /// refuses, because an UNGUARDED coordinate click is worse than no click.
+    /// </para>
+    /// </remarks>
+    private ElementAction ClickWithTheMouse(IUIAutomationElement element)
+    {
+        if (_pointer is null || _windows is null)
+        {
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
+        tagRECT rect;
+        try
+        {
+            rect = element.CurrentBoundingRectangle;
+        }
+        catch (Exception exception) when (IsProviderRefusal(exception))
+        {
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
+        // A zero rectangle means the element has no on-screen presence at all.
+        // Clicking its "centre" would be a click at the desktop origin.
+        if (rect.right <= rect.left || rect.bottom <= rect.top)
+        {
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
+        int x = rect.left + ((rect.right - rect.left) / 2);
+        int y = rect.top + ((rect.bottom - rect.top) / 2);
+
+        nint window = element.CurrentNativeWindowHandle;
+        if (window == 0)
+        {
+            // The element has no window of its own — almost all of them. The
+            // guard needs the top-level window, which the caller's search root
+            // is, so fall back to the ancestor that does have one.
+            window = TopLevelWindowOf(element);
+        }
+
+        WindowBounds? bounds = _windows.GetBounds(window);
+        if (bounds is null)
+        {
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
+        bool inside = x >= bounds.X && x < bounds.X + bounds.Width &&
+                      y >= bounds.Y && y < bounds.Y + bounds.Height;
+
+        if (!inside)
+        {
+            // Refused, loudly, rather than dispatched. This is the case that
+            // turns an invisible flake into a diagnosable error.
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
+        return _pointer.ClickAt(x, y)
+            ? ElementAction.Performed("mouse")
+            : ElementAction.Failed(ElementActionOutcome.NotInteractable);
+    }
+
+    /// <summary>The nearest ancestor that owns a real window.</summary>
+    private nint TopLevelWindowOf(IUIAutomationElement element)
+    {
+        IUIAutomationTreeWalker walker = _automation.ControlViewWalker;
+        IUIAutomationElement? current = element;
+
+        for (int level = 0; level < 12 && current is not null; level++)
+        {
+            nint handle = current.CurrentNativeWindowHandle;
+            if (handle != 0)
+            {
+                return handle;
+            }
+
+            current = walker.GetParentElement(current);
+        }
+
+        return 0;
+    }
 
     private static bool Has(IUIAutomationElement element, int availabilityPropertyId) =>
         element.GetCurrentPropertyValue(availabilityPropertyId) is bool available && available;

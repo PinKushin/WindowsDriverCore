@@ -661,6 +661,7 @@ Calculator lacks.
 | **ancestor walk** | a pattern-less element reaching `ancestor:1/Invoke` | covered |
 | refusal (`ElementNotInteractable`) | Settings' pattern-less groups | covered |
 | **`Toggle`** | charmap, and the WPF subject | covered |
+| **guarded mouse** | the WPF subject's pattern-less orphan | covered 2026-08-10 |
 
 **Toggle has no subject in Settings.** Surveyed rather than guessed:
 `Button 6 (Invoke=6)`, `ComboBox 1 (ExpandCollapse=1)`,

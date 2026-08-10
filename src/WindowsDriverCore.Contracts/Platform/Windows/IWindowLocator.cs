@@ -71,3 +71,28 @@ public interface IWindowLocator
 /// <param name="Width">Width.</param>
 /// <param name="Height">Height.</param>
 public sealed record WindowBounds(int X, int Y, int Width, int Height);
+
+/// <summary>Sends real mouse input to the desktop.</summary>
+/// <remarks>
+/// <para>
+/// <b>The last rung of the click ladder, and the one that must be guarded.</b>
+/// A coordinate click that lands outside the target window is input delivered to
+/// somebody else's application — on a developer's machine that opens whatever is
+/// underneath, and on CI it silently accomplishes nothing. The guard lives above
+/// this interface: this type dispatches, it does not decide.
+/// </para>
+/// <para>
+/// One call carries move, button-down and button-up together. Windows documents
+/// that events in a single <c>SendInput</c> call are not interspersed with input
+/// from the user's own hand, so three separate calls can be split by a human
+/// moving the mouse and one call cannot.
+/// </para>
+/// </remarks>
+public interface IPointerInput
+{
+    /// <summary>Clicks once at a screen coordinate.</summary>
+    /// <param name="x">Screen x, in pixels.</param>
+    /// <param name="y">Screen y, in pixels.</param>
+    /// <returns>True if the input was accepted by the system.</returns>
+    bool ClickAt(int x, int y);
+}
