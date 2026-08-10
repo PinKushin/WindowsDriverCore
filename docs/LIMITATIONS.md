@@ -13,6 +13,43 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## The matched comparison: 19/290 against WinAppDriver's 281/290
+
+**Measured 2026-08-10, both drivers in the same Windows 10 22H2 guest, same
+WebDriverAPI.dll, same applications, same session.** The first like-for-like
+either driver has had.
+
+| Driver | Score |
+|---|---|
+| WinAppDriver 1.2.1 | **281/290** |
+| WindowsDriverCore | **19/290** |
+
+**19/290 is not 271 missing features.** The failures collapse into a handful of
+causes, because a failed `ClassInitialize` takes every test in its class with it:
+
+| Cause | Tests | Kind |
+|---|---|---|
+| `Could not find main window for application` | ~120 | one launcher defect |
+| `POST /session/{id}/timeouts` not recognized | 21 | missing route |
+| wrong error-message text | 21 | string constants |
+| `POST /session/{id}/keys` not recognized | 12 | missing route |
+| `GET /session/{id}/window/current/size` not recognized | 11 | missing route |
+| TouchFlick — app not installed | 9 | environment |
+
+**The launcher defect is the whole ballgame.** Fifteen fixtures die in
+`ClassInitialize` on it. The suite drives Alarms & Clock, and a packaged
+application's window belongs to `ApplicationFrameHost` rather than to the process
+that was activated — the same trap that broke the FlaUI benchmark, where matching
+a window by process id found nothing. WinAppDriver handles it; this driver does
+not, and roughly 120 tests are downstream of that one difference.
+
+**Read the fixture count, not the test count.** WinAppDriver's own 112/290 on
+Windows 11 has the same structure — a small number of broken class fixtures
+multiplied across their members — which is why it recovers to 281/290 on Windows
+10 with nothing changed but the operating system.
+
+---
+
 ## Not implemented
 
 | Area | State | Notes |
