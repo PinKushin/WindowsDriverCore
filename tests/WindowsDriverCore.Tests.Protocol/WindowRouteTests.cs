@@ -44,6 +44,11 @@ public sealed class WindowRouteTests : IDisposable
         _windows.GetTitle(Arg.Any<nint>()).Returns("Calculator");
         _windows.GetBounds(Arg.Any<nint>()).Returns(new WindowBounds(54, 197, 502, 534));
 
+        // A substitute defaults to false, which the routes correctly read as
+        // "the window is gone". These model a window that is actually there.
+        _windows.SetBounds(Arg.Any<nint>(), Arg.Any<WindowBounds>()).Returns(true);
+        _windows.Maximize(Arg.Any<nint>()).Returns(true);
+
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
@@ -144,6 +149,118 @@ public sealed class WindowRouteTests : IDisposable
 
         value.GetProperty("x").GetInt32().ShouldBe(54);
         value.GetProperty("y").GetInt32().ShouldBe(197);
+    }
+
+    private Task<HttpResponseMessage> Post(string sessionId, string path, string json) =>
+        _client.PostAsync(
+            new Uri($"/session/{sessionId}/{path}", UriKind.Relative),
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+    [Test]
+    public async Task SettingTheSize_KeepsThePosition()
+    {
+        // The route sets SIZE. Moving the window as a side effect would be a
+        // change the caller never asked for, and this is the only thing that
+        // would notice.
+        string sessionId = await NewSession();
+
+        await Post(sessionId, "window/current/size", "{\"width\":800,\"height\":600}");
+
+        _windows.Received(1).SetBounds(
+            Arg.Any<nint>(),
+            Arg.Is<WindowBounds>(b => b.X == 54 && b.Y == 197 && b.Width == 800 && b.Height == 600));
+    }
+
+    [Test]
+    public async Task SettingThePosition_KeepsTheSize()
+    {
+        string sessionId = await NewSession();
+
+        await Post(sessionId, "window/current/position", "{\"x\":10,\"y\":20}");
+
+        _windows.Received(1).SetBounds(
+            Arg.Any<nint>(),
+            Arg.Is<WindowBounds>(b => b.X == 10 && b.Y == 20 && b.Width == 502 && b.Height == 534));
+    }
+
+    [Test]
+    public async Task ASizeSentAsADouble_IsAccepted()
+    {
+        // A WebDriver client serialises sizes from doubles, so 800 arrives as
+        // 800.0. Demanding an integer token would reject an ordinary request.
+        string sessionId = await NewSession();
+
+        HttpResponseMessage response = await Post(
+            sessionId, "window/current/size", "{\"width\":800.0,\"height\":600.0}");
+
+        response.IsSuccessStatusCode.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task AMissingDimension_IsAMissingParameter_NotACrash()
+    {
+        string sessionId = await NewSession();
+
+        HttpResponseMessage response = await Post(sessionId, "window/current/size", "{\"width\":800}");
+
+        JsonElement body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("value").GetProperty("message").GetString()
+            .ShouldBe("Missing Command Parameter: width, height");
+    }
+
+    [Test]
+    public async Task Maximize_AsksTheWindowToMaximize()
+    {
+        string sessionId = await NewSession();
+
+        HttpResponseMessage response = await Post(sessionId, "window/current/maximize", "{}");
+
+        response.IsSuccessStatusCode.ShouldBeTrue();
+        _windows.Received(1).Maximize(Arg.Any<nint>());
+    }
+
+    [Test]
+    public async Task DeletingTheWindow_ClosesItAndKeepsTheSession()
+    {
+        // The suite closes a window and keeps using the session id afterwards,
+        // so this must not behave like DELETE /session.
+        string sessionId = await NewSession();
+        _windows.Close(Arg.Any<nint>()).Returns(true);
+
+        HttpResponseMessage closed = await _client.DeleteAsync(
+            new Uri($"/session/{sessionId}/window", UriKind.Relative));
+
+        closed.IsSuccessStatusCode.ShouldBeTrue();
+        _windows.Received(1).Close(Arg.Any<nint>());
+
+        // The session survives.
+        (await Get(sessionId, "title")).GetProperty("status").GetInt32().ShouldBe(0);
+    }
+
+    [Test]
+    public async Task SwitchingToAWindowThatIsNotThere_IsNoSuchWindow()
+    {
+        string sessionId = await NewSession();
+        _windows.Exists(Arg.Is<nint>(h => h == 0xDEADBEEF)).Returns(false);
+
+        HttpResponseMessage response = await Post(sessionId, "window", "{\"name\":\"DEADBEEF\"}");
+
+        JsonElement body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("status").GetInt32().ShouldBe(23);
+        body.GetProperty("value").GetProperty("message").GetString()
+            .ShouldBe("A request to switch to a window could not be satisfied because the window could not be found.");
+    }
+
+    [Test]
+    public async Task SwitchingToARealWindow_RetargetsTheSession()
+    {
+        // The control for the test above: a handle that DOES exist must be
+        // accepted, or "always refuse" would pass it and be useless.
+        string sessionId = await NewSession();
+
+        HttpResponseMessage response = await Post(sessionId, "window", "{\"name\":\"0x00551120\"}");
+
+        response.IsSuccessStatusCode.ShouldBeTrue();
     }
 
     [TestCase("window_handle")]

@@ -74,6 +74,49 @@ internal static partial class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetWindowRect(nint hWnd, out Rect rect);
 
+    /// <summary>Moves and resizes a window.</summary>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetWindowPos(
+        nint hWnd, nint insertAfter, int x, int y, int width, int height, uint flags);
+
+    /// <summary>Shows, hides or maximizes a window.</summary>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ShowWindow(nint hWnd, int command);
+
+    /// <summary>Posts a message without waiting for it to be handled.</summary>
+    /// <remarks>
+    /// POST rather than SEND for WM_CLOSE. SendMessage blocks until the
+    /// application has finished closing, and an application showing a "save
+    /// changes?" prompt never finishes — the driver would hang rather than
+    /// answer the client.
+    /// </remarks>
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool PostMessage(nint hWnd, uint message, nint wParam, nint lParam);
+
+    /// <summary>Do not change the z-order.</summary>
+    internal const uint SWP_NOZORDER = 0x0004;
+
+    /// <summary>Do not activate the window.</summary>
+    internal const uint SWP_NOACTIVATE = 0x0010;
+
+    /// <summary>Keep the current size.</summary>
+    internal const uint SWP_NOSIZE = 0x0001;
+
+    /// <summary>Keep the current position.</summary>
+    internal const uint SWP_NOMOVE = 0x0002;
+
+    /// <summary>ShowWindow: maximize.</summary>
+    internal const int SW_MAXIMIZE = 3;
+
+    /// <summary>ShowWindow: restore.</summary>
+    internal const int SW_RESTORE = 9;
+
+    /// <summary>Asks a window to close.</summary>
+    internal const uint WM_CLOSE = 0x0010;
+
     /// <summary>Win32 <c>RECT</c>.</summary>
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     internal struct Rect

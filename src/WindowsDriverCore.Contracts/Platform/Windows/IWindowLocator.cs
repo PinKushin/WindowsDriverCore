@@ -42,6 +42,27 @@ public interface IWindowLocator
     /// been closed" rather than reporting a zero rectangle as if it were real.
     /// </remarks>
     WindowBounds? GetBounds(nint handle);
+
+    /// <summary>Moves and resizes a window.</summary>
+    /// <param name="handle">The window.</param>
+    /// <param name="bounds">Where it should be and how big.</param>
+    /// <returns>True if the window was still there to move.</returns>
+    bool SetBounds(nint handle, WindowBounds bounds);
+
+    /// <summary>Maximizes a window.</summary>
+    /// <param name="handle">The window.</param>
+    /// <returns>True if the window was still there to maximize.</returns>
+    bool Maximize(nint handle);
+
+    /// <summary>Asks a window to close.</summary>
+    /// <param name="handle">The window.</param>
+    /// <returns>True if the request was delivered.</returns>
+    /// <remarks>
+    /// Asks rather than forces: the window may prompt, and whether it actually
+    /// closes is the application's decision. The caller cannot treat a true
+    /// return as "the window is gone".
+    /// </remarks>
+    bool Close(nint handle);
 }
 
 /// <summary>A window's position and size, in screen pixels.</summary>
