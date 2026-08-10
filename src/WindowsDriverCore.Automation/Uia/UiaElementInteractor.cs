@@ -6,9 +6,10 @@ namespace WindowsDriverCore.Automation.Uia;
 /// <inheritdoc cref="IElementInteractor" />
 /// <remarks>
 /// The ladder from <c>docs/CLICK-SEMANTICS.md</c>. Each rung is there because
-/// something in a real suite needed it, and the order is not arbitrary: a
-/// checkbox carries Toggle and <b>not</b> Invoke, so trying Invoke first and
-/// stopping would leave checkboxes unclickable.
+/// something in a real suite needed it, and the order is not arbitrary: the
+/// state-bearing patterns are tried before Invoke, which UI Automation defines
+/// as the generic default action for controls that keep no state. See
+/// <c>ClickOne</c> for why that ordering was wrong until 2026-08-09.
 /// </remarks>
 public sealed class UiaElementInteractor : IElementInteractor
 {
@@ -109,9 +110,11 @@ public sealed class UiaElementInteractor : IElementInteractor
         {
             return action(element);
         }
-        catch (COMException)
+        catch (Exception exception) when (IsProviderRefusal(exception))
         {
-            // The element went away between resolving it and acting on it.
+            // The element went away between resolving it and acting on it, or
+            // its provider refused outright. Either way the id no longer names
+            // something this driver can act on.
             return ElementAction.Failed(ElementActionOutcome.NotFound);
         }
     }
@@ -174,20 +177,38 @@ public sealed class UiaElementInteractor : IElementInteractor
     /// One element, one pass down the pattern ladder.
     /// </summary>
     /// <remarks>
-    /// Order matters and is not preference. A checkbox exposes Toggle and not
-    /// Invoke; a list row exposes SelectionItem; a MAUI Picker becomes a WinUI
-    /// ComboBox exposing ExpandCollapse. Trying only the first would leave each
-    /// of those unclickable.
+    /// <para>
+    /// Order matters and is not preference. A list row exposes SelectionItem; a
+    /// MAUI Picker becomes a WinUI ComboBox exposing ExpandCollapse. Trying only
+    /// the first would leave each of those unclickable.
+    /// </para>
+    /// <para>
+    /// <b>The state-bearing patterns come before Invoke, and that ordering is
+    /// the spec's, not a preference.</b> UI Automation: "Controls support
+    /// InvokePattern if the same behavior is not exposed through another control
+    /// pattern", and "Controls that do maintain state, such as check boxes and
+    /// radio buttons, must instead implement IToggleProvider and
+    /// ISelectionItemProvider respectively." Invoke is the generic
+    /// default-action pattern, so it is the fallback, never the first choice.
+    /// </para>
+    /// <para>
+    /// <b>This was the other way round, on the premise that "a checkbox exposes
+    /// Toggle and not Invoke".</b> Measured false 2026-08-09: charmap's Win32
+    /// checkbox advertises <i>both</i>, so the ladder fired Invoke and the
+    /// Toggle rung was unreachable on any classic checkbox. Settings does the
+    /// same with ListItems — 9 of 22 advertise Invoke alongside SelectionItem.
+    /// Providers over-advertise Invoke; a client that trusts that advertisement
+    /// inherits the mistake. Nothing caught it because every checkbox reachable
+    /// before charmap was XAML, which advertises Toggle alone.
+    /// </para>
+    /// <para>
+    /// Both orders behave identically on an element carrying only one of the
+    /// patterns, which is why the overlap is the only condition that can
+    /// distinguish them, and why the tests hunt for elements advertising two.
+    /// </para>
     /// </remarks>
     private static ElementAction ClickOne(IUIAutomationElement element)
     {
-        if (Invoke<IUIAutomationInvokePattern>(
-            element, UiaPatternIds.Invoke, UiaPropertyIds.IsInvokePatternAvailable,
-            static pattern => pattern.Invoke()))
-        {
-            return ElementAction.Performed("Invoke");
-        }
-
         if (Invoke<IUIAutomationTogglePattern>(
             element, UiaPatternIds.Toggle, UiaPropertyIds.IsTogglePatternAvailable,
             static pattern => pattern.Toggle()))
@@ -200,6 +221,13 @@ public sealed class UiaElementInteractor : IElementInteractor
             static pattern => pattern.Select()))
         {
             return ElementAction.Performed("SelectionItem");
+        }
+
+        if (Invoke<IUIAutomationInvokePattern>(
+            element, UiaPatternIds.Invoke, UiaPropertyIds.IsInvokePatternAvailable,
+            static pattern => pattern.Invoke()))
+        {
+            return ElementAction.Performed("Invoke");
         }
 
         if (Has(element, UiaPropertyIds.IsExpandCollapsePatternAvailable))
@@ -267,7 +295,7 @@ public sealed class UiaElementInteractor : IElementInteractor
             use(pattern);
             return true;
         }
-        catch (COMException)
+        catch (Exception exception) when (IsProviderRefusal(exception))
         {
             // The pattern is advertised but refused — a disabled control, or one
             // whose provider changed its mind. Falling through to the next rung
@@ -297,11 +325,49 @@ public sealed class UiaElementInteractor : IElementInteractor
             element.SetFocus();
             return true;
         }
-        catch (COMException)
+        catch (Exception exception) when (IsProviderRefusal(exception))
         {
             return false;
         }
     }
+
+    /// <summary>
+    /// Whether an exception is a provider declining, rather than a fault here.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>catch (COMException)</c> is not enough, and that is not obvious.</b>
+    /// The runtime maps well-known HRESULTs to specific .NET types — E_INVALIDARG
+    /// to <see cref="ArgumentException"/>, E_ACCESSDENIED to
+    /// <see cref="UnauthorizedAccessException"/>, E_NOTIMPL to
+    /// <see cref="NotImplementedException"/>, E_NOINTERFACE to
+    /// <see cref="InvalidCastException"/> — and passes a
+    /// <see cref="COMException"/> <i>only</i> when the HRESULT is one it does not
+    /// recognise.
+    /// </para>
+    /// <para>
+    /// UIA's own codes (UIA_E_ELEMENTNOTAVAILABLE and friends) are custom, so
+    /// they do arrive as COMException, which is why this hole stayed invisible:
+    /// every failure this driver had provoked until now was a UIA-specific one.
+    /// Measured 2026-08-09 — <c>SetFocus()</c> on a WPF TextBox threw
+    /// <c>ArgumentException: Value does not fall within the expected range</c>,
+    /// which escaped the catch and took the whole click with it instead of
+    /// falling through to the next rung.
+    /// </para>
+    /// <para>
+    /// <b>Two are deliberately absent.</b> <see cref="OutOfMemoryException"/>
+    /// (E_OUTOFMEMORY) is a real machine failure, and
+    /// <see cref="NullReferenceException"/> (E_POINTER) means this code passed a
+    /// bad pointer. Swallowing either would hide a defect rather than handle a
+    /// refusal.
+    /// </para>
+    /// </remarks>
+    private static bool IsProviderRefusal(Exception exception) =>
+        exception is COMException
+            or ArgumentException
+            or NotImplementedException
+            or UnauthorizedAccessException
+            or InvalidCastException;
 
     private static bool Has(IUIAutomationElement element, int availabilityPropertyId) =>
         element.GetCurrentPropertyValue(availabilityPropertyId) is bool available && available;

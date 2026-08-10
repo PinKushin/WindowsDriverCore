@@ -175,6 +175,37 @@ public sealed class ClickLadderTests
     }
 
     [Test]
+    public void WhenAnElementAdvertisesBothSelectionItemAndInvoke_SelectionItemWins()
+    {
+        // Settings has 22 ListItems: 9 advertise Invoke, 19 advertise
+        // SelectionItem, so some advertise both. That overlap is the condition
+        // where a wrong ladder order is observable — on an element carrying only
+        // one of them, every order predicts the same path.
+        FindResult items = _finder.FindAll(_window, LocatorKind.ControlType, "ListItem");
+
+        string? both = items.ElementIds.FirstOrDefault(id =>
+            _inspector.Attribute(_window, id, "IsSelectionItemPatternAvailable").Value == "True" &&
+            _inspector.Attribute(_window, id, "IsInvokePatternAvailable").Value == "True");
+
+        if (both is null)
+        {
+            Assert.Ignore("No Settings item advertises both patterns on this page.");
+        }
+
+        ElementAction click = _interactor.Click(_window, both);
+
+        click.Outcome.ShouldBe(ElementActionOutcome.Performed);
+
+        // "Controls support InvokePattern if the same behavior is not exposed
+        // through another control pattern" — so an element advertising both is a
+        // provider over-advertising, and the specific pattern is the honest one.
+        click.Path.ShouldBe("SelectionItem", "the state-bearing pattern outranks Invoke");
+
+        _inspector.IsSelected(_window, both).Value
+            .ShouldBeTrue("selecting it must actually select it");
+    }
+
+    [Test]
     public void AListItem_IsClickedThroughSelectionItemPattern()
     {
         string? item = FirstAdvertising("ListItem", "IsSelectionItemPatternAvailable")

@@ -5,6 +5,9 @@
     <Project Path="src/WindowsDriverCore.Automation/WindowsDriverCore.Automation.csproj" />
     <Project Path="src/WindowsDriverCore.Platform/WindowsDriverCore.Platform.csproj" />
   </Folder>
+  <Folder Name="/apps/">
+    <Project Path="apps/WindowsDriverCore.TestApp.Wpf/WindowsDriverCore.TestApp.Wpf.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WindowsDriverCore.Tests.Unit/WindowsDriverCore.Tests.Unit.csproj" />
     <Project Path="tests/WindowsDriverCore.Tests.Protocol/WindowsDriverCore.Tests.Protocol.csproj" />
