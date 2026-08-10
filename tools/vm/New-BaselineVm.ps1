@@ -63,11 +63,32 @@ $null = New-Item -ItemType Directory -Path $vmRoot -Force
 # ---------------------------------------------------------------------------
 
 # A password is required for AutoLogon, and AutoLogon is required because a UI
-# automation test needs a real interactive desktop. Generated per VM rather than
-# hardcoded, so nothing in the repository is a working credential.
-$password = -join ((1..20) | ForEach-Object {
-    [char[]]"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789" | Get-Random
-})
+# automation test needs a real interactive desktop.
+#
+# SHORT AND FIXED, DELIBERATELY. This was a generated 20-character string, and
+# that was the wrong trade twice over:
+#
+#  - It bought nothing. The password has to be readable by the host to drive
+#    PowerShell Direct, so it sits in plaintext in credential.txt and inside the
+#    answer ISO regardless. A long random string that lives in a file next to the
+#    VHDX is not more secret than a short one, only harder to type.
+#  - It has to be typed by hand when something goes wrong, and something did:
+#    the answer file's password did not take on the first build (see below), so
+#    recovery meant reading 20 random characters off the host and typing them
+#    into a VM console that has no clipboard in basic session.
+#
+# The guest is a disposable measurement rig on an internal switch with no inbound
+# exposure and no data on it. If that ever stops being true, this is the line to
+# revisit.
+#
+# KNOWN DEFECT, unresolved: on the first build the account and computer name from
+# the answer file applied correctly but this password did not — every credential
+# form was rejected by PowerShell Direct, while credential.txt and the booted
+# ISO's XML were byte-identical and the string needed no XML escaping. Worth
+# testing whether LocalAccount wants base64 with PlainText=false on 22H2. Until
+# then the recovery is `net user tester <password>` from an elevated prompt in
+# the guest.
+$password = "test"
 
 $unattendSource = Join-Path $PSScriptRoot "autounattend.xml"
 $unattendStaging = Join-Path $vmRoot "unattend-staging"
