@@ -101,6 +101,62 @@ it is to build the pristine tree and re-run.
 
 ---
 
+## WinAppDriver's XPath is essentially COMPLETE XPath 1.0, and that is a warning
+
+Recorded 2026-08-10 against WinAppDriver 1.2.1 driving Calculator, 38
+expressions — `Recordings/winappdriver-xpath-surface.json`. Everything worked:
+
+```
+axes        self, parent, ancestor, child, descendant,
+            following-sibling, preceding-sibling, ..
+node tests  //*, node(), named, wildcard steps, absolute paths
+predicates  [1] last() position()>1 @a="v" @a not() and or nested
+functions   starts-with contains string-length normalize-space
+            substring translate concat count
+other       union |
+errors      malformed -> 500, unknown function -> 500
+```
+
+**The tell that it is not hand-rolled:**
+
+```
+//Button[1]     matched 8
+(//Button)[1]   matched 1
+```
+
+Eight is **correct XPath 1.0**. `//Button[1]` means "every Button that is first
+among its siblings", not "the first Button in the document". Hand-written
+evaluators nearly always get this wrong, and nobody implements it correctly by
+accident.
+
+So the likely implementation is: build an XML document of the UIA tree, hand it
+to `System.Xml.XPath`. **One theory explaining all three complaints** — complete
+semantics because it is .NET's engine, slow because the document is rebuilt per
+query, and flaky because that document is a *snapshot* that drifts from the live
+tree, which is issue #1079 exactly.
+
+### What this means for us, and it cuts against the plan above
+
+The step-wise live-traversal design is faster and cannot go stale, but it makes us
+**reimplement XPath 1.0 semantics by hand** — including the per-parent positional
+rule above. Getting that subtly wrong breaks suites that currently pass, and the
+failure would look like a flaky driver rather than a wrong evaluator.
+
+The honest middle path is a per-request XML projection:
+
+- build the projection **inside one request**, never cached across calls, so the
+  #1079 staleness (which is about holding it *between* calls) cannot happen
+- evaluate with `System.Xml.XPath`, so semantics match Microsoft's exactly and
+  for free
+- keep a node → `IUIAutomationElement` map to turn results back into element ids
+- cost is one tree walk per query, which the measurements above show is
+  unavoidable for any expression containing `//` anyway
+
+Step-wise `TreeScope_Children` evaluation then becomes an **optimisation for
+paths that do not start with `//`**, applied later and only where it provably
+cannot change the result — rather than the foundation, where a semantic slip is
+indistinguishable from flakiness.
+
 ## XPath must not be built on FindAll — measured, and the gap is 16x
 
 Same subject (Calculator), 20 repeats:
