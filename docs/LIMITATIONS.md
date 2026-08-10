@@ -101,7 +101,47 @@ it is to build the pristine tree and re-run.
 
 ---
 
-## Cold start: we attach to the CoreWindow, not the frame window
+## Cold start: the session's window handle must be re-resolvable, not fixed
+
+**Root cause found 2026-08-10, after three wrong fixes.** Probed through this
+driver's own finder, at the moment the waiter returns:
+
+```
+waiter handed : 0x00210CE6  class=Windows.UI.Core.CoreWindow
+GA_ROOT of it : 0x00210CE6  class=Windows.UI.Core.CoreWindow   <- itself
+finds from it : num5Button=1  buttons=47                       <- all fine
+```
+
+**There is no frame yet.** The CoreWindow is top-level and is its own root, and
+finds from it work perfectly. Every "attach to the frame instead" fix therefore
+asks for something that does not exist at that instant:
+
+| Attempt | Result |
+|---|---|
+| prefer `FindFrameWindowHosting` first | returns 0, poll runs to deadline, caller gets window 0 |
+| reject a CoreWindow and wait for its frame | same, one test took 30 s — a timeout, not a slow find |
+| resolve via `GetAncestor(GA_ROOT)` | `GA_ROOT` is the CoreWindow itself, so also 0 |
+
+All three looked like "empty element finds". None of them were about the frame
+being a bad search root — measured, a frame is a superset of its CoreWindow
+(73 descendants against 65).
+
+**What actually happens:** the frame appears *later*, when the application is
+rehosted, and in the Windows 10 guest the original CoreWindow is **destroyed**
+rather than reparented. That destruction is the "Currently selected window has
+been closed" that kills every `ActionsError_*` test at `TestInit`, long after
+session creation and nowhere near it.
+
+**So the fix is not at attach time.** The session has to be able to *re-resolve*
+its window when the handle it holds dies, rather than treating the first window
+as immutable for the session's life. That also makes `/window_handle` report the
+frame, which is what WinAppDriver reports.
+
+`APackagedApplicationsWindow_IsNeverTheHostedCoreWindow` is `[Ignore]`d and is
+the specification for it. `GetAncestor`/`GA_ROOT` remain in `Win32` because a
+re-resolve will want them once a frame does exist.
+
+### Superseded: we attach to the CoreWindow, not the frame window
 
 Measured 2026-08-10, three cold starts through our own driver:
 
