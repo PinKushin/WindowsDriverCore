@@ -89,7 +89,10 @@ public sealed class SessionFactory
             capabilities,
             launched.Application.ProcessId,
             launched.Application.WindowHandle,
-            ownsApplication: true);
+            // Only if this activation STARTED the process. A single-instance
+            // application returns the one already running, and ending that
+            // would close an application other sessions are using.
+            ownsApplication: launched.Application.Started);
     }
 
     /// <summary>

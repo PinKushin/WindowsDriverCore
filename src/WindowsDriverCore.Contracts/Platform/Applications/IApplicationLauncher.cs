@@ -12,7 +12,20 @@ public sealed record ApplicationTarget(string App, string? Arguments, string? Wo
 /// window actually belongs to, not the broker that activation returns.
 /// </param>
 /// <param name="WindowHandle">The top-level window to drive.</param>
-public sealed record LaunchedApplication(int ProcessId, nint WindowHandle);
+/// <param name="Started">
+/// Whether this launch STARTED the process, as opposed to attaching to one that
+/// was already running.
+/// <para>
+/// <b>Not the same question as "did activation succeed".</b> Windows 10's
+/// Calculator is single-instance: activating it while it is already open returns
+/// the existing process. Treating that as a launch, and then ending the process
+/// when the session is deleted, closes an application other sessions are still
+/// using — measured 2026-08-10 as a 5 test regression on the compatibility
+/// suite, where a short-lived session's delete killed the long-lived one's
+/// Calculator.
+/// </para>
+/// </param>
+public sealed record LaunchedApplication(int ProcessId, nint WindowHandle, bool Started = true);
 
 /// <summary>The outcome of a launch attempt.</summary>
 /// <param name="Application">The running application, or null on failure.</param>
