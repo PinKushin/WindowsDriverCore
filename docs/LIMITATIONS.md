@@ -292,12 +292,46 @@ apphost, bind a socket, or parse an argument.
 
 ## The matched comparison: 133/290 against WinAppDriver's 281/290
 
-> **Caveat added 2026-08-10 after the fact, and it matters.** These two runs were
-> *not* on equal environments. WinAppDriver ran at `06:22Z`, before the suite had
-> filled Alarms & Clock to its alarm cap; our runs came afterwards. Under
-> controlled conditions — store reset, app warmed — this driver scores **133**,
-> not the 19 this section was first written around. Re-measure WinAppDriver the
-> same way before quoting the gap.
+> **Re-measured 2026-08-10 under the controlled procedure, and the caveat this
+> section briefly carried was wrong.** I suspected WinAppDriver's 281 had been
+> flattered by running before the alarm cap was reached. Measured: with the store
+> freshly reset it scores **281 again**, the same nine failures. Its score does
+> not depend on the contamination at all — only ours did. The comparison was fair
+> on that axis the whole time.
+>
+> | Driver | Environment | Score |
+> |---|---|---|
+> | WinAppDriver 1.2.1 | store reset | **281/290** |
+> | WindowsDriverCore `21a18dd` | store reset, app warmed | **133/290** |
+>
+> WinAppDriver's nine failures are two browser tests (legacy Edge is gone), three
+> `TouchClick`/`TouchFlick` class-initialisation failures, `SwitchWindows`,
+> `GetWindowHandles_ModernApp`, `CreateSessionWithArguments_ModernApp` and
+> `GetLocation` — environmental, not capability.
+>
+> **The 148-test gap, by class.** This is the honest backlog, in priority order:
+>
+> | Class | Tests only WinAppDriver passes |
+> |---|---|
+> | `Session` | 13 |
+> | `SendKeys` | 12 |
+> | `ElementSendKeys` | 12 |
+> | `WindowTransform` | 10 |
+> | `ActionsPen` | 9 |
+> | `ActionsTouch` | 8 |
+> | `Window` | 8 |
+> | `ElementElements` | 6 |
+> | `ElementElement` | 5 |
+> | `Screenshot` | 5 |
+> | `Actions` | 5 |
+> | `ElementEquals` | 4 |
+> | `ElementActive` | 4 |
+> | `Elements` | 3 |
+>
+> `SendKeys` and `ElementSendKeys` together are **24 tests and the single largest
+> theme** — and the keyboard itself is proven working (`Wx9!` sent, `Wx9!`
+> received), so the defect is in focus or routing rather than in input
+> synthesis.
 
 **Measured 2026-08-10, both drivers in the same Windows 10 22H2 guest, same
 WebDriverAPI.dll, same applications, same session.** The first like-for-like

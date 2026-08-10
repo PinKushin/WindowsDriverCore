@@ -87,8 +87,11 @@ The goal above is the claim. Two footnotes keep it honest:
   has a documented cause, a reproduction, and a measured before/after from a real
   application suite. Prefer it to anything about issue numbers.
 
-**Measured so far:** WinAppDriver scores **281/290 on its own compatibility
-suite on Windows 10 22H2** and 112/290 on Windows 11 — the difference is app
+**Measured so far:** this driver scores **133/290** and WinAppDriver 1.2.1
+scores **281/290**, matched — same Windows 10 22H2 guest, same suite DLL, alarm
+store reset for both (2026-08-10). A suite score is only comparable if the alarm
+store was reset and Alarms & Clock warmed first; see `docs/LIMITATIONS.md`.
+WinAppDriver scores **281/290 on its own compatibility suite on Windows 10 22H2** and 112/290 on Windows 11 — the difference is app
 drift, not capability, and the 112 figure must never be quoted as a capability
 claim. A find takes roughly 33 ms here against roughly 1070 ms through
 WinAppDriver, under unmatched conditions.
@@ -202,6 +205,10 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 
 ## Ground truth worth memorising
 
+- **133/290 for this driver, 281/290 for WinAppDriver 1.2.1**, matched on
+  Windows 10 22H2 with the alarm store reset. Reset the store and warm Alarms &
+  Clock before any suite run — `tools/vm/Invoke-CompatibilitySuite.ps1` does
+  both — or the score measures the previous run's residue, not the driver.
 - WinAppDriver scores **281/290 on Windows 10 22H2** and 112/290 on Windows 11.
   **Quote the operating system every time or do not quote the number.** Of the 9
   Windows 10 failures, 3 are a missing UWP package (`0x80073CF1`) and 2 need an
