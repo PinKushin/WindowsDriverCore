@@ -101,6 +101,48 @@ it is to build the pristine tree and re-run.
 
 ---
 
+## XPath must not be built on FindAll — measured, and the gap is 16x
+
+Same subject (Calculator), 20 repeats:
+
+```
+descendants, TrueCondition  : 12.92 ms  (65 elements)
+descendants, Button cond    : 12.53 ms  (47 elements)   <- narrowing saves 3%
+children only, TrueCondition:  1.50 ms  (2 elements)    <- 8.6x cheaper
+FindFirst Button (early out):  0.79 ms                  <- 16x cheaper
+TreeWalker to first Button  :  1.40 ms
+```
+
+**Traversal dominates, not marshalling.** Cutting the result set from 65 elements
+to 47 saved **3%** — the provider walks the whole subtree either way. So pushing
+a control type into the condition, which is the obvious optimisation, is worth
+almost nothing on its own.
+
+The two things that ARE worth something:
+
+- **`TreeScope_Children` is 8.6x cheaper than `TreeScope_Descendants`.** A path
+  evaluated step by step costs a few cheap hops rather than one expensive walk.
+- **Early exit is 16x cheaper.** `FindFirst` genuinely short-circuits, and a
+  manual `TreeWalker` that stops at the first match costs 1.40 ms against 12.53.
+
+### So the design is settled by measurement
+
+1. Parse the expression into steps.
+2. Evaluate each step with **`TreeScope_Children`** against the current node set.
+3. Only a leading `//` needs a descendant pass, and even that walks with
+   `IUIAutomationTreeWalker` evaluating the predicate per node, so a single-element
+   query stops at the first match instead of completing the walk.
+4. Predicates UIA can express (control type, exact property equality) go into
+   that step's condition. `starts-with`, `contains` and positional predicates are
+   evaluated locally on the live node — UIA conditions cannot express them, so the
+   split is forced regardless.
+
+**This also answers the flakiness**, which is the complaint about WinAppDriver's
+XPath rather than its speed. Walking live nodes per evaluation means there is no
+tree snapshot to drift out of date — the #1079 failure mode this repo already
+refuses elsewhere. A snapshot would be faster on paper and wrong in exactly the
+way the original was.
+
 ## Where a find's time actually goes — and the cache request does NOT help
 
 Measured 2026-08-10 against Calculator (47 buttons), 20 repeats each, through
