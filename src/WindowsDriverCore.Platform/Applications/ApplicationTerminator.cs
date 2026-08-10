@@ -48,7 +48,14 @@ public sealed class ApplicationTerminator : IApplicationTerminator
                 return true;
             }
 
-            process.Kill(entireProcessTree: true);
+            // NOT entireProcessTree. A packaged application's window is hosted
+            // by ApplicationFrameHost, which hosts every OTHER packaged
+            // application's window too — taking the tree down can close
+            // applications that have nothing to do with this session. Measured
+            // 2026-08-10: WinAppDriver closes the application on DELETE
+            // /session (calculators 1 then 0), so the behaviour is right; the
+            // blast radius was not.
+            process.Kill();
             return process.WaitForExit(GracePeriod);
         }
         catch (ArgumentException)
