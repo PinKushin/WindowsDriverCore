@@ -395,6 +395,52 @@ never-evicted. See `PROJECT-KNOWLEDGE.md` section 0.
 
 ---
 
+## Our own suite drifts to Windows 11, the same way WinAppDriver's drifts to Windows 10
+
+**Measured 2026-08-10 in a Windows 10 22H2 guest** (build 19045, Calculator
+10.1906.55.0 present):
+
+| Environment | Passed | Failed | Skipped |
+|---|---|---|---|
+| Windows 11 desktop | 113 | 0 | 3 |
+| Windows Server 2025 CI | 23 | 0 | 93 |
+| **Windows 10 guest** | **98** | **18** | **1** |
+
+The skip count answers the CI question outright: **1, not 93.** Every fixture
+found its subject, so the CI gap is absent Store apps on a Server image and
+nothing about the driver.
+
+The 18 failures are the uncomfortable part, and they have three roots, all of
+them app shape rather than driver defect:
+
+- **Nine failures from one OneTimeSetUp.** `ClickLadderTests` against Settings:
+  `Nothing matched ControlType 'Button' within 30s`. Windows 10 Settings does not
+  present the tree Windows 11 Settings does.
+- **Calculator**: `Nothing matched AutomationId 'num5Button' … (last failure:
+  NoSuchWindow)`.
+- **charmap**: the toggle the Toggle rung was built around comes back null.
+
+Plus `ActivatingAPackagedApplicationTwice`, on Windows 10's packaged-activation
+behaviour.
+
+**This is exactly the criticism this repository makes of the 112/290 score,
+pointed back at us.** That number is WinAppDriver measured on Windows 11 against
+a suite written for Windows 10 applications, and the argument here has been that
+much of it is drift rather than capability. The same is true of this suite in the
+other direction: it encodes Windows 11 shapes, and 18 tests say so the moment the
+applications change underneath it.
+
+**What follows from it:**
+
+- A test that names a real application's control is a test of that application's
+  current layout as much as of this driver. The WPF subject in `apps/` does not
+  have this problem — it passed here — which is the strongest argument yet for
+  moving coverage onto it.
+- Neither score is a capability measurement on its own. Quote the environment
+  every time: "WinAppDriver on Windows 11", "this driver on Windows 10".
+
+---
+
 ## CI runs 23 of 116 integration tests, because the runner is Windows Server
 
 **Measured on the first CI run, 2026-08-10.** It passed, green tick, zero
