@@ -116,8 +116,53 @@ public sealed class MainWindowWaiter
     /// window is not new relative to anything this call knows about, and that
     /// stage is the loose one that a busy desktop can get wrong.
     /// </remarks>
-    public static nint FindCurrentWindow(int processId) =>
-        FindWindow(processId, new HashSet<nint>());
+    public static nint FindCurrentWindow(int processId)
+    {
+        nint window = FindWindow(processId, new HashSet<nint>());
+
+        // PREFER THE HOSTED CoreWindow, and this is the whole of the fix.
+        //
+        // Measured 2026-08-10. A session starts on the CoreWindow, because at
+        // launch that window is top-level and its own root. Re-resolving found
+        // the ApplicationFrameWindow instead, which is a SUPERSET:
+        //
+        //     frame              Buttons=50
+        //     hosted CoreWindow  Buttons=47      <- the same handle the session began with
+        //
+        // The three extra are the title bar's Minimize, Maximize and Close. So
+        // re-resolving to the frame silently changes every count and every
+        // first match, and it cost 19 compatibility tests - all of them tests
+        // asserting exactly those two things, while everything else kept
+        // working. Returning the hosted CoreWindow puts the session back on the
+        // root it started with.
+        return HostedCoreWindow(window) is nint core && core != 0 ? core : window;
+    }
+
+    /// <summary>The CoreWindow inside a frame window, if there is one.</summary>
+    /// <param name="window">A candidate window.</param>
+    /// <returns>The hosted CoreWindow, or zero when there is none.</returns>
+    private static nint HostedCoreWindow(nint window)
+    {
+        if (window == 0 || ClassNameOf(window) != FrameWindowClass)
+        {
+            return 0;
+        }
+
+        nint hosted = 0;
+
+        Win32.EnumChildWindows(window, (child, _) =>
+        {
+            if (ClassNameOf(child) != CoreWindowClass)
+            {
+                return true;
+            }
+
+            hosted = child;
+            return false;
+        }, 0);
+
+        return hosted;
+    }
 
     private static nint FindWindow(int processId, IReadOnlySet<nint> before)
     {
