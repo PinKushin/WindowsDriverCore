@@ -160,6 +160,47 @@ public sealed class LadderAgainstOwnSubjectTests
     }
 
     [Test]
+    [Ignore("Known gap, same root as AnEdit_IsClickedByFocusingIt: the WPF " +
+            "provider refuses SetFocus even with the window foregrounded. " +
+            "Measured — foregrounding works and SendInput works.")]
+    public void SendKeys_TypesIntoTheElement_RatherThanReplacingItsValue()
+    {
+        // The distinction the protocol's element/value command actually needs.
+        // SetValue replaces contents through ValuePattern; typing sends
+        // keystrokes, so a second call APPENDS rather than overwriting. The
+        // compatibility suite depends on that — it clears a field with
+        // Control+A then Delete, which only typing can express.
+        UiaElementInteractor typing = new(
+            new CUIAutomationClass(),
+            new UiaElementResolver(new CUIAutomationClass()),
+            mouse: null,
+            windows: new WindowLocator(),
+            keyboard: new SendInputKeyboard());
+
+        string edit = Id("edit");
+
+        typing.SendKeys(_window, edit, "ab").Outcome.ShouldBe(ElementActionOutcome.Performed);
+        typing.SendKeys(_window, edit, "cd").Outcome.ShouldBe(ElementActionOutcome.Performed);
+
+        // Appended, not replaced. SetValue twice would leave "cd".
+        _inspector.Attribute(_window, edit, "Value.Value").Value.ShouldBe("abcd");
+    }
+
+    [Test]
+    public void SendKeys_WithoutAKeyboard_RefusesRatherThanFallingBackToSetValue()
+    {
+        // Replacing a field's contents is a different operation from typing into
+        // it. Silently substituting one for the other would make Control+A then
+        // Delete appear to work while doing something else entirely.
+        UiaElementInteractor noKeyboard = new(
+            new CUIAutomationClass(),
+            new UiaElementResolver(new CUIAutomationClass()));
+
+        noKeyboard.SendKeys(_window, Id("edit"), "x").Outcome
+            .ShouldBe(ElementActionOutcome.NotInteractable);
+    }
+
+    [Test]
     public void APatternlessOrphan_IsClickedByTheMouse_WhenTheMouseRungIsWired()
     {
         // The last rung. This element has no pattern and no ancestor with one,

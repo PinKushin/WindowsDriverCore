@@ -35,6 +35,7 @@ public sealed class UiaElementInteractor : IElementInteractor
     private readonly IElementResolver _resolver;
     private readonly IPointerInput? _pointer;
     private readonly IWindowLocator? _windows;
+    private readonly IKeyboardInput? _keyboard;
 
     /// <summary>Creates the interactor.</summary>
     /// <param name="automation">The UI Automation root object.</param>
@@ -43,6 +44,11 @@ public sealed class UiaElementInteractor : IElementInteractor
     /// <param name="mouse">
     /// Real mouse input for the last rung. Optional: without it the ladder ends
     /// by refusing, which is what it did before the rung existed.
+    /// </param>
+    /// <param name="keyboard">
+    /// Real keyboard input. Optional: without it SendKeys refuses rather than
+    /// falling back to SetValue, because replacing a field's contents is a
+    /// different operation from typing into it and the caller asked for typing.
     /// </param>
     /// <param name="windows">
     /// Supplies the window rectangle the click point is checked against. Optional
@@ -54,7 +60,8 @@ public sealed class UiaElementInteractor : IElementInteractor
         IUIAutomation automation,
         IElementResolver resolver,
         IPointerInput? mouse = null,
-        IWindowLocator? windows = null)
+        IWindowLocator? windows = null,
+        IKeyboardInput? keyboard = null)
     {
         ArgumentNullException.ThrowIfNull(automation);
         ArgumentNullException.ThrowIfNull(resolver);
@@ -63,11 +70,12 @@ public sealed class UiaElementInteractor : IElementInteractor
         _resolver = resolver;
         _pointer = mouse;
         _windows = windows;
+        _keyboard = keyboard;
     }
 
     /// <inheritdoc />
     public ElementAction Click(nint window, string elementId) =>
-        Act(window, elementId, ClickElementOrAncestor);
+        Act(window, elementId, element => ClickElementOrAncestor(window, element));
 
     /// <inheritdoc />
     public ElementAction Clear(nint window, string elementId) =>
@@ -99,6 +107,47 @@ public sealed class UiaElementInteractor : IElementInteractor
                 // element to hold a value and it does not; saying "done" would be
                 // indistinguishable from having worked.
                 : ElementAction.Failed(ElementActionOutcome.NotInteractable));
+    }
+
+    /// <inheritdoc />
+    public ElementAction SendKeys(nint window, string elementId, string keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (_keyboard is null)
+        {
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
+        return Act(window, elementId, element =>
+        {
+            // Foreground FIRST, then focus. UI Automation's SetFocus fails
+            // against a control in a background window even when it reports
+            // focusable, enabled and on screen — measured 2026-08-10 — so
+            // focusing without this simply does not work.
+            _windows?.BringToForeground(window);
+
+            // Then focus, because keystrokes go wherever focus is: typing
+            // without moving it would type into whatever the user last clicked.
+            //
+            // KNOWN GAP: WPF's provider refuses SetFocus on a perfectly
+            // focusable TextBox even in a foregrounded window. Measured
+            // 2026-08-10 with foregrounding confirmed working
+            // (foregrounded=True, target==actual) and SendInput confirmed
+            // working (typeWorks=True), which leaves this as the only branch
+            // that can fail. Falling back to a CLICK was tried and reverted: it
+            // drags the whole ladder in, has side effects on non-text elements,
+            // and made an unrelated test take 30 seconds. See
+            // docs/LIMITATIONS.md.
+            if (!TryFocus(element))
+            {
+                return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+            }
+
+            return _keyboard.Type(keys)
+                ? ElementAction.Performed("keys")
+                : ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        });
     }
 
     /// <summary>
@@ -138,9 +187,15 @@ public sealed class UiaElementInteractor : IElementInteractor
         }
     }
 
-    private ElementAction ClickElementOrAncestor(IUIAutomationElement element)
+    private ElementAction ClickElementOrAncestor(nint window, IUIAutomationElement element)
     {
         ScrollIntoView(element);
+
+        // Foreground before any rung runs. UI Automation refuses SetFocus
+        // against a background window — measured 2026-08-10 — so the Focus rung
+        // is unreachable without this, and a mouse click on a window that is
+        // behind another one lands on whatever is in front.
+        _windows?.BringToForeground(window);
 
         ElementAction direct = ClickOne(element);
         if (direct.Outcome == ElementActionOutcome.Performed)

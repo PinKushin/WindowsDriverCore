@@ -117,6 +117,35 @@ internal static partial class Win32
     /// <summary>Asks a window to close.</summary>
     internal const uint WM_CLOSE = 0x0010;
 
+    /// <summary>Brings a window to the foreground.</summary>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetForegroundWindow(nint hWnd);
+
+    /// <summary>The window currently in the foreground.</summary>
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetForegroundWindow();
+
+    /// <summary>Raises a window to the top of the z-order.</summary>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool BringWindowToTop(nint hWnd);
+
+    /// <summary>Joins two threads' input queues.</summary>
+    /// <remarks>
+    /// The only supported way to give a background process the right to
+    /// foreground a window: Windows grants that right to whoever owns the
+    /// foreground input queue, so a driver has to join it first and detach
+    /// afterwards.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool AttachThreadInput(uint attaching, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool attach);
+
+    /// <summary>The calling thread's id.</summary>
+    [LibraryImport("kernel32.dll")]
+    internal static partial uint GetCurrentThreadId();
+
     /// <summary>Screen metrics, including the virtual desktop's extent.</summary>
     [LibraryImport("user32.dll")]
     internal static partial int GetSystemMetrics(int index);

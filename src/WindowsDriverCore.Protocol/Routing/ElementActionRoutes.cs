@@ -51,6 +51,16 @@ public static class ElementActionRoutes
                     .ConfigureAwait(false);
 
                 DriverSession session = context.GetSession();
+
+                // SetValue, NOT SendKeys, and that is the recorded contract
+                // rather than a preference. Measured behaviour: this route
+                // answers 400 ElementNotInteractable for an element that cannot
+                // hold a value, which typing would turn into a 200. Switching it
+                // to send-keys was tried and reverted for exactly that.
+                //
+                // The suite's SendKeysToElement tests want typing semantics —
+                // Control+A then Delete to clear, Alt+Enter to move focus — so
+                // those need a path that does not contradict this recording.
                 ElementAction action = interactor.SetValue(
                     session.WindowHandle,
                     elementId,

@@ -63,6 +63,18 @@ public interface IWindowLocator
     /// return as "the window is gone".
     /// </remarks>
     bool Close(nint handle);
+
+    /// <summary>Brings a window to the foreground.</summary>
+    /// <param name="handle">The window.</param>
+    /// <returns>True if the window is now in the foreground.</returns>
+    /// <remarks>
+    /// <b>Needed before focusing or typing, and not optional.</b> UI Automation's
+    /// SetFocus fails with E_INVALIDARG against a control in a background
+    /// window even when it reports focusable, enabled and on screen — measured
+    /// 2026-08-10. Keystrokes go wherever focus is, so without this a driver
+    /// types into whatever the user last clicked.
+    /// </remarks>
+    bool BringToForeground(nint handle);
 }
 
 /// <summary>A window's position and size, in screen pixels.</summary>
