@@ -101,6 +101,52 @@ it is to build the pristine tree and re-run.
 
 ---
 
+## Projection beats a live navigator, and the cache request wins at five properties
+
+Measured 2026-08-10, Calculator, 65 nodes, 10 repeats:
+
+```
+BULK  FindAll, no properties   : 13.86 ms
+PROJ  FindAllBuildCache + 5    : 27.20 ms   <- projection, cached
+PROJ  FindAll + 5 live         : 47.92 ms   <- projection, live
+NAV   step every node          : 32.31 ms   <- navigator, before reading anything
+NAV   step + 5 live per node   : 68.44 ms
+NAV   step + cached per node   : 44.44 ms
+stepping vs bulk walk          :  2.33x
+cache vs live, 5 properties    :  1.76x
+```
+
+**The cache request wins at five properties and loses at one.** Both earlier
+claims in this document were wrong in opposite directions — "the big lever" and
+then "it does not help". The crossover is somewhere between one and five
+properties, and building a projection is firmly on the winning side. Neither
+claim should have been generalised from a single-property measurement.
+
+**Per-node stepping costs 2.33x the bulk walk before reading a single property.**
+So an `XPathNavigator` over live elements — which is what would make staleness
+structurally impossible — loses to a projection for whole-tree work, 44.44 ms
+against 27.20 ms.
+
+The navigator's advantage was never whole-tree work; it is *not visiting*.
+`/Window/List/ListItem[1]` touches a handful of nodes where a projection always
+builds all 65. But the expression the compatibility suite actually issues is
+`//ListItem[starts-with(@Name, "…")]`, which scans regardless, so the projection
+wins the case that matters.
+
+### The design, now measured rather than argued
+
+1. **Parse first, then project only what is needed** — the minimal subtree (an
+   absolute path does not need the whole tree) and the minimal property set
+   (`//ListItem[@Name…]` needs Name and ControlType, not five).
+2. **One `FindAllBuildCache`** with exactly those properties.
+3. Build the XML over that cached snapshot **inside the single request**, and
+   evaluate with `System.Xml.XPath` so semantics match Microsoft's exactly.
+4. **Runtime ids for the matches only.** RuntimeId cannot be cached, so it costs a
+   crossing per element — but only the matched set needs one, not all 65.
+
+Step-wise `TreeScope_Children` evaluation stays a later optimisation for paths
+without a leading `//`, where it provably cannot change the result.
+
 ## WinAppDriver's XPath is essentially COMPLETE XPath 1.0, and that is a warning
 
 Recorded 2026-08-10 against WinAppDriver 1.2.1 driving Calculator, 38
