@@ -157,13 +157,28 @@ public sealed class MainWindowWaiter
     //   3. Resolving the CoreWindow to its own frame via GetAncestor(GA_ROOT) —
     //      the precise parent link, not a search by process id.
     //
-    // Three different routes to the same frame produce the same regression, so the
-    // problem is NOT how the frame is located. Something about attaching to the
-    // frame rather than the CoreWindow is what the tests dislike, and a managed-UIA
-    // spot check saying a frame has 73 descendants against a CoreWindow's 65 did
-    // not explain it. That is the next thing to measure, through THIS driver's raw
-    // IUIAutomation path rather than the managed wrapper, and it wants a probe
-    // rather than a fourth guess.
+    // MEASURED, and it explains all three. At the moment the waiter returns, THERE
+    // IS NO FRAME. Probed through this driver's own finder:
+    //
+    //     waiter handed : 0x00210CE6  class=Windows.UI.Core.CoreWindow
+    //     GA_ROOT of it : 0x00210CE6  class=Windows.UI.Core.CoreWindow   <- itself
+    //     finds from it : num5Button=1  buttons=47                       <- all fine
+    //
+    // The CoreWindow is top-level and is its own root. So "prefer the frame" and
+    // "wait for the frame" are both asking for something that does not exist yet:
+    // they returned zero, the poll loop ran to its deadline, and the caller got
+    // window 0 — which is why the regression looked like empty finds and why one
+    // test took thirty seconds. Nothing was wrong with the frame as a search root.
+    //
+    // The frame appears LATER, when the application is rehosted, and in the
+    // Windows 10 guest the original CoreWindow is destroyed rather than reparented
+    // — that destruction is the "Currently selected window has been closed" seen
+    // much later, at the first test of a run.
+    //
+    // So the fix does not belong at attach time at all. The session must be able
+    // to RE-RESOLVE its window when the handle it holds dies, instead of treating
+    // the first window as immutable for the session's lifetime. That is also what
+    // makes /window_handle answer the frame, which is what WinAppDriver reports.
     //
     // GetAncestor and GA_ROOT are left in Win32 because attempt 3 is the most
     // likely shape of the eventual fix.
