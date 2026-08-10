@@ -207,6 +207,93 @@ public sealed class ElementRouteTests : IDisposable
     }
 
     [Test]
+    public async Task NestedFind_SearchesInsideTheContainer_NotTheWindow()
+    {
+        // The scope is the whole point, and the only way to see it here is which
+        // SearchScope the route passed. A nested route that searched the window
+        // would still answer 200 with an element.
+        _finder.FindFirst(
+            new SearchScope(0x9999, "42.1.1"), LocatorKind.AutomationId, "row")
+            .Returns(FindResult.Matched(["42.1.2"]));
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync(
+            new Uri($"/session/{SessionId}/element/42.1.1/element", UriKind.Relative),
+            new { @using = "accessibility id", value = "row" });
+        JsonElement body = await BodyOf(response);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        body.GetProperty("value").GetProperty("ELEMENT").GetString().ShouldBe("42.1.2");
+        _finder.Received(1).FindFirst(
+            new SearchScope(0x9999, "42.1.1"), LocatorKind.AutomationId, "row");
+    }
+
+    [Test]
+    public async Task NestedFind_WithNoMatch_IsNoSuchElement()
+    {
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Matched([]));
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync(
+            new Uri($"/session/{SessionId}/element/42.1.1/element", UriKind.Relative),
+            new { @using = "accessibility id", value = "nope" });
+        JsonElement body = await BodyOf(response);
+
+        ((int)response.StatusCode).ShouldBe(404);
+        body.GetProperty("status").GetInt32().ShouldBe(7);
+    }
+
+    [Test]
+    public async Task NestedFindAll_ReturnsEveryMatch_AndRecordsEachId()
+    {
+        // The plural nested route, and the registry side of it: every id handed
+        // out must be recorded, or a later stale touch reports "no such element"
+        // instead of "stale".
+        _finder.FindAll(new SearchScope(0x9999, "42.1.1"), LocatorKind.ControlType, "Button")
+            .Returns(FindResult.Matched(["42.1.2", "42.1.3"]));
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync(
+            new Uri($"/session/{SessionId}/elements", UriKind.Relative).ToString()
+                .Replace("/elements", "/element/42.1.1/elements", StringComparison.Ordinal),
+            new { @using = "tag name", value = "Button" });
+        JsonElement body = await BodyOf(response);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        body.GetProperty("value").GetArrayLength().ShouldBe(2);
+
+        IElementRegistry registry = _factory.Services.GetRequiredService<IElementRegistry>();
+        registry.CountFor(SessionId).ShouldBe(2);
+    }
+
+    [Test]
+    public async Task NestedFindAll_WithNoMatch_IsAnEmptyArray_NotAnError()
+    {
+        // Same asymmetry as the top-level routes: plural finds nothing without
+        // it being an error.
+        _finder.FindAll(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Matched([]));
+
+        HttpResponseMessage response = await _client.PostAsJsonAsync(
+            new Uri($"/session/{SessionId}/element/42.1.1/elements", UriKind.Relative),
+            new { @using = "accessibility id", value = "nope" });
+        JsonElement body = await BodyOf(response);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        body.GetProperty("value").GetArrayLength().ShouldBe(0);
+    }
+
+    [Test]
+    public async Task NestedFind_RequiresALiveSession()
+    {
+        HttpResponseMessage response = await _client.PostAsJsonAsync(
+            new Uri("/session/not-a-session/element/42.1.1/element", UriKind.Relative),
+            new { @using = "accessibility id", value = "row" });
+        JsonElement body = await BodyOf(response);
+
+        ((int)response.StatusCode).ShouldBe(404);
+        body.GetProperty("status").GetInt32().ShouldBe(101);
+    }
+
+    [Test]
     public async Task UnsupportedLocator_IsRejectedWithoutSearching()
     {
         await Find("element", "link text", "whatever");
