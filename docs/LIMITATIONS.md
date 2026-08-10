@@ -321,17 +321,38 @@ all four `FindNestedElement*`, `GetElementText`, `GetElementAttribute`,
 `*Error_StaleElement`. All had passed cold **before** these changes, and they are
 the same set still missing on cold versus warm.
 
-**Suspected cause, NOT yet confirmed:** the fail-fast check is too aggressive. On
-a cold start the window legitimately does not exist *yet* — the CoreWindow dies
-and the frame appears moments later — and the old code retried until it did. The
-principled rule would be that a window can only reappear if its process is still
-alive: process gone, fail fast; process alive, keep waiting.
+**Attributed by an isolation run, and the suspicion was wrong.** A build with the
+re-resolve kept and the fail-fast disabled (`bd9479e`) scored **122** under
+identical conditions:
 
-**That attribution is being measured, not assumed.** Two changes landed between
-the runs. An isolation build — `bd9479e`, re-resolve kept, fail-fast disabled — is
-running under identical conditions to attribute the 19 to one change or the
-other. **Do not act on the suspicion above until that result exists**; guessing
-at attribution is what cost the most time today.
+```
+                    gained  lost   net
+neither fix                        118
+re-resolve alone      23     19     +4   -> 122
+fail-fast on top       2      0     +2   -> 124
+```
+
+**The fail-fast is pure gain.** It adds `FindElementError_NoSuchWindow` and
+`GetWindowSize` and costs nothing. I had written down that it was probably too
+aggressive on cold start; it is not, and only the isolation run says so.
+
+**All 19 losses belong to the re-resolve**, and the set names the mechanism:
+five `*Error_StaleElement` tests, `FindElement_ByClassName`, `FindElements_ByName`,
+all four `FindNestedElement*`, `GetElementAttribute`, `GetElementDisplayedState`,
+`GetElementEnabledState`, `MiscellaneousSession_MultiSessionsSingleInstance` —
+tests that assert a specific **count** or a specific **first match**.
+
+That is what moving the search root does. Re-resolving points the session at the
+`ApplicationFrameWindow` where it began at the `Windows.UI.Core.CoreWindow`, and
+the frame is a **superset** — measured earlier at 73 descendants against the
+CoreWindow's 65, because it also contains the title bar and window chrome. Counts
+change, first matches change, and tests asserting either of those break while
+everything else keeps working.
+
+**Next measurement, not next guess:** confirm the re-resolved handle really is the
+frame, and compare find results from frame versus CoreWindow on the same app. If
+confirmed, the re-resolve should prefer the hosted CoreWindow — resolving to the
+same *kind* of window the session started with — rather than the outermost frame.
 
 ## Cold start: the session's window handle must be re-resolvable, not fixed
 
