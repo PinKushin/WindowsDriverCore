@@ -349,10 +349,49 @@ CoreWindow's 65, because it also contains the title bar and window chrome. Count
 change, first matches change, and tests asserting either of those break while
 everything else keeps working.
 
-**Next measurement, not next guess:** confirm the re-resolved handle really is the
-frame, and compare find results from frame versus CoreWindow on the same app. If
-confirmed, the re-resolve should prefer the hosted CoreWindow — resolving to the
-same *kind* of window the session started with — rather than the outermost frame.
+**Measured, and the frame theory was WRONG.** The measurement confirmed the
+mechanism it was looking for and the fix built on it still failed:
+
+```
+handed at launch : 0x02030620  Windows.UI.Core.CoreWindow
+re-resolved to   : 0x01EA0702  ApplicationFrameWindow
+hosted CoreWindow: 0x02030620  <- the same handle the session began with
+frame              Buttons=50
+hosted CoreWindow  Buttons=47   <- three fewer: Minimize, Maximize, Close
+```
+
+So the frame *is* a superset, exactly as predicted — and preferring the hosted
+CoreWindow **recovered none of the 19** and lost two more
+(`FindElementError_NoSuchWindow`, `GetWindowSize`), scoring 122 against 124.
+Reverted on that measurement. **A confirmed mechanism is not a confirmed cause.**
+
+| build | score |
+|---|---|
+| neither fix | 118 |
+| re-resolve to frame, no fail-fast | 122 |
+| re-resolve to frame + fail-fast | **124** |
+| re-resolve to CoreWindow + fail-fast | 122 |
+
+**What the lost 19 actually have in common** — re-read after the frame theory
+died — is not counts. It is **element ids issued earlier in the session**:
+`GetElementAttribute`, `GetElementText`, `GetElementDisplayedState`,
+`GetElementEnabledState`, all four `FindNestedElement*` (which search *within* a
+previously found element), `CompareElementsError_NoSuchElement`, and five
+`*Error_StaleElement`. Every one of them hands back an element id and then uses
+it.
+
+**Next hypothesis, untested:** re-pointing the session at a different window
+invalidates ids already issued against the old one, because an element id is a
+runtime id resolved within a window scope. That would break exactly the tests
+that hold an id across the re-resolve and nothing else.
+
+**Do not act on that until it is measured** — the frame theory looked at least as
+good and cost a build, a run and a revert.
+
+Incidental, and worth keeping: on the Windows 11 host the original CoreWindow is
+**reparented and stays alive** (same handle, `IsWindow` true); in the Windows 10
+guest it is **destroyed**. That is why the whole defect only ever appeared in the
+guest, and why three attach-time fixes looked fine on the host.
 
 ## Cold start: the session's window handle must be re-resolvable, not fixed
 
