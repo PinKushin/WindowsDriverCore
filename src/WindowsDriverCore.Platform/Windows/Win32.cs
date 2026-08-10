@@ -79,6 +79,16 @@ internal static partial class Win32
     [DllImport("user32.dll", EntryPoint = "GetClassNameW", CharSet = CharSet.Unicode)]
     internal static extern int GetClassName(nint hWnd, [Out] char[] className, int maxCount);
 
+    /// <summary>Enumerates the child windows of a window.</summary>
+    /// <remarks>
+    /// Needed to reach a packaged application's <c>Windows.UI.Core.CoreWindow</c>,
+    /// which is the only place the hosted application's process id is visible:
+    /// the <c>ApplicationFrameWindow</c> above it belongs to ApplicationFrameHost.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool EnumChildWindows(nint parent, EnumWindowsProc callback, nint parameter);
+
     /// <summary>Callback for <see cref="EnumWindows"/>.</summary>
     /// <param name="hWnd">The current window.</param>
     /// <param name="parameter">The value passed to EnumWindows.</param>

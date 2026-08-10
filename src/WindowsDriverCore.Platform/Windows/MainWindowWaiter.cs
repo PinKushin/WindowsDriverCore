@@ -30,6 +30,9 @@ namespace WindowsDriverCore.Platform.Windows;
 /// </remarks>
 public sealed class MainWindowWaiter
 {
+    private const string FrameWindowClass = "ApplicationFrameWindow";
+    private const string CoreWindowClass = "Windows.UI.Core.CoreWindow";
+
     private readonly TimeProvider _time;
 
     /// <summary>Creates the waiter.</summary>
@@ -122,6 +125,16 @@ public sealed class MainWindowWaiter
             }
         }
 
+        // Before the loose fallback, because it is precise and the fallback is
+        // not: a frame window hosting THIS process is certainly the right window,
+        // whereas "a window that did not exist a moment ago" is a guess that a
+        // busy desktop can get wrong.
+        nint hosted = FindFrameWindowHosting(processId);
+        if (hosted != 0)
+        {
+            return hosted;
+        }
+
         return FindNewTopLevelWindow(before);
     }
 
@@ -185,6 +198,73 @@ public sealed class MainWindowWaiter
         }, 0);
 
         return PreferTitled(unowned.Count > 0 ? unowned : owned);
+    }
+
+    /// <summary>
+    /// The <c>ApplicationFrameWindow</c> hosting a given packaged application.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Worth roughly 120 tests on the compatibility suite.</b> Measured
+    /// 2026-08-10: fifteen fixtures died in ClassInitialize on "Could not find
+    /// main window for application", because the suite creates a session per test
+    /// class and this driver does not close the application when a session ends.
+    /// From the second class onward the application was already running, so the
+    /// window was not new, and it never belonged to the activated process
+    /// either — every stage of the search missed it.
+    /// </para>
+    /// <para>
+    /// On Windows 10 a UWP application's window is an <c>ApplicationFrameWindow</c>
+    /// owned by ApplicationFrameHost, and the only place the hosted application's
+    /// process id appears is its <c>Windows.UI.Core.CoreWindow</c> child. So the
+    /// frame is matched through the child rather than through its own owner.
+    /// </para>
+    /// <para>
+    /// <b>This does not reproduce on Windows 11</b>, which is why it survived
+    /// until a Windows 10 guest existed: Windows 11's Calculator is WinUI 3 and
+    /// owns its window directly, so the first stage of the search succeeds and
+    /// correct and broken predict the same observation.
+    /// </para>
+    /// </remarks>
+    private static nint FindFrameWindowHosting(int processId)
+    {
+        nint match = 0;
+
+        Win32.EnumWindows((frame, _) =>
+        {
+            if (!Win32.IsWindowVisible(frame) || ClassNameOf(frame) != FrameWindowClass)
+            {
+                return true;
+            }
+
+            Win32.EnumChildWindows(frame, (child, _) =>
+            {
+                if (ClassNameOf(child) != CoreWindowClass)
+                {
+                    return true;
+                }
+
+                Win32.GetWindowThreadProcessId(child, out uint hosted);
+                if ((int)hosted == processId)
+                {
+                    match = frame;
+                    return false;
+                }
+
+                return true;
+            }, 0);
+
+            return match == 0;
+        }, 0);
+
+        return match;
+    }
+
+    private static string ClassNameOf(nint window)
+    {
+        char[] buffer = new char[256];
+        int length = Win32.GetClassName(window, buffer, buffer.Length);
+        return length > 0 ? new string(buffer, 0, length) : string.Empty;
     }
 
     private static nint FindNewTopLevelWindow(IReadOnlySet<nint> before)
