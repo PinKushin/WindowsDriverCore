@@ -24,28 +24,41 @@ either driver has had.
 | WinAppDriver 1.2.1 | **281/290** |
 | WindowsDriverCore, run 1 | 19/290 |
 | WindowsDriverCore, run 2 | 19/290 — packaged-window fix |
-| WindowsDriverCore, run 3 | **81/290** — `/timeouts` |
+| WindowsDriverCore, run 3 | 81/290 — `/timeouts` (**+62**) |
+| WindowsDriverCore, run 4 | 81/290 — window-closed fault |
+| WindowsDriverCore, run 5 | **109/290** — window routes (**+28**) |
 
-**Run 2 scored the same and was not wasted.** The packaged-window fix took
-"Could not find main window for application" from ~120 failures to **zero**; the
-fixtures simply died one step later, on `/timeouts`. Read the failure
-distribution, not the total — the score only moves when the *last* blocker in a
-chain is removed.
+**Two runs scored the same as the one before and neither was wasted.**
 
-**After `/timeouts` the shape changed.** No single cause dominates any more:
+Run 2's packaged-window fix took `Could not find main window for application`
+from ~120 failures to **zero** — the fixtures simply died one step later, on
+`/timeouts`. **The score only moves when the LAST blocker in a chain goes**, so
+read the failure distribution, not the total.
 
-| Cause | Tests |
-|---|---|
-| wrong error-message text (two strings) | 33 |
-| `POST /actions` | 15 |
-| `GET /title` | 14 |
-| `POST /keys` | 12 |
-| `GET /window/current/size` | 11 |
-| `GET /window_handle` | 10 |
-| various `TestInit` failures | ~44 |
+Run 4 is the more interesting one. Reporting `NoSuchWindow` from find instead of
+`NoSuchElement` was correct and gained nothing, because it converted 22
+assertions into `TestInit` explosions with the same count. The suite keeps a
+`static` session across every test class sharing a base, so once one test
+deliberately closes a window, every later class inherits a session pointing at a
+dead handle. WinAppDriver does not have the problem because `session.Quit()`
+closes the application and the next `Setup()` starts clean — **this driver does
+not implement application shutdown on `DELETE /session`**, so state leaks between
+classes. That gap is now the root of the largest remaining cluster.
 
-**33 of them need no feature at all** — they are two error strings the suite
-matches exactly.
+### What is left, ranked
+
+| Cause | Tests | Kind |
+|---|---|---|
+| session state after a window closes | 27 | needs `DELETE /session` shutdown |
+| `POST /actions` | 26 | missing subsystem |
+| window write ops (`POST /window`, `/window/current/size`, `DELETE /window`) | 15 | missing routes |
+| `POST /keys` | 12 | missing route |
+| stale-element message on element commands | 9 | wrong fault, same class as run 4's |
+| long tail | ~57 | one test each, no common cause |
+
+**The long tail is genuinely long.** 57 failures with no shared root means the
+cheap structural wins are nearly exhausted; from here the score moves in ones and
+twos rather than in sixties.
 
 **19/290 is not 271 missing features.** The failures collapse into a handful of
 causes, because a failed `ClassInitialize` takes every test in its class with it:
