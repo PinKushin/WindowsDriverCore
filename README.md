@@ -57,9 +57,16 @@ matched, it says so.
 while WinAppDriver ran over HTTP and re-resolved its element each iteration. It
 is worth chasing in `bench/`, not worth quoting as a headline.
 
-**112/290 matters more than it looks.** WinAppDriver fails 178 of its own tests
-on Windows 11 — mostly because the applications they drive have changed. Parity
-is a much smaller target than the suite size suggests.
+**112/290 was an app-drift number and has been retired.** Measured 2026-08-10 in
+a Windows 10 22H2 VM, WinAppDriver scores **281/290 on its own suite** — and of
+the 9 failures, 3 are a missing UWP package (`0x80073CF1`) and 2 need a browser
+that is not installed. It passes the suite on the operating system it was built
+for. The 178 failures on Windows 11 were Windows 11, not WinAppDriver.
+
+Nothing here is a reason not to build this. The reasons are that WinAppDriver was
+archived in June 2025 so nothing filed will ever be fixed, that its click
+semantics have a documented defect with a reproduction, and that it is roughly
+30x slower on a find. None of those needed the score to be bad.
 
 ---
 

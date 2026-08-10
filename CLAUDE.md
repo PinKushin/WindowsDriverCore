@@ -85,9 +85,11 @@ The goal above is the claim. Two footnotes keep it honest:
   has a documented cause, a reproduction, and a measured before/after from a real
   application suite. Prefer it to anything about issue numbers.
 
-**Measured so far:** WinAppDriver scores 112/290 on its own compatibility suite
-on Windows 11; a find takes roughly 33 ms here against roughly 1070 ms through
-WinAppDriver.
+**Measured so far:** WinAppDriver scores **281/290 on its own compatibility
+suite on Windows 10 22H2** and 112/290 on Windows 11 — the difference is app
+drift, not capability, and the 112 figure must never be quoted as a capability
+claim. A find takes roughly 33 ms here against roughly 1070 ms through
+WinAppDriver, under unmatched conditions.
 
 ## As close to the metal as possible — meaning fast
 
@@ -198,8 +200,12 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 
 ## Ground truth worth memorising
 
-- WinAppDriver scores **112/290** on its own suite on Windows 11. The old
-  "80/290 = 27.6%" was a fraction of a denominator nobody had checked.
+- WinAppDriver scores **281/290 on Windows 10 22H2** and 112/290 on Windows 11.
+  **Quote the operating system every time or do not quote the number.** Of the 9
+  Windows 10 failures, 3 are a missing UWP package (`0x80073CF1`) and 2 need an
+  absent browser, so its true capability figure is higher still. The old
+  "80/290 = 27.6%" was a fraction of a denominator nobody had checked, and 112
+  turned out to be a measurement of Windows 11 rather than of WinAppDriver.
 - A find takes roughly **33 ms** here against roughly **1070 ms** through
   WinAppDriver — unmatched conditions, but a 30x gap.
 - Compatibility floor is **Windows 10 1607 / Server 2016**, the same as
