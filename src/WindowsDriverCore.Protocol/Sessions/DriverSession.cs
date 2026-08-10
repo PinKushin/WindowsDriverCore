@@ -34,4 +34,21 @@ public sealed record DriverSession(
     /// fixed at creation, so a session cannot quietly become a different session.
     /// </remarks>
     public nint WindowHandle { get; set; } = WindowHandle;
+
+    /// <summary>How long a find retries before reporting nothing found.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Zero by default, and that is this driver's choice rather than a copy.</b>
+    /// WinAppDriver's default was not measured and is not asserted here. Zero
+    /// follows from this project's own rule against hidden behaviour: a find that
+    /// quietly retries makes a slow application look fast and a flaky one look
+    /// reliable, and the caller never asked for it.
+    /// </para>
+    /// <para>
+    /// Set by <c>POST /session/{id}/timeouts</c> with <c>type: implicit</c>. Per
+    /// session, because the protocol scopes it there and two suites against one
+    /// server must not affect each other.
+    /// </para>
+    /// </remarks>
+    public TimeSpan ImplicitWait { get; set; } = TimeSpan.Zero;
 }
