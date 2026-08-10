@@ -101,6 +101,55 @@ it is to build the pristine tree and re-run.
 
 ---
 
+## Where a find's time actually goes — and the cache request does NOT help
+
+Measured 2026-08-10 against Calculator (47 buttons), 20 repeats each, through
+this driver's own finder and raw `IUIAutomation`:
+
+```
+elements matched      : 47
+ElementFromHandle     :  0.85 ms
+FindAll only          : 12.21 ms
+FindAll + 47 ids      : 11.60 ms   <- indistinguishable from FindAll alone
+FindAll + names, live : 16.25 ms
+FindAll + names, cached: 17.94 ms  <- SLOWER than live
+whole driver FindAll  : 14.81 ms
+```
+
+**Three predictions, all wrong:**
+
+1. **"A find is 1 + 3N cross-process crossings."** No. Reading `GetRuntimeId` on
+   all 47 elements cost *nothing measurable* — the delta against `FindAll` alone
+   came out slightly negative, i.e. noise. Whatever `FindAll` returns already
+   carries enough that per-element id reads are not paid for individually.
+2. **"`IUIAutomationCacheRequest` is the big lever."** It is **0.91x** — nine
+   percent *slower*. Building the cache costs more than the reads it replaces at
+   this size.
+3. **"The layering is what costs."** Our whole find is 14.81 ms against a bare
+   `FindAll` of 12.21 ms, so everything this driver adds is ~2.6 ms. **The tree
+   walk is the cost**, and it is UIA's, not ours.
+
+**What that means for XPath.** The expensive part is walking the tree, and you
+cannot avoid walking it. So the shape is: one `FindAll` with a true condition
+(~12 ms), then filter in-process, where the filtering is nearly free. That is
+presumably why WinAppDriver's XPath is unremarkable — there is no clever
+batching available to be better at.
+
+**Limits of this measurement, stated rather than glossed:** Calculator is a
+47-element tree. This says nothing about N in the hundreds or thousands, where a
+cache request may well win. It is also a warm provider on a fast desktop, not the
+VM. Re-measure before quoting it anywhere else.
+
+Two API facts found the hard way while measuring:
+
+- **`RuntimeId` cannot be cached.** `AddProperty(30000)` is accepted, then
+  `GetCachedPropertyValue` throws `E_INVALIDARG`. Same special-casing that makes
+  RuntimeId illegal inside a property condition.
+- **A cache request's `TreeScope` must include `TreeScope_Element`.** With
+  `TreeScope_Descendants` alone the returned elements' *own* properties are never
+  cached, and every `GetCachedPropertyValue` throws `E_INVALIDARG` — which reads
+  exactly like "that property is not cacheable" and is not.
+
 ## Cold start: the session's window handle must be re-resolvable, not fixed
 
 **Root cause found 2026-08-10, after three wrong fixes.** Probed through this
