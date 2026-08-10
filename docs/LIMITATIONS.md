@@ -329,13 +329,51 @@ CoreWindow child and there is not one — while the loose stage hands back the s
 frame as an empty shell. Every find against it returns nothing, which is exactly
 the "element finds come back empty" that all four attempts produced.
 
-**So the next attempt must wait for `FindFrameWindowHosting` SPECIFICALLY, and
-must not fall through to `FindNewTopLevelWindow` while waiting.** The loose stage
-exists for applications that have no frame at all (WinUI 3, classic Win32), so it
-cannot simply be deleted — it has to be skipped only while a frame is expected.
+**Attempt five did exactly that — wait for `FindFrameWindowHosting`, and return
+zero while a top-level CoreWindow says a frame is coming, so the loose stage is
+never reached. It failed too, and differently:**
 
-Reverted for now. Recorded because four attempts have failed on this and the
-first three were abandoned for the wrong reason.
+```
+Nothing matched AutomationId 'num5Button' within 30s (last failure: NoSuchWindow)
+AResolveThatFinds_Nothing_IsNotCachedAsAFailure:
+    expected NotFound but was NoSuchWindow
+```
+
+`NoSuchWindow` there means **`ElementFromHandle` could not use the frame** — and
+`FindFrameWindowHosting` only matches a frame that already has our CoreWindow as
+a Win32 child. A probe at 15 s showed that same frame answering with 50 buttons.
+
+**So a frame has at least three separate readiness stages, and they are not
+simultaneous:**
+
+1. the window exists (Win32 `EnumWindows` finds it) — ~250 ms
+2. our CoreWindow is its child (`FindFrameWindowHosting` matches)
+3. **UIA will resolve it** (`ElementFromHandle` returns a usable element) — later
+   still, and this is the one nothing here waits for
+
+Stage 3 is the one that matters and the one no attempt has waited for. It also
+cannot be checked from `MainWindowWaiter`: that type lives in `Platform`, which is
+Win32-only by design, and UIA lives in `Automation`. Any sixth attempt has to
+decide where a UIA-readiness check belongs before writing a line of it — probably
+in the launcher's caller, or behind a contract the Platform layer can call
+without knowing what UIA is.
+
+**Five attempts, five different causes**, each one disproving the previous
+diagnosis rather than confirming it:
+
+| # | believed cause | actual outcome |
+|---|---|---|
+| 1 | frame lookup ordered too late | returned 0, poll ran to deadline |
+| 2 | CoreWindow must be refused | same, and the loose stage grabbed an empty frame |
+| 3 | `GA_ROOT` gives the frame | `GA_ROOT` of a CoreWindow is itself |
+| 4 | the frame is a superset, prefer the hosted CoreWindow | recovered none of the 19, lost 2 |
+| 5 | wait for frame-hosting, skip the loose stage | UIA will not resolve the frame yet |
+
+**Stop and come back to it.** The record above is worth more than a sixth swing
+at the end of a session, and every attempt so far has cost a build, a run and a
+revert while teaching exactly one new fact.
+
+
 
 ## Cold-start verification: 118 -> 124, and the two fixes measured
 
