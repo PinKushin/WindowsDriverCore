@@ -13,6 +13,7 @@ using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Sessions;
 using WindowsDriverCore.Tests.Protocol.Recordings;
 
@@ -39,9 +40,20 @@ public sealed class ElementRouteTests : IDisposable
     {
         _finder = Substitute.For<IElementFinder>();
 
+        // The session in these tests holds a made-up window handle, so the real
+        // WindowLocator correctly reports that it does not exist — and find now
+        // answers "the window has been closed" for that. These tests are about
+        // what happens when the window is ALIVE and the element is absent, so
+        // they have to say so rather than rely on a handle that happens to work.
+        IWindowLocator windows = Substitute.For<IWindowLocator>();
+        windows.Exists(Arg.Any<nint>()).Returns(true);
+
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
-                services.AddSingleton(_finder)));
+                {
+                    services.AddSingleton(_finder);
+                    services.AddSingleton(windows);
+                }));
 
         _client = _factory.CreateClient();
 
