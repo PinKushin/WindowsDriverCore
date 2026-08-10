@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -81,7 +82,8 @@ public static class SessionRoutes
             (string sessionId,
              ISessionStore sessions,
              IElementRegistry elements,
-             IElementHandleCache handles) =>
+             IElementHandleCache handles,
+             IApplicationTerminator terminator) =>
         {
             // Remove returns the session so teardown does not need a second
             // lookup, which could race another request deleting the same id.
@@ -103,10 +105,20 @@ public static class SessionRoutes
             elements.Forget(sessionId);
             handles.Forget(removed.WindowHandle);
 
-            // Shutting the application down belongs here and is not implemented
-            // yet — the launcher arrives with POST /session. Removing the session
-            // without it leaks the process, which is why this is a stated gap
-            // rather than a silent one.
+            // ONLY an application this driver started. A desktop session
+            // addresses explorer and an attached session addresses a window
+            // somebody else opened — both have real process ids, so the flag is
+            // recorded at creation rather than inferred from the id.
+            //
+            // The result is deliberately not checked: an application that will
+            // not die is not a reason to keep the session. The client asked for
+            // it to be gone, and a second delete must report it unknown rather
+            // than hand back a session addressing a half-dead application.
+            if (removed.OwnsApplication)
+            {
+                terminator.Terminate(removed.ProcessId);
+            }
+
             return Results.Json(JsonWireResponse.ForServerVoid());
         });
 

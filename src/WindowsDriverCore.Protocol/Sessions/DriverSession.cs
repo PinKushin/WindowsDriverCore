@@ -19,11 +19,17 @@ namespace WindowsDriverCore.Protocol.Sessions;
 /// The top-level window the session is currently pointed at. Mutable over the
 /// session's life because a client may switch windows.
 /// </param>
+/// <param name="OwnsApplication">
+/// Whether this driver started the application. Only then may it be ended when
+/// the session is deleted: a desktop session addresses explorer, and an attached
+/// session addresses a window somebody else opened.
+/// </param>
 public sealed record DriverSession(
     string Id,
     IReadOnlyDictionary<string, string> Capabilities,
     int ProcessId,
-    nint WindowHandle)
+    nint WindowHandle,
+    bool OwnsApplication = false)
 {
     /// <summary>
     /// The window the session is pointed at, which <c>POST /session/:id/window</c>
