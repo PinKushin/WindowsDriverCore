@@ -13,6 +13,52 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## The compatibility suite varies by about 9 tests run to run
+
+**Measured 2026-08-10, by accident, which is the only reason it was noticed.**
+
+Run 18 scored **124** against run 17's **133** and was read as a 9 test
+regression from the change under test. It was not. `git fetch` and
+`git reset --hard` had both failed with
+
+```
+fatal: detected dubious ownership in repository at 'C:/baseline/WindowsDriverCore'
+owned by: BUILTIN/Administrators, current user: WIN10-BASELINE/tester
+```
+
+and the script piped them to `Out-Null`, so the run built **the same commit as
+run 17** and scored nine tests lower.
+
+**Identical binary, 133 then 124.** Every delta smaller than that is inside the
+noise band, and several of today's were read as signal:
+
+| Change | Delta | Verdict now |
+|---|---|---|
+| `/timeouts` | +62 | real |
+| window read routes | +28 | real |
+| Actions validation | +15 | real |
+| guarded mouse rung | +8 | **within noise** |
+| keys route | −1 | within noise |
+| extended keys | 0 | within noise |
+| element window-closed | +1 | within noise |
+
+The large gains stand. The small ones were never distinguishable from variance,
+and the per-test diff is the only thing that made any of them interpretable — it
+showed run 16 to 17 changing exactly one test, and run 17 to 18 changing nine
+with no code difference at all.
+
+**What follows:**
+
+- **Never read a delta under ~10 as an effect.** Use the per-test diff, and
+  prefer a cause you can name over a number that moved.
+- **The runner now aborts** if it cannot determine HEAD, rather than measuring an
+  unknown commit. Silence on a failed checkout is how this cost a whole run.
+- The likely sources are the applications, not the driver: the suite leaves
+  Calculator, Notepad and Alarms running between runs, and a stale window changes
+  what later tests find.
+
+---
+
 ## Which predictions have been right, measured across seventeen runs
 
 Worth recording because the pattern is consistent and it should change what gets
