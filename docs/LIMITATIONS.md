@@ -13,6 +13,93 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## The nine that move are one cluster with one cause, and six of them are mislabelled
+
+The nine tests that separated 133 from 124 are not a noise band. Comparing the
+133 run against both 124 runs, **the 133 run is a strict superset** — it passed
+everything they passed plus exactly these nine, and nothing ever went the other
+way:
+
+```
+ClearElement                                 ElementClear.cs
+GetElementText                               ElementText.cs
+FindElements_ByName                          Elements.cs
+ClearElementError_StaleElement               ElementClear.cs
+ClickElementError_StaleElement               ElementClick.cs
+GetElementAttributeError_StaleElement        ElementAttribute.cs
+GetElementDisplayedStateError_StaleElement   ElementDisplayed.cs
+GetElementSelectedStateError_StaleElement    ElementSelected.cs
+GetElementTextError_StaleElement             ElementText.cs
+```
+
+**All nine derive from `AlarmClockBase`, and all nine need the add-alarm page
+open.** Random variation does not select a family.
+
+### Six of them never reach the behaviour their name describes
+
+This is the part worth carrying forward, because it would misdirect any triage
+that trusts the test name. The stale-element tests are written like this:
+
+```csharp
+try { GetStaleElement().Clear(); Assert.Fail("Exception should have been thrown"); }
+catch (InvalidOperationException e) { Assert.AreEqual(ErrorStrings.StaleElementReference, e.Message); }
+```
+
+`GetStaleElement()` clicks `AddAlarmButton` and then looks for `AlarmSaveButton`.
+When that find fails, it throws `InvalidOperationException` **from inside the
+helper** — and the catch block, which exists to inspect the driver's stale-element
+message, catches it instead and compares the wrong exception. The failure reads:
+
+```
+Assert.AreEqual failed.
+  Expected:<An element command failed because the referenced element is no longer attached to the DOM.>
+  Actual:  <An element could not be located on the page using the given search parameters.>
+```
+
+That looks exactly like a driver returning error 7 where error 10 was required.
+**It is not.** No stale element was ever produced; the setup failed and the
+assertion is reporting on the setup. Fixing our stale-element fault mapping in
+response to this message would have been effort spent on a correct code path —
+and the earlier prediction table already records two fault-classification fixes
+that gained zero, which is the same trap.
+
+The general form: **a `catch` that asserts on a message will happily report a
+setup failure as a behavioural one.** Read the stack, not the assertion.
+
+### What is actually broken
+
+One thing, worth nine tests: after our click on `AddAlarmButton`, the add-alarm
+page's controls are not findable — `AlarmNameTextBox` for `ClearElement`,
+`AlarmSaveButton` for the six, and `GetElementText`/`FindElements_ByName` the
+same way. WinAppDriver passes all nine on this machine, so the page does open for
+it.
+
+Whether our click fails to open the page, or the page opens somewhere our find
+does not look, is **not yet measured** — a probe is what settles it, not this
+document.
+
+## The suite DLL in the VM is not the pristine suite
+
+`CLAUDE.md` says the compatibility suite is kept pristine, and the *source tree*
+is. The **built DLL in the guest is not**: it contains `FindAlarmNameTextBox` and
+`FindAlarmSaveButton`, which exist only in the sibling repo's stash
+(`win11 drift accommodations`). Verified by string-scanning
+`C:aseline\WebDriverAPI\WebDriverAPI.dll`.
+
+This does **not** invalidate any comparison made today. The DLL was written at
+`06:09:07Z`; WinAppDriver 1.2.1's run finished `06:22:24Z`, the 1.2.99 RC's at
+`08:56:07Z`, and every one of our runs later still. **All of today's numbers —
+281, 264, 133, 124–125 — were measured against this same build.**
+
+What it does mean is that "pristine" describes the checkout, not the artifact
+under measurement, and a future session should not assume the two match. On
+Windows 10 the accommodations are fallbacks that try the Windows 11 control id
+first and fall back to the Windows 10 one, so they cost time rather than change
+outcomes — but that is reasoning, not a measurement, and the honest way to close
+it is to build the pristine tree and re-run.
+
+---
+
 ## Retracted: the harness claim below is wrong too. 133 never reproduced.
 
 **Restoring the call-operator agent did not restore the score.** Current HEAD
