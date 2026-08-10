@@ -13,6 +13,40 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## Which predictions have been right, measured across seventeen runs
+
+Worth recording because the pattern is consistent and it should change what gets
+worked on next.
+
+**Predicted well — missing routes.** Every large gain came from a command the
+driver simply did not answer:
+
+| Change | Predicted | Actual |
+|---|---|---|
+| `POST /timeouts` | 167 | **+62** |
+| window read routes | 35 | **+28** |
+| Actions payload validation | 20 | **+15** |
+| guarded mouse rung | 9 | **+8** |
+
+**Predicted badly — wrong faults.** Both attempts to fix a command that answered
+with the wrong *error* gained nothing at all:
+
+| Change | Predicted | Actual |
+|---|---|---|
+| find reports window closed | 24 | **0** |
+| element commands report window closed | 32 | **0** |
+
+Both are correct by the recorded contract and both are covered by protocol tests
+that fail when mutated. They simply are not what those suite tests are blocked
+on, and reading the assertion message was not enough to tell — the message says
+what the test compared, not what stopped it getting there.
+
+**The lesson for planning:** a failure message naming an error string is weak
+evidence about the cause. `Command not recognized` is strong evidence, because
+there is only one way to produce it. Rank work by the second kind.
+
+---
+
 ## WinAppDriver's newer release is worse: 264 against 1.2.1's 281
 
 **Measured 2026-08-10, same Windows 10 22H2 guest, same WebDriverAPI.dll, same

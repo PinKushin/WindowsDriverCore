@@ -48,6 +48,24 @@ public static class KeyboardRoutes
                     statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
             }
 
+            // Bring the SESSION'S window forward before typing. Keystrokes go
+            // wherever focus is, and a suite commonly has several applications
+            // open at once — measured 2026-08-10, with Calculator, Notepad and
+            // Alarms all alive during one compatibility run. Without this the
+            // keys land in whichever window happens to be in front, which is
+            // usually not the one the session addresses.
+            //
+            // The keyboard itself is not the problem and was proven so: typing
+            // "Wx9!" through this driver into Notepad returned "Wx9!" exactly.
+            if (!windows.BringToForeground(session.WindowHandle))
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(
+                        WebDriverFault.UnknownError,
+                        "The session's window could not be brought to the foreground"),
+                    statusCode: WebDriverFault.UnknownError.HttpStatus);
+            }
+
             using JsonDocument body = await JsonDocument
                 .ParseAsync(context.Request.Body).ConfigureAwait(false);
 
