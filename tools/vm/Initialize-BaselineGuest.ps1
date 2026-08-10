@@ -76,6 +76,13 @@ Write-Host "Guest is up."
 
 $report = Invoke-Command -VMName $VMName -Credential $credential -ScriptBlock {
     $ErrorActionPreference = "Stop"
+
+    # A fresh Windows 10 client defaults to Restricted, which blocks Microsoft's
+    # own dotnet-install.ps1 with "running scripts is disabled on this system".
+    # Process scope, not machine: it lasts for this remote session only, so the
+    # guest's policy is not permanently loosened by a provisioning run.
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+
     $log = [System.Collections.Generic.List[string]]::new()
 
     function Step([string] $name, [scriptblock] $already, [scriptblock] $install) {
