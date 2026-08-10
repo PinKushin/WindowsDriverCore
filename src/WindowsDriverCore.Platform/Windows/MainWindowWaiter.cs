@@ -138,6 +138,36 @@ public sealed class MainWindowWaiter
         return FindNewTopLevelWindow(before);
     }
 
+    // THE COLD-START DEFECT IS REAL, REPRODUCES HERE, AND IS NOT FIXED YET.
+    // APackagedApplicationsWindow_IsNeverTheHostedCoreWindow is its specification
+    // and is [Ignore]d rather than weakened.
+    //
+    // Measured: a packaged application's real top-level window is its
+    // ApplicationFrameWindow, but the Windows.UI.Core.CoreWindow inside it is
+    // briefly top-level and owned by the application, so the ownership search
+    // returns the CoreWindow. That window is later reparented and destroyed, which
+    // surfaces much later as "Currently selected window has been closed" — in the
+    // guest it killed every ActionsError_* test at TestInit.
+    //
+    // THREE fixes were tried and all three regressed this desktop the same way,
+    // with element finds coming back empty:
+    //
+    //   1. Preferring FindFrameWindowHosting outright.
+    //   2. Rejecting a CoreWindow so the poll loop waits for its frame.
+    //   3. Resolving the CoreWindow to its own frame via GetAncestor(GA_ROOT) —
+    //      the precise parent link, not a search by process id.
+    //
+    // Three different routes to the same frame produce the same regression, so the
+    // problem is NOT how the frame is located. Something about attaching to the
+    // frame rather than the CoreWindow is what the tests dislike, and a managed-UIA
+    // spot check saying a frame has 73 descendants against a CoreWindow's 65 did
+    // not explain it. That is the next thing to measure, through THIS driver's raw
+    // IUIAutomation path rather than the managed wrapper, and it wants a probe
+    // rather than a fourth guess.
+    //
+    // GetAncestor and GA_ROOT are left in Win32 because attempt 3 is the most
+    // likely shape of the eventual fix.
+
     /// <summary>
     /// Processes whose parent is <paramref name="processId"/>, transitively.
     /// </summary>
@@ -220,10 +250,15 @@ public sealed class MainWindowWaiter
     /// frame is matched through the child rather than through its own owner.
     /// </para>
     /// <para>
-    /// <b>This does not reproduce on Windows 11</b>, which is why it survived
-    /// until a Windows 10 guest existed: Windows 11's Calculator is WinUI 3 and
-    /// owns its window directly, so the first stage of the search succeeds and
-    /// correct and broken predict the same observation.
+    /// <b>This was said not to reproduce on Windows 11 "because Calculator is
+    /// WinUI 3 and owns its window directly". That is false</b> — measured
+    /// 2026-08-10 on Windows 11: Calculator is UWP, hosted in an
+    /// <c>ApplicationFrameWindow</c> owned by ApplicationFrameHost, with a
+    /// <c>Windows.UI.Core.CoreWindow</c> child owned by Calculator itself. The
+    /// architecture is identical to Windows 10. What differs is only how long the
+    /// CoreWindow spends as a top-level window before being reparented, so a fast
+    /// desktop hides the defect and a slow one — a VM, or a cold start — exposes
+    /// it. Speed, not shape.
     /// </para>
     /// </remarks>
     private static nint FindFrameWindowHosting(int processId)
