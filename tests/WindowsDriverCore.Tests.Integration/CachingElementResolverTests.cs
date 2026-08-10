@@ -195,9 +195,26 @@ public sealed class CachingElementResolverTests : IDisposable
         // shared Calculator with it and fail every test that ran afterwards.
         AppLifetime.KillProcess(launched.Application.ProcessId);
 
-        // A cache that trusted its handle would hand back a dead reference here
-        // and the caller would see a COM exception instead of a stale element.
-        _caching.Resolve(doomed, elementId).Outcome
-            .ShouldBe(ElementLookupOutcome.NoSuchWindow);
+        // Wait for the window to actually go, not just the process. The two are
+        // separate events and the gap widens with load — under an Appium run this
+        // assertion saw the element still resolving. Waiting here completes the
+        // manipulation; the measurement below still happens exactly once.
+        AppLifetime.WaitUntilWindowIsGone(doomed);
+
+        AppLifetime.WindowExists(doomed).ShouldBeFalse("the manipulation must have landed");
+
+        // **The cached path and a fresh walk must agree.** They did not: the walk
+        // reported NoSuchWindow while the cache handed back a resolved element
+        // from the closed window, because the handle was validated with
+        // GetRuntimeId — which the proxy answers without contacting the
+        // application. A cache is only allowed to be faster, never to give a
+        // different answer.
+        ElementLookupOutcome viaWalk = _walking.Resolve(doomed, elementId).Outcome;
+        ElementLookupOutcome viaCache = _caching.Resolve(doomed, elementId).Outcome;
+
+        viaCache.ShouldBe(
+            viaWalk,
+            "the cache must answer exactly what a fresh walk answers");
+        viaCache.ShouldBe(ElementLookupOutcome.NoSuchWindow);
     }
 }

@@ -192,6 +192,50 @@ rather than being filed as a driver defect.
 
 ---
 
+## Field confirmation, and one detail to copy
+
+Checked against PokemonBattleJournal's own memories on 2026-08-10.
+
+**Note the horizon.** Those memory files cover roughly one month — they start
+when the project began working with newer AI. The application has been driven
+through WinAppDriver for years, but that older experience lives in the git
+history, in the test helpers themselves, and in the owner's recall. **For a
+WinAppDriver behaviour older than about a month, ask rather than grep**: the
+memories will be silent and silence there is not evidence of absence.
+
+**The ladder here matches theirs rung for rung** — ScrollIntoView, Invoke,
+Toggle, SelectionItem, ExpandCollapse-after-focus, Focus for Edit and Document,
+the same patterns on up to three ancestors, then a guarded mouse. That is
+independent corroboration rather than agreement, because theirs was arrived at by
+fixing a two-day flake and ends at 83/83 on CI's 754x512 geometry, where it had
+previously fired clicks into Visual Studio and the Epic Games store.
+
+**The detail worth copying, which this document did not specify:** their guarded
+mouse *"refuses if outside the window under **both coordinate spaces**"*. This
+document says only to compare against the window rect. Given that `/location` is
+window-relative while `BoundingRectangle` and synthesized input are screen
+coordinates — see `PROJECT-KNOWLEDGE.md` — checking one space is exactly the kind
+of half-guard that passes on a window at the top-left of the primary display and
+fails everywhere else. **The mouse rung must check both.**
+
+**A stale claim to distrust if it comes up again.** An earlier memory there,
+`feedback_flaui_scroll_into_view` (2026-08-03), states that WinAppDriver's
+`Click()` uses InvokePattern for Button-typed elements. The later investigation
+(2026-08-06) disproves it: `Click()` is synthesized mouse input, and the pattern
+ladder they now use lives in *their test helper*, driving UIA directly rather
+than through WinAppDriver. The earlier line reads authoritative and would
+undermine this project's central claim if taken at face value — it was nearly
+used here to "correct" the section above into being wrong.
+
+**Also corroborated: duplicate automation ids resolve to the ancestor.** Their
+notes record that copying an `AutomationId` onto an overlay button changed
+nothing, because "a lookup resolves the **parent** first". That is tree order,
+and it is what `POST /element` returns now that it uses `FindFirst` — the same
+element `FindAll(...)[0]` would have given. A suite written against WinAppDriver
+depends on that ordering.
+
+---
+
 ## Known divergences from a real mouse click
 
 Pattern activation is not identical to a mouse click, and the differences should

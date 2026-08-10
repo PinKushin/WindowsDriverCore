@@ -71,6 +71,45 @@ case sensitivity.
 That killed most of the 157 anyway, which is the point: the property worth
 asserting was cheaper *and* stronger than the enumeration.
 
+## Integration results, 2026-08-09 — 141 tested, 49.00%
+
+| file | killed | survived | no coverage |
+|---|---|---|---|
+| `UiaElementFinder` | 35 | 7 | 3 |
+| `UiaElementInspector` | 18 | 6 | 7 |
+| **`UiaElementInteractor`** | 12 | 9 | **41** |
+| `CachingElementResolver` | 11 | 14 | 6 |
+| `UiaElementResolver` | 8 | 4 | 1 |
+| `UiaRuntimeId` | 12 | 3 | 1 |
+
+**The finding is the 41, not the 49%.** Calculator is buttons with
+`InvokePattern` and nothing else, so every click test exercises exactly one rung
+of the ladder. Toggle, SelectionItem, ExpandCollapse, Focus-for-Edit and the
+three-level ancestor walk are unreached — and the ancestor walk is the rung with
+the field evidence behind it, the one that fixed the MAUI `CollectionView`.
+
+A suite can be green, mutation-tested, and still have never run the feature the
+project exists for. That is what "read the survivors, not the score" means here:
+49% would have looked like a middling result to improve, when the actual message
+was that one file's worth of behaviour had no test subject at all.
+
+## Read "N total mutants will be tested", never "N mutants created"
+
+`635 mutants created` is printed **before** the `mutate` filter is applied. A
+scoped run and an unscoped run both report it, so it says nothing about scoping.
+
+Proved with a control: `"mutate": ["zzz/definitely-not-a-file.cs"]` also reports
+`635 mutants created`, then `Stryker was unable to calculate a mutation score` —
+only explicable if filtering happens after that line. A single-file glob reports
+635 created and 15 tested.
+
+The line that means something is `N total mutants will be tested`, alongside
+`N mutants got status Ignored. Reason: Removed by mutate filter`.
+
+**This cost a killed run.** A scoped integration run was cancelled on the
+assumption that 635 meant the globs had failed. Both checks that settled it were
+free and headless.
+
 ## Path globs are project-relative
 
 `mutate` patterns resolve against the **mutated project's** directory, not the

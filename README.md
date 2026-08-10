@@ -92,6 +92,19 @@ deliberate divergences and the things the tests cannot prove.
 dotnet run --project src/WindowsDriverCore.Host
 ```
 
+**Port 4723 is shared with WinAppDriver and with Appium.** Running two of them
+means moving one, which people already do by hand. Two environment variables move
+this one without touching the arguments a suite already passes:
+
+```bash
+WINDOWSDRIVERCORE_PORT=4899
+WINDOWSDRIVERCORE_HOST=0.0.0.0
+```
+
+An explicit argument still wins over both. A collision fails in about a second
+with `Failed to bind to address … address already in use` rather than starting
+and misbehaving.
+
 WinAppDriver's argument forms are accepted unchanged:
 
 ```bash
