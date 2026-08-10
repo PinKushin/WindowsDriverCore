@@ -80,12 +80,17 @@ jobs:
       # install step fixes this and neither does a newer image. The packaged
       # application launch path cannot be exercised here for the same reason.
       #
-      # This is a RATCHET. The number is today's measured debt, not a budget to
-      # spend: it may only ever be lowered, and lowering it means moving a
-      # fixture onto the WPF test subject — the only application that exists on
-      # both a developer desktop and a Server runner, which is the argument for
-      # having built it. A change that pushes the count up fails here rather
-      # than passing quietly.
+      # This is a RATCHET, and it counts what RAN rather than what did not.
+      # The first version capped skips at 93 and failed on the next run at 95 —
+      # the total itself moved, 116 to 118, so a skip ceiling drifts with it
+      # while measuring nothing about coverage. Passed count is the quantity
+      # that matters and it held steady at 23.
+      #
+      # The floor may only ever be raised, and raising it means moving a fixture
+      # onto the WPF test subject — the only application present on both a
+      # developer desktop and a Server runner, which is the argument for having
+      # built it. A change that drops coverage fails here instead of passing
+      # quietly.
       #
       # The rest needs a client Windows machine: a self-hosted runner on the
       # Hyper-V VM would cover the Store-app fixtures AND give the matched
@@ -94,22 +99,19 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $budget = 93
+          $floor = 23
           $trx = Get-ChildItem -Recurse -Filter integration.trx | Select-Object -First 1
           if (-not $trx) { throw "No integration.trx: the test step did not run." }
 
           [xml]$results = Get-Content $trx.FullName
           $counters = $results.TestRun.ResultSummary.Counters
-          $skipped = [int]$counters.total - [int]$counters.executed
           $passed = [int]$counters.passed
+          $total = [int]$counters.total
 
-          Write-Host "integration: $passed passed, $skipped skipped of $($counters.total)"
+          Write-Host "integration: $passed passed of $total, floor is $floor"
 
-          if ($skipped -gt $budget) {
-            throw "Skipped $skipped, budget is $budget. A skip reads as a pass — find the fixture that stopped finding its subject."
-          }
-          if ($passed -lt 1) {
-            throw "Nothing executed."
+          if ($passed -lt $floor) {
+            throw "Only $passed tests actually ran, floor is $floor. A skip reads as a pass — find the fixture that stopped finding its subject."
           }
 
       # Orphaned test applications survive a cancelled or failed run and the
