@@ -68,11 +68,8 @@ public static class ElementRoutes
                 // The check below survives as well, because the window can die
                 // DURING the retry; this one catches the window that was already
                 // dead when the request arrived.
-                if (!windows.Exists(session.WindowHandle))
-                {
-                    return Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage);
-                }
-
+                // ISOLATION BUILD: the early check is disabled so this run
+                // measures the re-resolve ALONE. Do not merge.
                 // FindFirst, not FindAll: this route uses one match and UIA can
                 // stop as soon as it has one. Measured at 9.8 ms against 12.0 ms
                 // for the exhaustive walk on Calculator.
