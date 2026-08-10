@@ -13,6 +13,35 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## WinAppDriver's newer release is worse: 264 against 1.2.1's 281
+
+**Measured 2026-08-10, same Windows 10 22H2 guest, same WebDriverAPI.dll, same
+applications.**
+
+| Build | Passed | Failed | Wall clock | Median per test |
+|---|---|---|---|---|
+| 1.2.1 (last stable, Nov 2020) | **281/290** | 9 | 10.7 min | 0.46 s |
+| 1.2.99 RC ("v1.3 RC1", Jul 2021) | **264/290** | 26 | 11.7 min | 0.42 s |
+
+**17 tests regressed** in the newer build, including `GetStatus`,
+`Launch_SystemApp`, `Close_SystemApp`, `CreateSessionWithArguments_SystemApp`,
+`Pen_LongClick`, `TouchLongTap` and `SendKeys_NonPrintableKeys`.
+
+**The two time measures disagree, and both are correct.** Median per-test time
+improved slightly while wall clock got a minute worse — 17 extra failures means
+17 extra error paths and timeouts, which inflate the total while the typical
+passing command is marginally quicker. Quoting either alone would mislead.
+
+**This is why 1.2.1 is the baseline.** It is the strongest WinAppDriver
+available, not merely the most convenient — and it explains a release history
+that otherwise looks odd: v1.2.99 was published as a release candidate in July
+2021 and never promoted in four years. It regresses its own compatibility suite.
+
+Name the build in any comparison. "WinAppDriver scores 281" is only true of
+1.2.1 on Windows 10.
+
+---
+
 ## The published exe will not start unless .NET is where it expects
 
 **Measured 2026-08-10 in the Windows 10 guest.** `dotnet publish` produced
