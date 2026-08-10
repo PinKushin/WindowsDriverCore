@@ -85,7 +85,11 @@ public sealed class SessionFactory
                 launched.FailureMessage);
         }
 
-        return Created(capabilities, launched.Application.ProcessId, launched.Application.WindowHandle);
+        return Created(
+            capabilities,
+            launched.Application.ProcessId,
+            launched.Application.WindowHandle,
+            ownsApplication: true);
     }
 
     /// <summary>
@@ -113,16 +117,28 @@ public sealed class SessionFactory
         return Created(capabilities, _windows.GetOwningProcessId(handle), handle);
     }
 
+    /// <summary>Builds a session for a window this driver has resolved.</summary>
+    /// <param name="capabilities">The capabilities to echo back.</param>
+    /// <param name="processId">The process behind the window.</param>
+    /// <param name="windowHandle">The window the session addresses.</param>
+    /// <param name="ownsApplication">
+    /// Whether this driver started the application, and may therefore end it.
+    /// Only the launch path may pass true: the desktop session addresses
+    /// explorer, and an attached session addresses a window somebody else
+    /// opened. Terminating either would close something that is not ours.
+    /// </param>
     private static SessionCreateResult Created(
         SessionCapabilities capabilities,
         int processId,
-        nint windowHandle) =>
+        nint windowHandle,
+        bool ownsApplication = false) =>
         new(
             new DriverSession(
                 Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture).ToUpperInvariant(),
                 capabilities.Echo,
                 processId,
-                windowHandle),
+                windowHandle,
+                ownsApplication),
             Fault: null,
             Message: null);
 }

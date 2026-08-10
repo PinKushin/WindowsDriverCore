@@ -65,6 +65,7 @@ public partial class Program
         builder.Services.AddSingleton<MainWindowWaiter>();
         builder.Services.AddSingleton<IWindowLocator, WindowLocator>();
         builder.Services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
+        builder.Services.AddSingleton<IApplicationTerminator, ApplicationTerminator>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<IElementFinder, UiaElementFinder>();
         // The resolver is layered: UiaElementResolver walks the tree, and

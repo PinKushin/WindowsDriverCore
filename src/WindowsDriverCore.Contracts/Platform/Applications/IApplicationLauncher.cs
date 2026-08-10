@@ -53,3 +53,18 @@ public interface IApplicationLauncher
     /// <returns>The running application, or the reason it could not be started.</returns>
     LaunchResult Launch(ApplicationTarget target);
 }
+
+/// <summary>Ends an application this driver started.</summary>
+/// <remarks>
+/// <b>Separate from the launcher on purpose.</b> Launching and killing are
+/// different authorities: a driver may attach to a window it did not start, and
+/// terminating that process would close an application belonging to someone
+/// else. Whether termination is allowed is decided by the session, not here.
+/// </remarks>
+public interface IApplicationTerminator
+{
+    /// <summary>Ends the process, gracefully if it will allow it.</summary>
+    /// <param name="processId">The process to end.</param>
+    /// <returns>True if the process is no longer running.</returns>
+    bool Terminate(int processId);
+}
