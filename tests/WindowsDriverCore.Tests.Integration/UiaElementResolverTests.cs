@@ -7,8 +7,6 @@ using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
@@ -26,7 +24,6 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class UiaElementResolverTests
 {
-    private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
     private UiaElementFinder _finder = null!;
     private UiaElementResolver _resolver = null!;
@@ -35,19 +32,17 @@ public sealed class UiaElementResolverTests
     [OneTimeSetUp]
     public void LaunchCalculator()
     {
-        WindowLocator windows = new();
-        ApplicationLauncher launcher = new(new MainWindowWaiter(TimeProvider.System), windows);
         CUIAutomationClass automation = new();
         _finder = new UiaElementFinder(automation, new UiaElementResolver(automation));
         _resolver = new UiaElementResolver(automation);
 
-        LaunchResult launched = launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
-        if (launched.Application is null)
+        // Shared: this fixture only reads, so it does not need its own
+        // Calculator. See SharedCalculator for why liveness is rechecked.
+        _window = SharedCalculator.Window();
+        if (_window == 0)
         {
-            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+            Assert.Ignore("Calculator is not available.");
         }
-
-        _window = launched.Application.WindowHandle;
 
         // Wait for the tree to exist and stop moving. Without it,
         // Resolve_RoundTripsEveryIdTheFinderIssued intermittently failed with an

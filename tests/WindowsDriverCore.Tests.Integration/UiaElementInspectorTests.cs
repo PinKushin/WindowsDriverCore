@@ -8,8 +8,6 @@ using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
@@ -28,7 +26,6 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class UiaElementInspectorTests
 {
-    private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
@@ -69,19 +66,17 @@ public sealed class UiaElementInspectorTests
     [OneTimeSetUp]
     public void LaunchCalculator()
     {
-        WindowLocator windows = new();
-        ApplicationLauncher launcher = new(new MainWindowWaiter(TimeProvider.System), windows);
         CUIAutomationClass automation = new();
         _finder = new UiaElementFinder(automation, new UiaElementResolver(automation));
         _inspector = new UiaElementInspector(automation, new UiaElementResolver(automation));
 
-        LaunchResult launched = launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
-        if (launched.Application is null)
+        // Shared: this fixture only reads, so it does not need its own
+        // Calculator. See SharedCalculator for why liveness is rechecked.
+        _window = SharedCalculator.Window();
+        if (_window == 0)
         {
-            Assert.Ignore($"Calculator is not available: {launched.FailureMessage}");
+            Assert.Ignore("Calculator is not available.");
         }
-
-        _window = launched.Application.WindowHandle;
 
         // Same reason as ElementAttributeTests: the geometry assertions compare
         // readings taken at different moments, which is only valid once the
@@ -218,7 +213,6 @@ public sealed class UiaElementInspectorTests
             "the window did not move as instructed — something else moved it, " +
             "possibly a person using the machine");
         (windowAfter.Top - windowBefore.Top).ShouldBe(80, "same, vertically");
-
 
         // The claim under test, in UIA space only. An earlier version compared
         // the Win32 displacement against the UIA one and expected them equal;
