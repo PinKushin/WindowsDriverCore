@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -44,6 +45,7 @@ public static class ElementActionRoutes
                 HttpContext context,
                 IElementInteractor interactor,
                 IElementRegistry registry,
+                IWindowLocator windows,
                 string elementId) =>
             {
                 SetValueRequest? request = await context.Request
@@ -66,7 +68,7 @@ public static class ElementActionRoutes
                     elementId,
                     string.Concat(request?.Value ?? []));
 
-                return Respond(action, session, elementId, registry);
+                return Respond(action, session, elementId, registry, windows);
             })
             .RequiresSession();
 
@@ -82,12 +84,14 @@ public static class ElementActionRoutes
             (HttpContext context,
              IElementInteractor interactor,
              IElementRegistry registry,
+             IWindowLocator windows,
              string elementId) =>
             {
                 DriverSession session = context.GetSession();
 
                 return Respond(
-                    act(interactor, session.WindowHandle, elementId), session, elementId, registry);
+                    act(interactor, session.WindowHandle, elementId),
+                    session, elementId, registry, windows);
             })
             .RequiresSession();
     }
@@ -101,7 +105,11 @@ public static class ElementActionRoutes
     /// <c>{"sessionId":"…","status":0}</c>.
     /// </remarks>
     private static IResult Respond(
-        ElementAction action, DriverSession session, string elementId, IElementRegistry registry) =>
+        ElementAction action,
+        DriverSession session,
+        string elementId,
+        IElementRegistry registry,
+        IWindowLocator windows) =>
         action.Outcome switch
         {
             ElementActionOutcome.Performed =>
@@ -115,8 +123,8 @@ public static class ElementActionRoutes
             // Stale versus never-issued, and the closed-window case, are the same
             // question the read routes answer, so they use the same code.
             ElementActionOutcome.NoSuchWindow =>
-                ElementFault.For(ElementReadOutcome.NoSuchWindow, session.Id, elementId, registry),
+                ElementFault.For(ElementReadOutcome.NoSuchWindow, session, elementId, registry, windows),
 
-            _ => ElementFault.For(ElementReadOutcome.NotFound, session.Id, elementId, registry),
+            _ => ElementFault.For(ElementReadOutcome.NotFound, session, elementId, registry, windows),
         };
 }

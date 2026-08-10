@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -26,9 +27,10 @@ internal static class ElementFault
 
     /// <summary>The fault for an outcome that is not a successful read.</summary>
     /// <param name="outcome">What the inspector reported.</param>
-    /// <param name="sessionId">The session, which scopes the issued-id record.</param>
+    /// <param name="session">The session, which scopes the issued-id record and names the window.</param>
     /// <param name="elementId">The id the client sent.</param>
     /// <param name="registry">The record of ids this server has handed out.</param>
+    /// <param name="windows">Answers whether the session's window is still there.</param>
     /// <returns>The response.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
@@ -36,11 +38,32 @@ internal static class ElementFault
     /// is not a fault and means the caller checked the wrong thing.
     /// </exception>
     internal static IResult For(
-        ElementReadOutcome outcome, string sessionId, string elementId, IElementRegistry registry)
+        ElementReadOutcome outcome,
+        DriverSession session,
+        string elementId,
+        IElementRegistry registry,
+        IWindowLocator windows)
     {
-        ArgumentNullException.ThrowIfNull(sessionId);
+        ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(elementId);
         ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(windows);
+
+        string sessionId = session.Id;
+
+        // A dead WINDOW outranks a missing element, and asking is the only way
+        // to tell them apart: to a lookup, "the element is gone" and "everything
+        // is gone" are the same observation. Answering "no such element" when
+        // the window has closed sends a client looking for a better locator for
+        // something no locator can reach — and a retry loop keeps searching a
+        // window that no longer exists until it times out.
+        //
+        // 32 tests on the compatibility suite assert this. The find route
+        // already got it; the element commands did not.
+        if (outcome != ElementReadOutcome.Read && !windows.Exists(session.WindowHandle))
+        {
+            return Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage);
+        }
 
         switch (outcome)
         {
