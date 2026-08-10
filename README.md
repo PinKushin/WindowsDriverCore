@@ -24,7 +24,9 @@ Three facts define the gap:
   Python, or from any existing test that speaks WebDriver. Reaching for it means
   abandoning the protocol.
 - **WinAppDriver has the API every existing suite already speaks** — and an
-  implementation that is both weak and, since June 2025, archived. Nothing filed
+  implementation that is both weak and unmaintained. It is NOT archived — see
+  the note below — but there has been no commit since April 2025, 1155 issues
+  are open, and nothing filed
   against it will ever be fixed.
 
 So this is not a FlaUI wrapper and not a faithful reimplementation of
@@ -64,7 +66,7 @@ that is not installed. It passes the suite on the operating system it was built
 for. The 178 failures on Windows 11 were Windows 11, not WinAppDriver.
 
 Nothing here is a reason not to build this. The reasons are that WinAppDriver was
-archived in June 2025 so nothing filed will ever be fixed, that its click
+unmaintained since April 2025 so nothing filed gets fixed, that its click
 semantics have a documented defect with a reproduction, and that it is roughly
 30x slower on a find. None of those needed the score to be bad.
 
@@ -195,5 +197,5 @@ Two specific things this project does **not** claim:
 
 MIT. See [`LICENSE.txt`](LICENSE.txt).
 
-Not affiliated with Microsoft. WinAppDriver is Microsoft's, archived June 2025;
+Not affiliated with Microsoft. WinAppDriver is Microsoft's, unmaintained since April 2025;
 FlaUI is Roemer's and is a peer project rather than a dependency.

@@ -141,7 +141,7 @@ capability.**
 - **But it is a .NET library.** No Appium suite, no Python test, nothing speaking WebDriver can
   drive it. Reaching for FlaUI means leaving the protocol behind.
 - **WinAppDriver has the API every existing suite already speaks** — and an implementation that is
-  weak, and archived since June 2025.
+  weak, and unmaintained since April 2025. NOT archived — that claim was wrong.
 
 So: serve WinAppDriver's protocol over a UIA layer as capable as FlaUI's. An existing suite points
 at it unchanged and stops hitting the ceiling.

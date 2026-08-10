@@ -28,7 +28,9 @@ Three facts define the gap it fills:
   Python, or from any existing test that speaks WebDriver. Reaching for it means
   abandoning the protocol.
 - **WinAppDriver has the API every existing suite already speaks** — and an
-  implementation that is both weak and, since June 2025, archived. Nothing filed
+  implementation that is both weak and unmaintained. It is NOT archived — that
+  claim was wrong, see docs/FOUNDING-PREMISE.md — but there has been no commit
+  since April 2025, 1155 issues are open, and nothing filed
   against it will ever be fixed.
 
 So the answer is not to wrap FlaUI and not to reimplement WinAppDriver's
