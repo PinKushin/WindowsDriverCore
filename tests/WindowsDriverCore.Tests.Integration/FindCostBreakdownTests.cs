@@ -51,28 +51,6 @@ public sealed class FindCostBreakdownTests
             Assert.Ignore("Calculator is not available.");
         }
     }
-
-    [OneTimeTearDown]
-    public void CloseCalculator()
-    {
-        foreach (Process process in Process.GetProcessesByName("CalculatorApp"))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
-            }
-            catch (InvalidOperationException)
-            {
-                // Already gone.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-    }
-
     [Test]
     public void FindCost_SplitsBetweenTheSearchCallAndReadingEachMatch()
     {

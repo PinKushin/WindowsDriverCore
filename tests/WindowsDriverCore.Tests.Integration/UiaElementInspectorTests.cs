@@ -1,5 +1,3 @@
-using System;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
@@ -83,28 +81,6 @@ public sealed class UiaElementInspectorTests
         // window has stopped arriving.
         UiSettle.UntilBoundsAreStable(_inspector, _window, Find("num5Button"));
     }
-
-    [OneTimeTearDown]
-    public void CloseCalculator()
-    {
-        foreach (Process process in Process.GetProcessesByName("CalculatorApp"))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
-            }
-            catch (InvalidOperationException)
-            {
-                // Already gone.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-    }
-
     private void MoveWindowTo(int x, int y) =>
         SetWindowPos(_window, 0, x, y, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate)
             .ShouldBeTrue("the window must actually move or this measures nothing");

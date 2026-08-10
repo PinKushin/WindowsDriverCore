@@ -1,6 +1,4 @@
-using System;
 using System.Text.RegularExpressions;
-using System.Diagnostics;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
@@ -56,28 +54,6 @@ public sealed class ElementAttributeTests
         // fixes.
         UiSettle.UntilBoundsAreStable(_inspector, _window, _five);
     }
-
-    [OneTimeTearDown]
-    public void CloseCalculator()
-    {
-        foreach (Process process in Process.GetProcessesByName("CalculatorApp"))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
-            }
-            catch (InvalidOperationException)
-            {
-                // Already gone.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-    }
-
     private string? Attribute(string name)
     {
         ElementRead<string?> read = _inspector.Attribute(_window, _five, name);
