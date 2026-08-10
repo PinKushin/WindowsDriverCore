@@ -75,6 +75,18 @@ internal static class Program
         Identified(insideButton, "patternlessChild");
         panel.Children.Add(Identified(new Button { Content = insideButton }, "ancestorWithInvoke"));
 
+        // A DISABLED element inside a container that does carry a pattern.
+        // Alarms & Clock's shape exactly: AddAlarmButton sits disabled inside
+        // AlarmCollectionPageCommandBar, which advertises Toggle and
+        // ExpandCollapse. Measured 2026-08-10 — Invoke threw because the button
+        // was disabled, the ladder climbed one level, toggled the command bar,
+        // and answered status 0. The app bar opened and closed while the driver
+        // reported that "Add new alarm" had been clicked.
+        Button disabledInside = new() { Content = "disabled", IsEnabled = false };
+        Identified(disabledInside, "disabledInsideToggle");
+        panel.Children.Add(Identified(
+            new CheckBox { Content = disabledInside }, "toggleHostingDisabled"));
+
         // The refusal: pattern-less, and no ancestor within three levels carries
         // a pattern either. Border and StackPanel expose no patterns, so the
         // ladder must run out and say so rather than report success.

@@ -189,6 +189,28 @@ public sealed class UiaElementInteractor : IElementInteractor
 
     private ElementAction ClickElementOrAncestor(nint window, IUIAutomationElement element)
     {
+        // A disabled element cannot be clicked, and — this is the part that bit —
+        // it is not an invitation to click something near it.
+        //
+        // Measured against Alarms & Clock on Windows 10, 2026-08-10. Its
+        // "Add new alarm" button goes disabled once the alarm list hits the
+        // application's cap. InvokePattern.Invoke() threw, so the ladder fell
+        // through to the ancestor walk, reached AlarmCollectionPageCommandBar —
+        // which advertises Toggle and ExpandCollapse — and toggled the app bar.
+        // The driver then answered status 0. The client is told "Add new alarm
+        // was clicked" while the application opened and closed its overflow menu.
+        //
+        // Nine tests in the compatibility suite fail behind this, and none of
+        // them can tell, because a successful click and a click that toggled
+        // something else look identical from the wire.
+        //
+        // The check is FIRST, before scrolling or foregrounding, so a refusal
+        // has no side effects at all.
+        if (IsDisabled(element))
+        {
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
         ScrollIntoView(element);
 
         // Foreground before any rung runs. UI Automation refuses SetFocus
@@ -543,4 +565,27 @@ public sealed class UiaElementInteractor : IElementInteractor
 
     private static bool Has(IUIAutomationElement element, int availabilityPropertyId) =>
         element.GetCurrentPropertyValue(availabilityPropertyId) is bool available && available;
+
+    /// <summary>Whether the provider reports the element as disabled.</summary>
+    /// <param name="element">The element.</param>
+    /// <returns><see langword="true"/> only when it says so plainly.</returns>
+    /// <remarks>
+    /// A provider that will not answer is not the same as one answering "no".
+    /// If the read fails, the ladder runs as before and the element gets its
+    /// chance — refusing on a failed read would turn every awkward provider into
+    /// an unclickable element, which is a much worse trade than the bug this
+    /// guards.
+    /// </remarks>
+    private static bool IsDisabled(IUIAutomationElement element)
+    {
+        try
+        {
+            return element.GetCurrentPropertyValue(UiaPropertyIds.IsEnabled) is bool enabled
+                && !enabled;
+        }
+        catch (Exception failure) when (IsProviderRefusal(failure))
+        {
+            return false;
+        }
+    }
 }
