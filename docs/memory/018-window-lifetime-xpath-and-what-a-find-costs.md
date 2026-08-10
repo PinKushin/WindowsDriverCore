@@ -56,16 +56,27 @@ locator can reach; 24 suite tests expect "no such window", status 23.
 Moving the check ahead of the retry fixed the time — the run completed in **3m
 25s** — and recovered 25 tests.
 
-**But it cost 19**, all element finds and element property reads that had passed
-cold before. The suspected cause is the check being too aggressive: on a cold
-start the window legitimately does not exist *yet*, and the old code retried
-until it did. The principled rule is that **a window can only reappear if its
-process is still alive** — process gone, fail fast; process alive, keep waiting.
+**But it cost 19** — and an isolation run attributed them, correcting the guess
+that was written here first. A build with the re-resolve kept and the fail-fast
+disabled scored 122:
 
-**That attribution is being measured rather than assumed.** Two changes landed
-between the runs and an isolation build (`bd9479e`, re-resolve only, fail-fast
-disabled) is running to attribute the 19 to one of them. Do not act on the
-suspicion above until that result exists.
+```
+                    gained  lost   net
+neither fix                        118
+re-resolve alone      23     19     +4   -> 122
+fail-fast on top       2      0     +2   -> 124
+```
+
+**The fail-fast is pure gain.** The suspicion that it was too aggressive on cold
+start was wrong. **All 19 belong to the re-resolve**, and the lost set is tests
+asserting a specific count or first match — which is what moving the search root
+does. The re-resolve points the session at the `ApplicationFrameWindow` where it
+began at the `CoreWindow`, and the frame is a superset (73 descendants against 65,
+measured) because it also holds the title bar and chrome.
+
+So the re-resolve should prefer the hosted CoreWindow — the same *kind* of window
+the session started with — rather than the outermost frame. To be confirmed by
+comparing find results from each on the same application before changing it.
 
 ## 3. XPath: use the BCL engine, own only the lifetime
 
