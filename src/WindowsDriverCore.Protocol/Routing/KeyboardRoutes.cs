@@ -1,0 +1,112 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Protocol.Errors;
+using WindowsDriverCore.Protocol.Responses;
+using WindowsDriverCore.Protocol.Sessions;
+
+namespace WindowsDriverCore.Protocol.Routing;
+
+/// <summary>
+/// <c>POST /session/{id}/keys</c> — typing at the session's window.
+/// </summary>
+/// <remarks>
+/// <para>
+/// 12 tests on the compatibility suite, measured 2026-08-10.
+/// </para>
+/// <para>
+/// <b>Keystrokes go where focus is, and this route does not move focus.</b>
+/// That is the protocol's behaviour, not a shortcut: the session-level keys
+/// command types at whatever the application has focused, which is why the suite
+/// pairs it with a click or an element command first.
+/// </para>
+/// </remarks>
+public static class KeyboardRoutes
+{
+    private const string WindowClosedMessage = "Currently selected window has been closed";
+
+    /// <summary>Maps the keyboard routes.</summary>
+    /// <param name="app">The route builder.</param>
+    /// <returns>The same builder, for chaining.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="app"/> is null.</exception>
+    public static IEndpointRouteBuilder MapKeyboardRoutes(this IEndpointRouteBuilder app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        app.MapPost("/session/{sessionId}/keys",
+            async (HttpContext context, IKeyboardInput keyboard, IWindowLocator windows) =>
+        {
+            DriverSession session = context.GetSession();
+
+            if (!windows.Exists(session.WindowHandle))
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, WindowClosedMessage),
+                    statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
+            }
+
+            using JsonDocument body = await JsonDocument
+                .ParseAsync(context.Request.Body).ConfigureAwait(false);
+
+            string? keys = ReadValue(body.RootElement);
+
+            if (keys is null)
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(
+                        WebDriverFault.InvalidArgument, "Missing Command Parameter: value"),
+                    statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+            }
+
+            return keyboard.Type(keys)
+                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                : Results.Json(
+                    JsonWireResponse.ForFault(
+                        WebDriverFault.UnknownError, "The keystrokes were not accepted"),
+                    statusCode: WebDriverFault.UnknownError.HttpStatus);
+        }).RequiresSession();
+
+        return app;
+    }
+
+    /// <summary>Joins the "value" array into one sequence.</summary>
+    /// <remarks>
+    /// The protocol sends an ARRAY of strings and they concatenate — a modifier
+    /// can be its own array entry, so joining is what keeps
+    /// <c>["", "a", ""]</c> meaning hold-press-release rather than
+    /// three unrelated sequences. An empty array is a valid request that types
+    /// nothing, which the suite sends deliberately.
+    /// </remarks>
+    private static string? ReadValue(JsonElement body)
+    {
+        if (!body.TryGetProperty("value", out JsonElement value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            return value.GetString();
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        StringBuilder keys = new();
+
+        foreach (JsonElement entry in value.EnumerateArray())
+        {
+            if (entry.ValueKind == JsonValueKind.String)
+            {
+                keys.Append(entry.GetString());
+            }
+        }
+
+        return keys.ToString();
+    }
+}

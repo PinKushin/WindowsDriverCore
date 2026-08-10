@@ -67,6 +67,7 @@ public partial class Program
         builder.Services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
         builder.Services.AddSingleton<IApplicationTerminator, ApplicationTerminator>();
         builder.Services.AddSingleton<IPointerInput, SendInputPointer>();
+        builder.Services.AddSingleton<IKeyboardInput, SendInputKeyboard>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<IElementFinder, UiaElementFinder>();
         // The resolver is layered: UiaElementResolver walks the tree, and

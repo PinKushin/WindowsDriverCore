@@ -96,3 +96,22 @@ public interface IPointerInput
     /// <returns>True if the input was accepted by the system.</returns>
     bool ClickAt(int x, int y);
 }
+
+/// <summary>Sends real keyboard input to whatever has focus.</summary>
+/// <remarks>
+/// <b>Modifiers toggle, they do not press.</b> The JSON Wire Protocol sends a
+/// modifier as a character in the stream, and it flips that key's held state:
+/// <c>Control + "a" + Control</c> means hold control, press a, release control.
+/// Treating each occurrence as a discrete press would send two control taps and
+/// a bare "a".
+/// </remarks>
+public interface IKeyboardInput
+{
+    /// <summary>Types a WebDriver key sequence.</summary>
+    /// <param name="keys">
+    /// Text, which may contain WebDriver's private-use key codes such as
+    /// U+E009 for control.
+    /// </param>
+    /// <returns>True if every keystroke was accepted by the system.</returns>
+    bool Type(string keys);
+}

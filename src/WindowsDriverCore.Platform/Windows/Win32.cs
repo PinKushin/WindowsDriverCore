@@ -139,12 +139,26 @@ internal static partial class Win32
         public InputUnion Union;
     }
 
-    /// <summary>Win32 <c>INPUT</c>'s union. Only the mouse arm is used.</summary>
+    /// <summary>Win32 <c>INPUT</c>'s union.</summary>
     [StructLayout(LayoutKind.Explicit)]
     internal struct InputUnion
     {
         [FieldOffset(0)]
         public MouseInput Mouse;
+
+        [FieldOffset(0)]
+        public KeyboardInput Keyboard;
+    }
+
+    /// <summary>Win32 <c>KEYBDINPUT</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public nint ExtraInfo;
     }
 
     /// <summary>Win32 <c>MOUSEINPUT</c>.</summary>
