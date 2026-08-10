@@ -294,6 +294,45 @@ Two API facts found the hard way while measuring:
   cached, and every `GetCachedPropertyValue` throws `E_INVALIDARG` — which reads
   exactly like "that property is not cacheable" and is not.
 
+## Cold-start verification: 118 -> 124, and the two fixes measured
+
+Same conditions as the 118 run — store reset, **cold start on purpose** — at
+`05768de`, so only the code changed.
+
+```
+run time   30+ min, never finished  ->  3m 25s
+result     {"status":"ok","exitCode":0}
+score      118 -> 124
+```
+
+**Gained 25:**
+
+- all 16 `ActionsError_*` — the session re-resolve
+- **5 XPath tests** — `FindElements_ByXPath`, `FindElementError_NoSuchElementByXPath`,
+  `FindElementsByNonExistent_XPath`, and both nested forms
+- `FindElementError_NoSuchWindow`, `SwitchWindowsError_NoSuchWindow`,
+  `CreateSessionFromExistingWindowHandleError_StaleWindowHandle` — the correct
+  no-such-window fault instead of "no such element"
+- `GetWindowSize`
+
+**Lost 19**, a coherent cluster: `FindElement_ByClassName`, `FindElements_ByName`,
+all four `FindNestedElement*`, `GetElementText`, `GetElementAttribute`,
+`GetElementEnabledState`, `GetElementDisplayedState`, and several
+`*Error_StaleElement`. All had passed cold **before** these changes, and they are
+the same set still missing on cold versus warm.
+
+**Suspected cause, NOT yet confirmed:** the fail-fast check is too aggressive. On
+a cold start the window legitimately does not exist *yet* — the CoreWindow dies
+and the frame appears moments later — and the old code retried until it did. The
+principled rule would be that a window can only reappear if its process is still
+alive: process gone, fail fast; process alive, keep waiting.
+
+**That attribution is being measured, not assumed.** Two changes landed between
+the runs. An isolation build — `bd9479e`, re-resolve kept, fail-fast disabled — is
+running under identical conditions to attribute the 19 to one change or the
+other. **Do not act on the suspicion above until that result exists**; guessing
+at attribution is what cost the most time today.
+
 ## Cold start: the session's window handle must be re-resolvable, not fixed
 
 **Root cause found 2026-08-10, after three wrong fixes.** Probed through this
