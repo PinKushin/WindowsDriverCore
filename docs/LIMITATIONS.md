@@ -294,6 +294,49 @@ Two API facts found the hard way while measuring:
   cached, and every `GetCachedPropertyValue` throws `E_INVALIDARG` — which reads
   exactly like "that property is not cacheable" and is not.
 
+## Why attaching to the frame keeps failing — the loose fallback grabs an EMPTY frame
+
+**WinAppDriver has no cold/warm difference at all.** Its matched run logged
+`app warmed: False` and still scored 281. Ours is 124 cold against 133 warm, so
+that 9-test gap is entirely our defect, and the obvious explanation is that
+WinAppDriver anchors to a window it never has to abandon — the
+`ApplicationFrameWindow`, which survives the rehost that destroys the CoreWindow.
+
+**The frame arrives fast.** Measured, three cold starts:
+
+```
+attempt 1: CoreWindow handed at 490 ms; frame findable at 732 ms; gap 242 ms
+attempt 2: CoreWindow handed at 490 ms; frame findable at 746 ms; gap 256 ms
+attempt 3: CoreWindow handed at 430 ms; frame findable at 645 ms; gap 215 ms
+```
+
+So "the frame does not exist yet", which killed three earlier attempts, is a
+quarter of a second — worth waiting for, and never previously timed.
+
+**But a fourth attempt failed too, and this is why.** Refusing a bare CoreWindow
+so the poll loop waits for its frame does not make the loop wait: it diverts the
+search into the **loose "any top-level window that did not exist before" stage**,
+which happily returns the frame *before its CoreWindow has been reparented in*:
+
+```
+handed 0x00110B8E (ApplicationFrameWindow) at 551 ms
+   596 ms  FindFrameWindowHosting -> 0x00000000   handed frame buttons=0
+   650 ms  FindFrameWindowHosting -> 0x00000000   handed frame buttons=0
+```
+
+The frame-hosting stage correctly reports "not yet" — it matches through the
+CoreWindow child and there is not one — while the loose stage hands back the same
+frame as an empty shell. Every find against it returns nothing, which is exactly
+the "element finds come back empty" that all four attempts produced.
+
+**So the next attempt must wait for `FindFrameWindowHosting` SPECIFICALLY, and
+must not fall through to `FindNewTopLevelWindow` while waiting.** The loose stage
+exists for applications that have no frame at all (WinUI 3, classic Win32), so it
+cannot simply be deleted — it has to be skipped only while a frame is expected.
+
+Reverted for now. Recorded because four attempts have failed on this and the
+first three were abandoned for the wrong reason.
+
 ## Cold-start verification: 118 -> 124, and the two fixes measured
 
 Same conditions as the 118 run — store reset, **cold start on purpose** — at
