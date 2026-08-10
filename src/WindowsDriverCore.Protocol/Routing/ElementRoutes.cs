@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
@@ -23,6 +24,9 @@ public sealed record FindElementRequest(
 /// </summary>
 public static class ElementRoutes
 {
+    /// <summary>How often a find is retried while an implicit wait is set.</summary>
+    private static readonly TimeSpan RetryInterval = TimeSpan.FromMilliseconds(50);
+
     private const string NoSuchElementMessage =
         "An element could not be located on the page using the given search parameters.";
 
@@ -51,7 +55,10 @@ public static class ElementRoutes
                 // FindFirst, not FindAll: this route uses one match and UIA can
                 // stop as soon as it has one. Measured at 9.8 ms against 12.0 ms
                 // for the exhaustive walk on Calculator.
-                FindResult found = finder.FindFirst(session.WindowHandle, locator.Kind, locator.Value);
+                FindResult found = await RetryWhileEmpty(
+                    session,
+                    () => finder.FindFirst(session.WindowHandle, locator.Kind, locator.Value))
+                    .ConfigureAwait(false);
 
                 if (found.Failure != FindFailure.None)
                 {
@@ -230,4 +237,57 @@ public static class ElementRoutes
     /// </remarks>
     private static IResult UnimplementedCommand(string what) =>
         Results.Text($"Unimplemented Command: {what}", statusCode: StatusCodes.Status501NotImplemented);
+
+    /// <summary>
+    /// Retries a find until the session's implicit wait elapses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only the singular route.</b> Measured against WinAppDriver: a find for
+    /// many elements answers 200 with an empty array rather than an error, so
+    /// there is nothing to wait for — waiting there would turn a legitimate
+    /// "none present" into a delay on every call.
+    /// </para>
+    /// <para>
+    /// Retries on NOTHING FOUND only. A failure — no such window, a bad
+    /// locator — is answered immediately, because repeating it cannot change the
+    /// outcome and would turn a clear error into a slow one.
+    /// </para>
+    /// <para>
+    /// The default is zero, so a session that never sets a timeout does exactly
+    /// one pass and pays nothing. This is the compatibility shim, not the
+    /// mechanism a reliable find should need.
+    /// </para>
+    /// </remarks>
+    private static async Task<FindResult> RetryWhileEmpty(
+        DriverSession session, Func<FindResult> find)
+    {
+        FindResult found = find();
+
+        if (session.ImplicitWait <= TimeSpan.Zero ||
+            found.Failure != FindFailure.None ||
+            found.ElementIds.Count > 0)
+        {
+            return found;
+        }
+
+        long deadline = Stopwatch.GetTimestamp() +
+            (long)(session.ImplicitWait.TotalSeconds * Stopwatch.Frequency);
+
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            // Polling, not sleeping on a guess: the loop returns the moment the
+            // element appears and the interval only bounds how long it may wait
+            // past that.
+            await Task.Delay(RetryInterval).ConfigureAwait(false);
+
+            found = find();
+            if (found.Failure != FindFailure.None || found.ElementIds.Count > 0)
+            {
+                return found;
+            }
+        }
+
+        return found;
+    }
 }

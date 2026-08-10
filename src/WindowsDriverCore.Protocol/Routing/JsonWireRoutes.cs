@@ -28,6 +28,7 @@ public static class JsonWireRoutes
 
         app.MapSessionRoutes();
         app.MapElementRoutes();
+        app.MapTimeoutRoutes();
         app.MapElementPropertyRoutes();
         app.MapElementActionRoutes();
 
