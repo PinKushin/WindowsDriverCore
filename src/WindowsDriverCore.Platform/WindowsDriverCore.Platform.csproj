@@ -20,4 +20,8 @@
     <PackageReference Include="System.Drawing.Common" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsDriverCore.Contracts\WindowsDriverCore.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

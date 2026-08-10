@@ -7,6 +7,7 @@
        Must not reference ASP.NET Core or System.Text.Json: this layer does not
        know that HTTP or JSON exist. -->
   <ItemGroup>
+    <ProjectReference Include="..\WindowsDriverCore.Contracts\WindowsDriverCore.Contracts.csproj" />
     <ProjectReference Include="..\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
   </ItemGroup>
   <ItemGroup>

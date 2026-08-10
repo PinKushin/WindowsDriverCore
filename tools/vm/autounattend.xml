@@ -125,8 +125,16 @@
                versionScope="nonSxS"
                xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
       <ComputerName>WIN10-BASELINE</ComputerName>
-      <!-- Unactivated is fine for a measurement rig; this stops Setup trying. -->
-      <SkipAutoActivation>true</SkipAutoActivation>
+      <!-- SkipAutoActivation used to be here and it broke the install:
+           "Windows could not parse or process unattend answer file for pass
+           [specialize]. A component or setting specified in the answer file does
+           not exist." It is a setting of Microsoft-Windows-Security-SPP, not of
+           Shell-Setup.
+
+           Deleted rather than relocated. With an empty product key there is
+           nothing to activate, so the setting bought nothing, and guessing at a
+           second component placement would risk the same failure a second time
+           for no gain. Unactivated Windows is fine for a measurement rig. -->
     </component>
   </settings>
 

@@ -1,16 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!-- Literal, not inherited: Buildalyzer reads this textually. See Directory.Build.props. -->
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <!-- The JSON Wire Protocol surface: routes, response envelopes, error mapping.
        Owns all serialization. Contains no UIA. -->
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
+  <!-- Contracts ONLY. Referencing Automation or Platform from here is what made
+       the whole graph Windows-bound, and the plain net10.0 target above turns a
+       reintroduction into a build error rather than a surprise in CI. -->
   <ItemGroup>
-    <ProjectReference Include="..\WindowsDriverCore.Automation\WindowsDriverCore.Automation.csproj" />
-    <ProjectReference Include="..\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
+    <ProjectReference Include="..\WindowsDriverCore.Contracts\WindowsDriverCore.Contracts.csproj" />
   </ItemGroup>
   <!-- No Microsoft.Extensions.Logging.Abstractions PackageReference here:
        the ASP.NET Core framework reference above already provides it, and
