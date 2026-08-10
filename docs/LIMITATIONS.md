@@ -13,6 +13,49 @@ Three kinds of entry, kept apart because they need different responses:
 
 ---
 
+## Retracted: the harness claim below is wrong too. 133 never reproduced.
+
+**Restoring the call-operator agent did not restore the score.** Current HEAD
+under the restored launcher scored **124**, which disproves the section below.
+
+Everything measured on this question, in one place:
+
+| Commit | Agent | Score |
+|---|---|---|
+| `6956530` | original (call operator + pipe) | **133** |
+| `6956530` | `Start-Process` + redirect | 124 |
+| `6956530` | `Start-Process` + redirect | 124 |
+| `a8d61ee` | `Start-Process` + redirect | 124 |
+| `b4ed054` | `Start-Process` + redirect | 125 |
+| `b4ed054` | `Start-Process` + redirect | 125 |
+| `b4ed054` | `Start-Process` + redirect | 124 |
+| `21a18dd` | restored call operator | **124** |
+
+**133 was observed once and has never reproduced** — not on its own commit, not
+under its own launcher. Seven runs across three commits and two launchers all sit
+at 124–125.
+
+**The honest score is 124–125.** Treat 133 as an anomaly of unknown cause.
+
+**This is the fourth explanation offered for one number, and the third wrong
+one:**
+
+1. "my change regressed it" — wrong, commits were identical
+2. "the suite has a 9 test noise band" — wrong, four repeats spread by one
+3. "the harness caused it" — wrong, restoring the harness changed nothing
+4. "133 was an anomaly" — what the evidence supports, and it explains nothing
+
+**What this costs, concretely:** the guarded mouse rung was reported as +8 on the
+strength of 125 → 133. That 133 is this value. **The mouse rung's effect on the
+suite is unmeasured**, and the same caution applies to anything else ranked
+against a single run.
+
+The three large gains — `/timeouts` +62, window reads +28, Actions validation
++15 — are unaffected. They are far outside anything seen here and were each
+measured against several runs on both sides.
+
+---
+
 ## The test harness is worth 9 tests, and that was measured with a control
 
 **The strongest methodological result of 2026-08-10**, and it took three wrong
