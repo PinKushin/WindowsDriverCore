@@ -94,9 +94,41 @@ rather than from the evidence. The first time cost a day on the Alarms fixture.
 
 Nothing here invalidates the work. It changes the claim.
 
+## Fifth wrong claim: "archived June 2025"
+
+**Measured 2026-08-10 against GitHub's API.** It is not archived and never was:
+
+```
+archived    : false        archived_at : null        disabled : false
+pushed_at   : 2025-04-14   has_issues  : true        open_issues : 1155
+```
+
+It was not abandoned in 2021 either. There are commits from **April 2025** —
+"Changed the versions for compatibility", "Updating the versions in
+WinAppDriver" — and issues are still being filed, #2077 in July 2026.
+
+**What IS true, and is the better claim anyway:** no commit since 2025-04-14,
+1155 issues open, and every issue comment in the sampled last eight months comes
+from `author_association: NONE`. No maintainer has replied in that window. The
+project is unmaintained in practice; it is not archived in fact.
+
+There is also a release later than the 1.2.1 this repository measured:
+**v1.2.99**, "WinAppDriver v1.3 Release Candidate 1", July 2021, marked
+prerelease. Any comparison should say which build it used.
+
+This is the fifth inherited claim to fail on contact with a measurement, and it
+failed exactly like the other four: stated in an earlier session, repeated across
+six files, never checked, and load-bearing for the justification. Checking it
+cost one API call.
+
+---
+
 **Still true and measured:**
 
-- WinAppDriver is archived and closed-source. Nothing filed against it will ever
+- WinAppDriver is **not archived** (measured 2026-08-10: `archived=false`,
+  `archived_at=null`, issues open). It is unmaintained: last commit 2025-04-14,
+  1155 open issues, and every issue comment in the sampled last eight months is
+  from `author_association: NONE`. In practice nothing filed against it will
   be fixed, including #1079.
 - It scores 112/290 on its own compatibility suite **on Windows 11**, and
   **281/290 on Windows 10 22H2** (measured 2026-08-10 in a Hyper-V guest). The

@@ -22,7 +22,7 @@ Read in this order if you are new to the project.
 
 | Path | What it is |
 |---|---|
-| `../WinAppDriver/` | Microsoft's archived repo: the 60-route API list, the docs, and the compatibility suite. Kept **pristine** — local edits are stashed, not committed. |
+| `../WinAppDriver/` | Microsoft's unmaintained repo (not archived): the 60-route API list, the docs, and the compatibility suite. Kept **pristine** — local edits are stashed, not committed. |
 | `../PokemonBattleJournal/` | A real MAUI application with a Windows Appium suite. The source of the click-semantics field evidence, and a candidate test fixture. |
 | `~/.claude/projects/…/memory/` | A mirror of `PROJECT-KNOWLEDGE.md` outside the repository, so it survives a from-scratch rewrite. |
 

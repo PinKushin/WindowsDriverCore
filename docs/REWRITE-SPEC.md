@@ -311,7 +311,7 @@ Measured 2026-08-08 against WinAppDriver 1.2.2009.02003 on Win11 26200:
 The problem it solves is real and unaddressed: a Windows app update renames its automation ids and
 every test in a suite breaks at once. Win11's Clock is a live example — `CancelButton` became
 `CloseButton`, `AlarmSaveButton` became `PrimaryButton`, and `AlarmNameTextBox` lost its id
-entirely. WinAppDriver offered nothing for this and is archived, so a team hitting it today has no
+entirely. WinAppDriver offered nothing for this and is unmaintained, so a team hitting it today has no
 migration path other than editing every test.
 
 Shape:
