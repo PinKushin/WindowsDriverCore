@@ -41,28 +41,42 @@ public sealed class ActionsValidationTests : IDisposable
 {
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
+    private IWindowLocator _windows = null!;
     private ISyntheticPointer _injector = null!;
 
-    [SetUp]
+    /// <summary>
+    /// Builds the server ONCE for the whole fixture, not per test.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only what DI registration actually requires lives here.</b> A
+    /// substitute's REGISTRATION is fixed at container-build time — it cannot be
+    /// swapped after <c>WithWebHostBuilder</c> runs — so the instances have to be
+    /// created here. Their <c>.Returns()</c> configuration does not have to be:
+    /// that is rearmed per test in <see cref="ArrangeDefaults"/>, which is what
+    /// keeps eight tests safe to share one instance instead of leaking
+    /// configuration between each other.
+    /// </para>
+    /// <para>
+    /// 21 of 21 protocol fixtures used to boot a fresh
+    /// <see cref="WebApplicationFactory{TEntryPoint}"/> — an ASP.NET Core host —
+    /// per <c>[Test]</c>. Measured 2026-08-11: nothing here needs per-test
+    /// isolation of the CONTAINER, only of the substitutes' configured behaviour
+    /// and call history, both of which are cheap to reset without rebuilding the
+    /// host.
+    /// </para>
+    /// </remarks>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
-            .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
-
-        IWindowLocator windows = Substitute.For<IWindowLocator>();
-        windows.Exists(Arg.Any<nint>()).Returns(true);
-
-        // The session window owns every point, so the pointer guard permits the
-        // gesture and these tests measure the ROUTE. Left at NSubstitute's
-        // default false, the guard refuses everything and a payload test would
-        // be reporting on the guard instead.
-        windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
+        _launcher = Substitute.For<IApplicationLauncher>();
+        _windows = Substitute.For<IWindowLocator>();
 
         // THE INJECTOR IS SUBSTITUTED, AND THAT IS NOT OPTIONAL.
         //
-        // /actions now performs what it validates, and WebApplicationFactory
-        // boots the REAL container - so a protocol test posting a valid payload
+        // /actions performs what it validates, and WebApplicationFactory boots
+        // the REAL container - so a protocol test posting a valid payload
         // synthesises real touch onto whoever's desktop is running the suite.
         // Measured 2026-08-11, the hard way: a run of these tests clicked the
         // owner's browser.
@@ -70,21 +84,58 @@ public sealed class ActionsValidationTests : IDisposable
         // A protocol test is about the wire, not about the desktop. The fake
         // reports success so the route's own behaviour is what gets asserted.
         _injector = Substitute.For<ISyntheticPointer>();
-        _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
-        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
-                services.AddSingleton(windows);
+                services.AddSingleton(_launcher);
+                services.AddSingleton(_windows);
                 services.AddSingleton(_injector);
             }));
 
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Puts every substitute back to its known-good default before each test.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is what makes sharing the fixture safe, not a formality.</b>
+    /// <c>AnInjectorThatRefuses_IsReportedAsAFailure_NotAsSuccess</c>
+    /// reconfigures <c>_injector.Inject(...)</c> to return <c>false</c> inside
+    /// its own test body. Without rearming the default here, that configuration
+    /// would persist on the shared instance into whichever test happened to run
+    /// next — an ORDER-DEPENDENT failure, which is worse than a deterministic
+    /// one because it passes locally and fails on CI depending on how NUnit
+    /// schedules the class. <c>ClearReceivedCalls()</c> is the other half:
+    /// without it, <c>AValidPayload_IsPerformed_AndSaysSo</c>'s
+    /// <c>_injector.Received()</c> — an implicit <c>Received(1)</c> — would see
+    /// calls left over from earlier tests and fail even though ITS OWN request
+    /// behaved correctly.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _launcher.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+        _injector.ClearReceivedCalls();
+
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
+            .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
+
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+
+        // The session window owns every point, so the pointer guard permits the
+        // gesture and these tests measure the ROUTE. Left at NSubstitute's
+        // default false, the guard refuses everything and a payload test would
+        // be reporting on the guard instead.
+        _windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
+
+        _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
+        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>
