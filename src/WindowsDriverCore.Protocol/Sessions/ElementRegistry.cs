@@ -60,6 +60,14 @@ public interface IElementRegistry
     /// guess at.
     /// </remarks>
     int CountFor(string sessionId);
+
+    /// <summary>Drops everything recorded for every session, unconditionally.</summary>
+    /// <remarks>
+    /// A test seam, not a production operation — see
+    /// <see cref="ISessionStore.Clear"/>, which this exists for the same reason
+    /// as.
+    /// </remarks>
+    void Clear();
 }
 
 /// <inheritdoc />
@@ -118,4 +126,7 @@ public sealed class ElementRegistry : IElementRegistry
         // for sessions that never found an element.
         _bySession.TryRemove(sessionId, out _);
     }
+
+    /// <inheritdoc />
+    public void Clear() => _bySession.Clear();
 }

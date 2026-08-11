@@ -34,7 +34,8 @@ public sealed class CreateSessionRouteTests : IDisposable
     private IApplicationLauncher _launcher = null!;
     private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
         _launcher = Substitute.For<IApplicationLauncher>();
@@ -50,7 +51,28 @@ public sealed class CreateSessionRouteTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Clears the REAL <see cref="ISessionStore"/> before each test.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the fixture <c>ISessionStore.Clear()</c> was added for.</b>
+    /// <c>CreateSession_FailedLaunch_StoresNothing</c> asserts
+    /// <c>.All().ShouldBeEmpty()</c>, which a shared factory would otherwise
+    /// make order-dependent — the store carries every session every earlier
+    /// test in the class created. No test here reconfigures
+    /// <c>_launcher</c>/<c>_windows</c> in a way another test relies on as a
+    /// default (each sets its own <c>.Launch(...)</c> return inline), so only
+    /// call history needs clearing beyond the store itself.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _factory.Services.GetRequiredService<ISessionStore>().Clear();
+        _launcher.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

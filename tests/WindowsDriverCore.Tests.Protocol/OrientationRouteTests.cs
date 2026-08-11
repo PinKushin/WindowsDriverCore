@@ -30,7 +30,7 @@ public sealed class OrientationRouteTests : IDisposable
     private HttpClient _client = null!;
     private ISessionStore _store = null!;
 
-    [SetUp]
+    [OneTimeSetUp]
     public void StartServer()
     {
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>();
@@ -38,7 +38,15 @@ public sealed class OrientationRouteTests : IDisposable
         _store = _factory.Services.GetRequiredService<ISessionStore>();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Clears the store before each test. No test here asserts a count or
+    /// emptiness, and the seeded ids do not collide across tests, but clearing
+    /// keeps every test independent of what ran before it regardless.
+    /// </summary>
+    [SetUp]
+    public void ArrangeDefaults() => _store.Clear();
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

@@ -53,8 +53,10 @@ public sealed class LongLivedSessionTests : IDisposable
     private HttpClient _client = null!;
     private IElementFinder _finder = null!;
     private IElementInspector _inspector = null!;
+    private IWindowLocator _windowsAlive = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
         _finder = Substitute.For<IElementFinder>();
@@ -65,27 +67,51 @@ public sealed class LongLivedSessionTests : IDisposable
         // element command now answers "the window has been closed" for
         // that, which outranks stale or unknown. They are about an element
         // being gone from a LIVE window, so the window has to be alive.
-        IWindowLocator windowsAlive = Substitute.For<IWindowLocator>();
-        windowsAlive.Exists(Arg.Any<nint>()).Returns(true);
+        _windowsAlive = Substitute.For<IWindowLocator>();
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
                 services.AddSingleton(_finder);
-                    services.AddSingleton(windowsAlive);
+                services.AddSingleton(_windowsAlive);
                 services.AddSingleton(_inspector);
             }));
 
         _client = _factory.CreateClient();
+    }
 
-        _factory.Services.GetRequiredService<ISessionStore>().Add(new DriverSession(
+    /// <summary>
+    /// Clears the real store and registry, then reseeds the one session every
+    /// test needs.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every test here asserts an EXACT <c>Registry.CountFor</c>,</b> after
+    /// issuing 500 to 2000 element ids. This file measures accumulation on
+    /// purpose, which makes it the single worst place in the whole project to
+    /// leave a registry uncleared between tests — five tests sharing one
+    /// factory without this would sum their counts instead of each measuring
+    /// its own.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _finder.ClearReceivedCalls();
+        _inspector.ClearReceivedCalls();
+        _windowsAlive.ClearReceivedCalls();
+        _windowsAlive.Exists(Arg.Any<nint>()).Returns(true);
+
+        _factory.Services.GetRequiredService<IElementRegistry>().Clear();
+
+        ISessionStore store = _factory.Services.GetRequiredService<ISessionStore>();
+        store.Clear();
+        store.Add(new DriverSession(
             SessionId,
             new Dictionary<string, string> { ["app"] = "Calculator" },
             ProcessId: 1234,
             WindowHandle: Window));
     }
 
-    [TearDown]
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

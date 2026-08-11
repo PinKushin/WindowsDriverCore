@@ -34,8 +34,10 @@ public sealed class ElementRouteTests : IDisposable
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
     private IElementFinder _finder = null!;
+    private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
         _finder = Substitute.For<IElementFinder>();
@@ -45,26 +47,49 @@ public sealed class ElementRouteTests : IDisposable
         // answers "the window has been closed" for that. These tests are about
         // what happens when the window is ALIVE and the element is absent, so
         // they have to say so rather than rely on a handle that happens to work.
-        IWindowLocator windows = Substitute.For<IWindowLocator>();
-        windows.Exists(Arg.Any<nint>()).Returns(true);
+        _windows = Substitute.For<IWindowLocator>();
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
                 {
                     services.AddSingleton(_finder);
-                    services.AddSingleton(windows);
+                    services.AddSingleton(_windows);
                 }));
 
         _client = _factory.CreateClient();
+    }
 
-        _factory.Services.GetRequiredService<ISessionStore>().Add(new DriverSession(
+    /// <summary>
+    /// Clears the real store AND the real element registry before each test,
+    /// then reseeds the one session every test needs.
+    /// </summary>
+    /// <remarks>
+    /// <b>The registry clear is not optional here.</b>
+    /// <c>NestedFindAll_ReturnsEveryMatch_AndRecordsEachId</c> asserts
+    /// <c>registry.CountFor(SessionId).ShouldBe(2)</c>, and nearly every other
+    /// test in this file drives a real find that records into the same registry
+    /// under the same session id. Left uncleared, that count would include every
+    /// earlier test's leftover registrations rather than just its own two.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _finder.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+
+        _factory.Services.GetRequiredService<IElementRegistry>().Clear();
+
+        ISessionStore store = _factory.Services.GetRequiredService<ISessionStore>();
+        store.Clear();
+        store.Add(new DriverSession(
             SessionId,
             new Dictionary<string, string> { ["app"] = "Calculator" },
             ProcessId: 1234,
             WindowHandle: 0x9999));
     }
 
-    [TearDown]
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

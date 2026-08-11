@@ -58,5 +58,8 @@ public sealed class SessionStore : ISessionStore
             .Select(entry => entry.Session)
             .ToList();
 
+    /// <inheritdoc />
+    public void Clear() => _sessions.Clear();
+
     private sealed record Entry(DriverSession Session, long Order);
 }

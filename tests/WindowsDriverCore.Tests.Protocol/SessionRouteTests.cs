@@ -28,7 +28,7 @@ public sealed class SessionRouteTests : IDisposable
     private HttpClient _client = null!;
     private ISessionStore _store = null!;
 
-    [SetUp]
+    [OneTimeSetUp]
     public void StartServer()
     {
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>();
@@ -36,7 +36,26 @@ public sealed class SessionRouteTests : IDisposable
         _store = _factory.Services.GetRequiredService<ISessionStore>();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Clears the store before each test.
+    /// </summary>
+    /// <remarks>
+    /// <b>The reason self-cleanup through <c>DELETE</c> would not work here.</b>
+    /// This fixture tests <c>DELETE /session</c> ITSELF —
+    /// <c>DeleteSession_UnknownId_ReturnsInvalidSessionIdFault</c> and its
+    /// sibling deliberately never delete a seeded session at all. Relying on
+    /// every test to clean up via the route under test is circular: a failing
+    /// delete would fail to clean up, compounding into the next test instead of
+    /// surfacing on its own. <c>GetSessions_ListsEachSessionWithItsIdAndCapabilities</c>
+    /// asserts an exact count and exact positions (<c>entries[0]</c>,
+    /// <c>entries[1]</c>), and <c>DeleteSession_LeavesOtherSessionsAlone</c>
+    /// asserts <c>.All().Count.ShouldBe(1)</c> — either would be silently
+    /// corrupted by a session left over from an earlier test.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults() => _store.Clear();
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>
