@@ -89,7 +89,62 @@ public sealed class MainWindowWaiter
         TimeSpan pollInterval,
         CancellationToken cancellationToken = default)
     {
+        WindowSearchResult found = await SearchAsync(
+            processId, windowsBeforeLaunch, timeout, pollInterval, cancellationToken)
+            .ConfigureAwait(false);
+
+        return found.Window;
+    }
+
+    /// <summary>Which stage of the search produced the answer.</summary>
+    /// <remarks>
+    /// <b>Internal purely so a measurement can see it.</b> Three claims about this
+    /// waiter have been attributed to the wrong mechanism - that the CoreWindow is
+    /// destroyed, that an empty frame must be refused, and that rooting at the
+    /// frame won sixteen compatibility tests. Each was a real effect credited to
+    /// the wrong cause, because the only observable was the handle. The stage and
+    /// the elapsed time are what distinguish them.
+    /// </remarks>
+    internal enum WindowSource
+    {
+        /// <summary>Nothing was found before the deadline.</summary>
+        None,
+
+        /// <summary>A visible window owned by the launched process.</summary>
+        Owned,
+
+        /// <summary>A visible window owned by one of its descendants.</summary>
+        Descendant,
+
+        /// <summary>An <c>ApplicationFrameWindow</c> hosting the process.</summary>
+        HostedFrame,
+
+        /// <summary>A top-level window that did not exist before the launch.</summary>
+        Appeared,
+
+        /// <summary>
+        /// A <c>CoreWindow</c> held while waiting for its frame, returned at the
+        /// deadline because no frame ever arrived. Costs the FULL timeout.
+        /// </summary>
+        HeldCoreWindow,
+    }
+
+    /// <summary>What the search found, and how.</summary>
+    /// <param name="Window">The handle, or zero.</param>
+    /// <param name="Source">Which stage produced it.</param>
+    /// <param name="ElapsedMs">How long the search took.</param>
+    internal readonly record struct WindowSearchResult(nint Window, WindowSource Source, long ElapsedMs);
+
+    internal async Task<WindowSearchResult> SearchAsync(
+        int processId,
+        IReadOnlySet<nint> windowsBeforeLaunch,
+        TimeSpan timeout,
+        TimeSpan pollInterval,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(windowsBeforeLaunch);
+
+        long began = Stopwatch.GetTimestamp();
 
         long deadline = _time.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
 
@@ -97,13 +152,13 @@ public sealed class MainWindowWaiter
 
         while (_time.GetTimestamp() < deadline)
         {
-            nint window = FindWindow(processId, windowsBeforeLaunch);
+            (nint window, WindowSource source) = FindWindow(processId, windowsBeforeLaunch);
 
             if (window != 0)
             {
                 if (ClassNameOf(window) != CoreWindowClass)
                 {
-                    return window;
+                    return new WindowSearchResult(window, source, Elapsed(began));
                 }
 
                 // A CoreWindow is the hosted half of a packaged application and
@@ -127,15 +182,22 @@ public sealed class MainWindowWaiter
         // The CoreWindow, if that is all there ever was. It is what this returned
         // immediately before the wait existed, so the worst case is the old answer
         // given late — never nothing where the old code gave something.
-        return hostedButNotYetFramed;
+        return new WindowSearchResult(
+            hostedButNotYetFramed,
+            hostedButNotYetFramed == 0 ? WindowSource.None : WindowSource.HeldCoreWindow,
+            Elapsed(began));
     }
 
-    private static nint FindWindow(int processId, IReadOnlySet<nint> before)
+    private static long Elapsed(long began) =>
+        (long)Stopwatch.GetElapsedTime(began).TotalMilliseconds;
+
+    private static (nint Window, WindowSource Source) FindWindow(
+        int processId, IReadOnlySet<nint> before)
     {
         nint owned = FindVisibleWindowOwnedByAnyOf([processId]);
         if (owned != 0)
         {
-            return owned;
+            return (owned, WindowSource.Owned);
         }
 
         HashSet<int> descendants = DescendantsOf(processId);
@@ -144,7 +206,7 @@ public sealed class MainWindowWaiter
             nint byDescendant = FindVisibleWindowOwnedByAnyOf(descendants);
             if (byDescendant != 0)
             {
-                return byDescendant;
+                return (byDescendant, WindowSource.Descendant);
             }
         }
 
@@ -155,10 +217,11 @@ public sealed class MainWindowWaiter
         nint hosted = FindFrameWindowHosting(processId);
         if (hosted != 0)
         {
-            return hosted;
+            return (hosted, WindowSource.HostedFrame);
         }
 
-        return FindNewTopLevelWindow(before);
+        nint appeared = FindNewTopLevelWindow(before);
+        return (appeared, appeared == 0 ? WindowSource.None : WindowSource.Appeared);
     }
 
     // THE COLD-START DEFECT IS REAL, REPRODUCES HERE, AND IS NOT FIXED YET.
