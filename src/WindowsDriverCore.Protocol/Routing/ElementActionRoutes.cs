@@ -73,6 +73,26 @@ public static class ElementActionRoutes
                     elementId,
                     string.Concat(request?.Value ?? []));
 
+                if (action.Outcome == ElementActionOutcome.Performed)
+                {
+                    // THE DRAIN THIS ROUTE STOPPED NEEDING AND THEN NEEDED AGAIN.
+                    //
+                    // A ValuePattern write is finished when the call returns.
+                    // Typing is not: SendInput queues keystrokes and returns, so
+                    // the .Text read that follows can win the race and see the
+                    // old contents. MapAction has marked its actions pending
+                    // since the ladder was written; this route was a
+                    // ValuePattern write and did not need to, and switching it to
+                    // the keyboard quietly made it need to.
+                    //
+                    // Measured 2026-08-11: four SendKeysToElement tests passed
+                    // and four different ones in the same family failed between
+                    // two runs of identical code. The COUNT was unchanged, which
+                    // is what makes a race easy to read as no change at all —
+                    // only the names moved.
+                    session.InputPending = true;
+                }
+
                 return Respond(action, session, elementId, registry, windows);
             })
             .RequiresSession();

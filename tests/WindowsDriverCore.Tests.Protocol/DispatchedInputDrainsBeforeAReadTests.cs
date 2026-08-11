@@ -62,6 +62,8 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         IElementInteractor interactor = Substitute.For<IElementInteractor>();
         interactor.Click(Arg.Any<nint>(), Arg.Any<string>())
             .Returns(ElementAction.Performed("test"));
+        interactor.TypeValue(Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(ElementAction.Performed("keys"));
 
         IElementInspector inspector = Substitute.For<IElementInspector>();
         inspector.Text(Arg.Any<nint>(), Arg.Any<string>()).Returns(ElementRead.Success("whatever"));
@@ -196,6 +198,36 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         string sessionId = await NewSession();
 
         await ClickElement(sessionId);
+        await ReadText(sessionId);
+
+        _windows.Received(1).WaitForInputProcessed(TheWindow);
+    }
+
+    private async Task TypeIntoElement(string sessionId) =>
+        await _client.PostAsync(
+            new Uri($"/session/{sessionId}/element/1.2/value", UriKind.Relative),
+            new StringContent("{\"value\":[\"abc\"]}", Encoding.UTF8, "application/json"));
+
+    /// <summary>
+    /// A read after <c>/element/{id}/value</c> waits for the typing to land.
+    /// </summary>
+    /// <remarks>
+    /// <b>This route stopped needing the drain and then needed it again.</b> It
+    /// used to write through ValuePattern, which is finished when the call
+    /// returns, so it never flagged input as pending. Switching it to the
+    /// keyboard made it asynchronous and nothing said so.
+    ///
+    /// The symptom was not a failure — it was a ROTATION. Measured 2026-08-11
+    /// across two runs of identical code, four SendKeysToElement tests started
+    /// passing and four different ones in the same family started failing, and
+    /// the total never moved. A count that stays put is exactly how a race hides.
+    /// </remarks>
+    [Test]
+    public async Task ReadingAfterTypingIntoAnElement_WaitsForItToLand()
+    {
+        string sessionId = await NewSession();
+
+        await TypeIntoElement(sessionId);
         await ReadText(sessionId);
 
         _windows.Received(1).WaitForInputProcessed(TheWindow);
