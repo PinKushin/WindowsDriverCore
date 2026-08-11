@@ -1409,6 +1409,51 @@ measurements of one thing disagreed. Every assertion in both passed. The rule th
 worked: when two measurements disagree, suspect the instruments before believing
 either — and check what commit the binary under test was actually built from.
 
+## UNREACHABLE: eight suite tests need legacy Edge, which is not installed
+
+**MEASURED on the Windows 10 22H2 guest:**
+
+```
+Get-AppxPackage Microsoft.MicrosoftEdge   -> NOT INSTALLED
+Edge-ish packages present                 -> Microsoft.MicrosoftEdge.Stable
+                                             Microsoft.MicrosoftEdgeDevToolsClient
+```
+
+The suite's `CommonTestSettings.EdgeAppId` is
+`Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge` — **legacy EdgeHTML**, which
+22H2 replaced with Chromium Edge under a different package identity. Activation
+therefore fails, `ActivatePackagedApplication` returns `processId == 0`, and the
+driver answers "The system cannot find the file specified".
+
+**That message is correct.** It is the same string WinAppDriver returns, and
+`Session.cs:132` asserts it for a genuinely absent application. Nothing here is a
+driver defect.
+
+**What is blocked:**
+
+| fixture | tests | how |
+|---|---|---|
+| `TouchClick` | 2 | derives from `EdgeBase`, dies in `ClassInitialize` |
+| `TouchFlick` | 1 | derives from `EdgeBase`, dies in `ClassInitialize` |
+| `Back` | 1 | `NavigateBack_Browser` |
+| `Forward` | 1 | `NavigateForward_Browser` |
+| `Session` | 1 | `CreateSessionWithArguments_ModernApp` |
+| `Window` | 2 | `GetWindowHandles_ModernApp`, `SwitchWindows` |
+
+**Eight tests, and no amount of driver work reaches them.** The three Touch
+failures are the ones worth flagging: they look like touch defects in a failure
+list and are nothing of the kind, because a `ClassInitialize` failure names the
+fixture rather than the cause.
+
+This matches WinAppDriver's own ceiling — its 281/290 on this guest includes
+failures for an absent browser, so the comparison remains fair; both drivers lose
+the same tests for the same environmental reason.
+
+**Consequence for the target.** Of 290, eight are unreachable here and three more
+need a UWP package that will not install (`0x80073CF1`). Chasing the last few
+points of the score means chasing tests that cannot pass, so the honest ceiling on
+this guest is **279**, not 290.
+
 ## Not implemented
 
 | Area | State | Notes |
