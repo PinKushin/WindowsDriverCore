@@ -149,6 +149,20 @@ if (-not `$up) { 'ABORT: driver never answered'; exit 1 }
 
 Stop-Process -Id `$srv.Id -Force -ErrorAction SilentlyContinue
 
+# CLOSE THE APPLICATIONS TOO. The run kills these on the way IN and used to leave
+# them running on the way OUT, so every run handed the next one a warm application
+# it had not asked for - which is exactly the difference between a cold launch and
+# a re-attach, and that difference has already been credited to code changes twice.
+# Observed 2026-08-11: CalculatorApp still up 40 minutes after the suite finished.
+Get-Process Time, Calculator, CalculatorApp, notepad, WinAppDriver, WindowsDriverCore ``
+    -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+# THE APP VERSION IS PART OF THE RESULT. The guest's Alarms & Clock updated itself
+# on 2026-08-10 and took WinAppDriver's own score from 281/290 to 231/290, which
+# made every comparison across that date wrong by 50 tests with nothing in any log
+# to say so. A score without this line is not comparable to another score.
+'alarms version: ' + (Get-AppxPackage Microsoft.WindowsAlarms).Version
+
 # The nine that depend on "Add new alarm" being enabled. Reported explicitly
 # because they move together and are the fastest signal that the reset worked.
 `$nine = 'ClearElement','GetElementText','FindElements_ByName',
