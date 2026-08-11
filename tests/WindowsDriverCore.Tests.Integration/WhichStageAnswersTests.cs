@@ -101,4 +101,84 @@ public sealed class WhichStageAnswersTests
             AppLifetime.KillAll("CalculatorApp");
         }
     }
+
+    [Test]
+    public async Task AColdPackagedLaunch_IsAlsoAnsweredByAStage()
+    {
+        // **The path the re-attach test cannot see.** MEASURED on the guest:
+        // re-attach answers HostedFrame in 4 ms, yet a cold launch there handed a
+        // session a Windows.UI.Core.CoreWindow. Those cannot both be the same
+        // search behaving the same way, so one of the inputs differs.
+        //
+        // The discriminator is built in: time the launch, then immediately run the
+        // same search again using the HOSTED process id. If the second answers
+        // HostedFrame at once while the launch did not, the difference is the
+        // process id the waiter was given - activation returns one thing and the
+        // window's content belongs to another - and not the frame's existence.
+        AppLifetime.KillAll("CalculatorApp");
+        await Task.Delay(1500).ConfigureAwait(false);
+
+        IReadOnlySet<nint> before = MainWindowWaiter.SnapshotTopLevelWindows();
+
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        LaunchResult launched = new ApplicationLauncher(
+            new MainWindowWaiter(TimeProvider.System), new WindowLocator())
+            .Launch(new ApplicationTarget(PackagedApplication, null, null));
+
+        long launchMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalMilliseconds;
+
+        if (launched.Application is null)
+        {
+            Assert.Fail($"The packaged application would not launch: {launched.FailureMessage}");
+            return;
+        }
+
+        try
+        {
+            string coldClass = ClassNameOf(launched.Application.WindowHandle);
+
+            MainWindowWaiter.WindowSearchResult again = await new MainWindowWaiter(TimeProvider.System)
+                .SearchAsync(
+                    launched.Application.ProcessId,
+                    before,
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(100))
+                .ConfigureAwait(false);
+
+            await TestContext.Out.WriteLineAsync(string.Create(
+                CultureInfo.InvariantCulture,
+                $"COLD launch: {launchMs} ms, window=0x{launched.Application.WindowHandle:X8} " +
+                $"class={coldClass} hostedPid={launched.Application.ProcessId} | " +
+                $"same search with hostedPid: source={again.Source} elapsed={again.ElapsedMs} ms " +
+                $"window=0x{again.Window:X8}"))
+                .ConfigureAwait(false);
+
+            launchMs.ShouldBeLessThan(
+                BudgetMs,
+                $"a cold packaged launch cost {launchMs} ms and returned a '{coldClass}'; " +
+                "at or near the 10 s timeout it ran out rather than succeeded");
+        }
+        finally
+        {
+            AppLifetime.KillAll("CalculatorApp");
+        }
+    }
+
+    private static string ClassNameOf(nint window)
+    {
+        char[] buffer = new char[256];
+        int length = NativeMethods.GetClassName(window, buffer, buffer.Length);
+        return length > 0 ? new string(buffer, 0, length) : string.Empty;
+    }
+
+    private static class NativeMethods
+    {
+        [System.Runtime.InteropServices.DllImport(
+            "user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        internal static extern int GetClassName(
+            nint window,
+            [System.Runtime.InteropServices.Out] char[] className,
+            int maxCount);
+    }
 }
