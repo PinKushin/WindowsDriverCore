@@ -68,7 +68,7 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         IElementInteractor interactor = Substitute.For<IElementInteractor>();
         interactor.Click(Arg.Any<nint>(), Arg.Any<string>())
             .Returns(ElementAction.Performed("test"));
-        interactor.TypeValue(Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>())
+        interactor.SendKeys(Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>())
             .Returns(ElementAction.Performed("keys"));
 
         IElementInspector inspector = Substitute.For<IElementInspector>();

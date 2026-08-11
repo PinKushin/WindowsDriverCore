@@ -141,13 +141,13 @@ public sealed class ElementActionRouteTests : IDisposable
         // Taking value[0] would send "p" and pass a test written with a
         // single-element array — so the condition here is an array that is
         // actually split.
-        _interactor.TypeValue(Window, ElementId, "printers")
+        _interactor.SendKeys(Window, ElementId, "printers")
             .Returns(ElementAction.Performed("keys"));
 
         HttpResponseMessage response = await Post("value", new { value = SplitText });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        _interactor.Received(1).TypeValue(Window, ElementId, "printers");
+        _interactor.Received(1).SendKeys(Window, ElementId, "printers");
     }
 
     /// <summary>
@@ -163,12 +163,12 @@ public sealed class ElementActionRouteTests : IDisposable
     [Test]
     public async Task Value_Types_AndNeverWritesThroughValuePattern()
     {
-        _interactor.TypeValue(Window, ElementId, "printers")
+        _interactor.SendKeys(Window, ElementId, "printers")
             .Returns(ElementAction.Performed("keys"));
 
         await Post("value", new { value = SplitText });
 
-        _interactor.Received(1).TypeValue(Window, ElementId, "printers");
+        _interactor.Received(1).SendKeys(Window, ElementId, "printers");
         _interactor.DidNotReceive().SetValue(
             Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>());
     }
@@ -176,7 +176,7 @@ public sealed class ElementActionRouteTests : IDisposable
     [Test]
     public async Task Value_OnSomethingThatCannotHoldOne_IsElementNotInteractable()
     {
-        _interactor.TypeValue(Window, ElementId, "hello")
+        _interactor.SendKeys(Window, ElementId, "hello")
             .Returns(ElementAction.Failed(ElementActionOutcome.NotInteractable));
 
         HttpResponseMessage response = await Post("value", new { value = SingleText });

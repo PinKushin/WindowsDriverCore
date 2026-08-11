@@ -54,21 +54,23 @@ public static class ElementActionRoutes
 
                 DriverSession session = context.GetSession();
 
-                // BOTH HALVES, WHICH IS WHY THIS IS NOT SetValue AND NOT
-                // SendKeys.
+                // TYPING, with no pattern gate, and the recording is why.
                 //
-                // The recorded contract answers 400 ElementNotInteractable for an
-                // element that cannot hold a value, which plain typing would turn
-                // into a 200 by typing at a button. But SetValue cannot express
-                // what the suite actually sends: SendKeys(Control+A) then
-                // SendKeys(Delete) arrived as a ValuePattern write of the literal
-                // key CODES, so the box ended up holding U+E009 and U+E017 —
-                // invisible, non-empty, and the initializer's
-                // Assert.AreEqual(string.Empty, Text) failed with
-                // "Expected:<>. Actual:<>." Eleven tests died there.
+                // This route used to refuse an element with no ValuePattern,
+                // "the recorded contract answers 400 ElementNotInteractable".
+                // That claim was never in the recording. What the recording
+                // actually holds is
+                // error.element.sendKeysDisabled.ClearMemoryButton: POST /value
+                // with {"value":["x"]} against a DISABLED Calculator button,
+                // answered 200 status 0. WinAppDriver types at whatever element
+                // it is given.
                 //
-                // TypeValue gates on the pattern and acts with the keyboard.
-                ElementAction action = interactor.TypeValue(
+                // The gate was not free. SendKeys_ModifierWindowsKey dismisses
+                // the Action Center it opened by sending Escape to the pane, the
+                // pane has no ValuePattern, and the refusal left it on screen
+                // holding the foreground - which failed every later test in that
+                // class with "could not be brought to the foreground".
+                ElementAction action = interactor.SendKeys(
                     session.WindowHandle,
                     elementId,
                     string.Concat(request?.Value ?? []));

@@ -60,9 +60,6 @@ public sealed class LoggingElementInteractor : IElementInteractor
     public ElementAction SendKeys(nint window, string elementId, string keys) =>
         Recorded(() => _inner.SendKeys(window, elementId, keys), nameof(SendKeys));
 
-    /// <inheritdoc />
-    public ElementAction TypeValue(nint window, string elementId, string keys) =>
-        Recorded(() => _inner.TypeValue(window, elementId, keys), nameof(TypeValue));
 
     private ElementAction Recorded(Func<ElementAction> act, string action)
     {
