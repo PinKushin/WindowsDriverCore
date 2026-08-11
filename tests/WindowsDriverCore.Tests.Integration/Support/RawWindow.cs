@@ -33,6 +33,9 @@ internal sealed class RawWindow : IDisposable
 {
     private const int WsOverlapped = 0x00CF0000;
     private const int SwShowNa = 8;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
 
     private readonly WindowProcedure _procedure;
     private readonly ushort _class;
@@ -91,6 +94,15 @@ internal sealed class RawWindow : IDisposable
     internal static RawWindow Create(string className, string title) =>
         new(className, title);
 
+    /// <summary>Moves the window to the top of the z-order, without activating.</summary>
+    /// <remarks>
+    /// <c>EnumWindows</c> yields in z-order, so this decides which of two
+    /// otherwise-equal candidates a search sees first. Without activation, so the
+    /// test does not take focus from whatever else is on the machine.
+    /// </remarks>
+    internal void BringToTop() =>
+        SetWindowPos(_handle, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+
     /// <summary>Destroys the window and unregisters its class.</summary>
     public void Dispose()
     {
@@ -148,6 +160,10 @@ internal sealed class RawWindow : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyWindow(nint window);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        nint window, nint insertAfter, int x, int y, int width, int height, uint flags);
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(nint window, int command);
