@@ -42,27 +42,22 @@ public sealed class DeadWindowFailsFastTests : IDisposable
 
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
     private IElementFinder _finder = null!;
     private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
-            .Returns(LaunchResult.Success(new LaunchedApplication(4242, TheWindow)));
-
+        _launcher = Substitute.For<IApplicationLauncher>();
         _windows = Substitute.For<IWindowLocator>();
-        _windows.Exists(Arg.Any<nint>()).Returns(true);
-
         _finder = Substitute.For<IElementFinder>();
-        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
-            .Returns(FindResult.Matched([]));
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
+                services.AddSingleton(_launcher);
                 services.AddSingleton(_windows);
                 services.AddSingleton(_finder);
             }));
@@ -70,7 +65,36 @@ public sealed class DeadWindowFailsFastTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Rearms every default before each test.
+    /// </summary>
+    /// <remarks>
+    /// <c>WhenTheWindowIsGone_TheFindDoesNotSearchAtAll</c> reconfigures
+    /// <c>_windows.Exists(TheWindow)</c> to <c>false</c>. Without putting it back
+    /// to <c>true</c> here, the SECOND test — which needs the window ALIVE to
+    /// exercise the retry loop — would silently inherit a dead window instead.
+    /// <c>ClearReceivedCalls()</c> matters in both directions here:
+    /// <c>ReceivedCalls().Count().ShouldBeGreaterThan(1)</c> could pass on stale
+    /// calls from an earlier test even if the retry loop this run is measuring
+    /// never actually ran.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _launcher.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+        _finder.ClearReceivedCalls();
+
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
+            .Returns(LaunchResult.Success(new LaunchedApplication(4242, TheWindow)));
+
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Matched([]));
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

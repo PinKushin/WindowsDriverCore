@@ -56,32 +56,23 @@ public sealed class PointerStaleElementTests : IDisposable
 
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
+    private IWindowLocator _windows = null!;
     private IElementInspector _inspector = null!;
     private IElementRegistry _registry = null!;
     private ISyntheticPointer _injector = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
-            .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
-
-        IWindowLocator windows = Substitute.For<IWindowLocator>();
-        windows.Exists(Arg.Any<nint>()).Returns(true);
-
-        // The session window owns every point, so the pointer guard permits the
-        // gesture and these tests measure the ROUTE. Left at NSubstitute's
-        // default false, the guard refuses everything and a payload test would
-        // be reporting on the guard instead.
-        windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
+        _launcher = Substitute.For<IApplicationLauncher>();
+        _windows = Substitute.For<IWindowLocator>();
 
         // Substituted for the same reason ActionsValidationTests substitutes it:
         // these routes now really inject, and the real one would put contacts on
         // whatever desktop the suite happens to be running on.
         _injector = Substitute.For<ISyntheticPointer>();
-        _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
-        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
 
         _inspector = Substitute.For<IElementInspector>();
         _registry = Substitute.For<IElementRegistry>();
@@ -89,8 +80,8 @@ public sealed class PointerStaleElementTests : IDisposable
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
-                services.AddSingleton(windows);
+                services.AddSingleton(_launcher);
+                services.AddSingleton(_windows);
                 services.AddSingleton(_injector);
                 services.AddSingleton(_inspector);
                 services.AddSingleton(_registry);
@@ -99,7 +90,37 @@ public sealed class PointerStaleElementTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Rearms the defaults every test relies on. <c>_inspector</c> and
+    /// <c>_registry</c> need no rearming — every test configures them fully
+    /// inline (via <see cref="ElementIsGone"/> or directly), never relying on a
+    /// value carried from setup.
+    /// </summary>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _launcher.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+        _injector.ClearReceivedCalls();
+        _inspector.ClearReceivedCalls();
+        _registry.ClearReceivedCalls();
+
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
+            .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
+
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+
+        // The session window owns every point, so the pointer guard permits the
+        // gesture and these tests measure the ROUTE. Left at NSubstitute's
+        // default false, the guard refuses everything and a payload test would
+        // be reporting on the guard instead.
+        _windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
+
+        _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
+        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

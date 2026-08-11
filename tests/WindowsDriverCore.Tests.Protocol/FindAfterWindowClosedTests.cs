@@ -45,14 +45,16 @@ public sealed class FindAfterWindowClosedTests : IDisposable
 {
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
     private IElementFinder _finder = null!;
     private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
+        _launcher = Substitute.For<IApplicationLauncher>();
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
             .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
 
         _finder = Substitute.For<IElementFinder>();
@@ -61,7 +63,7 @@ public sealed class FindAfterWindowClosedTests : IDisposable
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
+                services.AddSingleton(_launcher);
                 services.AddSingleton(_windows);
                 services.AddSingleton(_finder);
             }));
@@ -69,7 +71,20 @@ public sealed class FindAfterWindowClosedTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Clears call history before each test. No default needs rearming here —
+    /// both tests fully configure <c>_finder</c> and <c>_windows.Exists</c>
+    /// inline, which is what the condition each test measures actually depends
+    /// on.
+    /// </summary>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _finder.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

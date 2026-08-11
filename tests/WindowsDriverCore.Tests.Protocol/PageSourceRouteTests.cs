@@ -40,26 +40,22 @@ public sealed class PageSourceRouteTests : IDisposable
 
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
     private IWindowLocator _windows = null!;
     private IPageSourceReader _source = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
-            .Returns(LaunchResult.Success(new LaunchedApplication(4242, TheWindow)));
-
+        _launcher = Substitute.For<IApplicationLauncher>();
         _windows = Substitute.For<IWindowLocator>();
-        _windows.Exists(Arg.Any<nint>()).Returns(true);
-
         _source = Substitute.For<IPageSourceReader>();
-        _source.Source(Arg.Any<nint>()).Returns(ADocument);
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
+                services.AddSingleton(_launcher);
                 services.AddSingleton(_windows);
                 services.AddSingleton(_source);
             }));
@@ -67,7 +63,31 @@ public sealed class PageSourceRouteTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Rearms every default before each test.
+    /// </summary>
+    /// <remarks>
+    /// <c>Source_WhenTheWindowHasGone_SaysSo</c> reconfigures both
+    /// <c>_windows.Exists</c> and <c>_source.Source</c> inline. Without putting
+    /// both back here, <c>Source_ReadsTheSessionsOwnWindow</c> — which relies on
+    /// the window being alive to reach <c>_source.Source(TheWindow)</c> at all —
+    /// would inherit a dead window from whichever test ran before it.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _launcher.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+        _source.ClearReceivedCalls();
+
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
+            .Returns(LaunchResult.Success(new LaunchedApplication(4242, TheWindow)));
+
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+        _source.Source(Arg.Any<nint>()).Returns(ADocument);
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

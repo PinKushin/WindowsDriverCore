@@ -42,29 +42,22 @@ public sealed class SessionShutdownTests : IDisposable
 
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
     private IApplicationTerminator _terminator = null!;
     private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
-            .Returns(LaunchResult.Success(new LaunchedApplication(LaunchedProcess, 0x1234)));
-
+        _launcher = Substitute.For<IApplicationLauncher>();
         _terminator = Substitute.For<IApplicationTerminator>();
-
         _windows = Substitute.For<IWindowLocator>();
-        _windows.Exists(Arg.Any<nint>()).Returns(true);
-        _windows.DesktopWindow.Returns(0x1000);
-        // An attached session resolves a REAL process that this driver did not
-        // start. This is the number that must never be terminated.
-        _windows.GetHostedProcessId(Arg.Any<nint>()).Returns(9999);
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
+                services.AddSingleton(_launcher);
                 services.AddSingleton(_terminator);
                 services.AddSingleton(_windows);
             }));
@@ -72,7 +65,36 @@ public sealed class SessionShutdownTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Rearms every default before each test.
+    /// </summary>
+    /// <remarks>
+    /// <c>TheSessionIsStillRemoved_EvenIfTerminationFails</c> reconfigures
+    /// <c>_terminator.Terminate(...)</c> to <c>false</c> inline — matching what
+    /// this fixture never explicitly configured in the first place. No test
+    /// here reads the value <see cref="IApplicationTerminator.Terminate"/>
+    /// returns except that one, which arranges its own, so nothing needs
+    /// rearming for it. What every test DOES depend on is call history, cleared
+    /// below.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _launcher.ClearReceivedCalls();
+        _terminator.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
+            .Returns(LaunchResult.Success(new LaunchedApplication(LaunchedProcess, 0x1234)));
+
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+        _windows.DesktopWindow.Returns(0x1000);
+        // An attached session resolves a REAL process that this driver did not
+        // start. This is the number that must never be terminated.
+        _windows.GetHostedProcessId(Arg.Any<nint>()).Returns(9999);
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>
