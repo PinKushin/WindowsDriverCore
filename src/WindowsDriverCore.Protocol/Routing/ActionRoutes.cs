@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -69,7 +70,11 @@ public static class ActionRoutes
         ArgumentNullException.ThrowIfNull(app);
 
         app.MapPost("/session/{sessionId}/actions",
-            async (HttpContext context, PointerActionRunner? runner) =>
+            async (
+                HttpContext context,
+                PointerActionRunner? runner,
+                IElementRegistry registry,
+                IWindowLocator windows) =>
         {
             DriverSession session = context.GetSession();
 
@@ -94,12 +99,22 @@ public static class ActionRoutes
                 return Results.Text(NotImplemented, statusCode: 501);
             }
 
-            string? failure = runner.Perform(body.RootElement, session.WindowHandle);
+            PointerRefusal? failure = runner.Perform(body.RootElement, session.WindowHandle);
 
-            return failure is null
-                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+            if (failure is null)
+            {
+                return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
+            }
+
+            // A dead ORIGIN element is answered by the one place that knows what
+            // this server handed out — the same rule the element routes use, and
+            // the same rule the /touch commands now ask for. Formatting the
+            // outcome into a sentence here is what failed the suite's
+            // *Error_StaleElement tests character for character.
+            return failure.ElementOutcome is { } outcome && failure.ElementId is { } elementId
+                ? ElementFault.For(outcome, session, elementId, registry, windows)
                 : Results.Json(
-                    JsonWireResponse.ForFault(WebDriverFault.UnknownError, failure),
+                    JsonWireResponse.ForFault(WebDriverFault.UnknownError, failure.Message),
                     statusCode: WebDriverFault.UnknownError.HttpStatus);
         }).RequiresSession();
 

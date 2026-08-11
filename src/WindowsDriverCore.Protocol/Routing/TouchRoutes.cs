@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -31,6 +32,13 @@ namespace WindowsDriverCore.Protocol.Routing;
 /// frames. That is the operation the caller asked for rather than a wait for
 /// something to happen, which is the sleeping this project bans.
 /// </para>
+/// <para>
+/// <b>A dead element is answered by <see cref="ElementFault"/>, not here.</b>
+/// Three <c>*Error_StaleElement</c> tests compare the message character for
+/// character, and these routes used to invent their own. Stale versus
+/// never-issued depends on what this server handed out, so the decision belongs
+/// where that record lives.
+/// </para>
 /// </remarks>
 public static class TouchRoutes
 {
@@ -42,6 +50,8 @@ public static class TouchRoutes
 
     private const string NoInjector =
         "Unimplemented Command: no pointer injector is registered on this server";
+
+    private const string NeedsAnElement = "A touch command needs an element";
 
     /// <summary>Maps the touch routes.</summary>
     /// <param name="app">The route builder.</param>
@@ -59,22 +69,30 @@ public static class TouchRoutes
         // time, so the driver's job is to deliver two contacts promptly and not
         // to second-guess the threshold.
         app.MapPost("/session/{sessionId}/touch/doubleclick",
-            async (HttpContext context, PointerActionRunner? runner) =>
+            async (
+                HttpContext context,
+                PointerActionRunner? runner,
+                IElementRegistry registry,
+                IWindowLocator windows) =>
         {
-            (int x, int y, string? failure, DriverSession session) =
-                await ResolveElement(context, runner).ConfigureAwait(false);
+            DriverSession session = context.GetSession();
 
-            if (failure is not null)
+            if (runner is null)
             {
-                return Fault(failure);
+                return Results.Text(NoInjector, statusCode: 501);
             }
 
-            string? first = runner!.Tap(x, y, Tap);
-            string? second = first ?? runner.Tap(x, y, Tap);
+            (int x, int y, PointerRefusal? failure) =
+                await ResolveElement(context, runner).ConfigureAwait(false);
 
-            return second is null
+            if (failure is null)
+            {
+                failure = runner.Tap(x, y, Tap) ?? runner.Tap(x, y, Tap);
+            }
+
+            return failure is null
                 ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                : Fault(second);
+                : Fault(failure, session, registry, windows);
         }).RequiresSession();
 
         // scroll and flick are both a held contact dragged by an offset. They
@@ -90,28 +108,38 @@ public static class TouchRoutes
         IEndpointRouteBuilder app, string suffix, TimeSpan hold)
     {
         app.MapPost($"/session/{{sessionId}}/touch/{suffix}",
-            async (HttpContext context, PointerActionRunner? runner) =>
+            async (
+                HttpContext context,
+                PointerActionRunner? runner,
+                IElementRegistry registry,
+                IWindowLocator windows) =>
         {
-            (int x, int y, string? failure, DriverSession session) =
-                await ResolveElement(context, runner).ConfigureAwait(false);
+            DriverSession session = context.GetSession();
 
-            if (failure is not null)
+            if (runner is null)
             {
-                return Fault(failure);
+                return Results.Text(NoInjector, statusCode: 501);
             }
 
-            string? performed = runner!.Tap(x, y, hold);
+            (int x, int y, PointerRefusal? failure) =
+                await ResolveElement(context, runner).ConfigureAwait(false);
 
-            return performed is null
+            failure ??= runner.Tap(x, y, hold);
+
+            return failure is null
                 ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                : Fault(performed);
+                : Fault(failure, session, registry, windows);
         }).RequiresSession();
     }
 
     private static void MapDrag(IEndpointRouteBuilder app, string suffix)
     {
         app.MapPost($"/session/{{sessionId}}/touch/{suffix}",
-            async (HttpContext context, PointerActionRunner? runner) =>
+            async (
+                HttpContext context,
+                PointerActionRunner? runner,
+                IElementRegistry registry,
+                IWindowLocator windows) =>
         {
             DriverSession session = context.GetSession();
 
@@ -122,43 +150,31 @@ public static class TouchRoutes
 
             TouchRequest? request = await Read(context).ConfigureAwait(false);
 
-            (int x, int y, string? failure) = request?.Element is { Length: > 0 } element
+            (int x, int y, PointerRefusal? failure) = request?.Element is { Length: > 0 } element
                 ? runner.CentreOf(session.WindowHandle, element)
-                : (0, 0, "A touch drag needs an element to start from");
+                : (0, 0, PointerRefusal.Reason("A touch drag needs an element to start from"));
 
-            if (failure is not null)
+            if (failure is null)
             {
-                return Fault(failure);
+                failure = runner.Drag(
+                    x, y, x + (request?.XOffset ?? 0), y + (request?.YOffset ?? 0));
             }
 
-            string? performed = runner.Drag(
-                x, y, x + (request?.XOffset ?? 0), y + (request?.YOffset ?? 0));
-
-            return performed is null
+            return failure is null
                 ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                : Fault(performed);
+                : Fault(failure, session, registry, windows);
         }).RequiresSession();
     }
 
-    private static async Task<(int X, int Y, string? Failure, DriverSession Session)>
-        ResolveElement(HttpContext context, PointerActionRunner? runner)
+    private static async Task<(int X, int Y, PointerRefusal? Failure)> ResolveElement(
+        HttpContext context, PointerActionRunner runner)
     {
         DriverSession session = context.GetSession();
-
-        if (runner is null)
-        {
-            return (0, 0, NoInjector, session);
-        }
-
         TouchRequest? request = await Read(context).ConfigureAwait(false);
 
-        if (request?.Element is not { Length: > 0 } element)
-        {
-            return (0, 0, "A touch command needs an element", session);
-        }
-
-        (int x, int y, string? failure) = runner.CentreOf(session.WindowHandle, element);
-        return (x, y, failure, session);
+        return request?.Element is { Length: > 0 } element
+            ? runner.CentreOf(session.WindowHandle, element)
+            : (0, 0, PointerRefusal.Reason(NeedsAnElement));
     }
 
     private static async Task<TouchRequest?> Read(HttpContext context)
@@ -177,11 +193,21 @@ public static class TouchRoutes
         }
     }
 
-    private static IResult Fault(string message) =>
-        message == NoInjector
-            ? Results.Text(NoInjector, statusCode: 501)
+    /// <summary>Turns a refusal into the response WinAppDriver would have sent.</summary>
+    /// <remarks>
+    /// A failed element read is delegated, because stale versus never-issued is
+    /// decided from the record of ids this server handed out and nowhere else.
+    /// Everything left is genuinely this layer's to explain.
+    /// </remarks>
+    private static IResult Fault(
+        PointerRefusal refusal,
+        DriverSession session,
+        IElementRegistry registry,
+        IWindowLocator windows) =>
+        refusal.ElementOutcome is { } outcome && refusal.ElementId is { } elementId
+            ? ElementFault.For(outcome, session, elementId, registry, windows)
             : Results.Json(
-                JsonWireResponse.ForFault(WebDriverFault.UnknownError, message),
+                JsonWireResponse.ForFault(WebDriverFault.UnknownError, refusal.Message),
                 statusCode: WebDriverFault.UnknownError.HttpStatus);
 
     /// <summary>The body every touch command takes.</summary>
