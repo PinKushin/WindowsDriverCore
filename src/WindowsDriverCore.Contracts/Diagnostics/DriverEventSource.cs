@@ -29,7 +29,7 @@ namespace WindowsDriverCore.Diagnostics;
 /// </para>
 /// </remarks>
 [EventSource(Name = SourceName)]
-public sealed class DriverEventSource : EventSource, IRequestLog
+public sealed class DriverEventSource : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog
 {
     /// <summary>
     /// The ETW/EventPipe provider name a consumer subscribes to.
@@ -48,6 +48,15 @@ public sealed class DriverEventSource : EventSource, IRequestLog
     /// next free id.
     /// </remarks>
     public const int RequestCompletedEventId = 1;
+
+    /// <summary>Event id for <see cref="FindCompleted"/>.</summary>
+    public const int FindCompletedEventId = 2;
+
+    /// <summary>Event id for <see cref="ElementActionCompleted"/>.</summary>
+    public const int ElementActionCompletedEventId = 3;
+
+    /// <summary>Event id for <see cref="ApplicationLaunched"/>.</summary>
+    public const int ApplicationLaunchedEventId = 4;
 
     /// <inheritdoc />
     /// <remarks>
@@ -91,5 +100,66 @@ public sealed class DriverEventSource : EventSource, IRequestLog
             httpStatus,
             jsonWireStatus,
             elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        FindCompletedEventId,
+        Level = EventLevel.Informational,
+        Message = "find {0}='{1}' -> {2} match(es) {3} {4} ms")]
+    public void FindCompleted(
+        string locatorKind,
+        string locatorValue,
+        int matches,
+        string failure,
+        double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(
+            FindCompletedEventId, locatorKind, locatorValue, matches, failure, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        ElementActionCompletedEventId,
+        Level = EventLevel.Informational,
+        Message = "{0} -> {1} via {2} {3} ms")]
+    public void ElementActionCompleted(
+        string action,
+        string outcome,
+        string path,
+        double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(ElementActionCompletedEventId, action, outcome, path, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        ApplicationLaunchedEventId,
+        Level = EventLevel.Informational,
+        Message = "launch '{0}' -> pid {1} window 0x{2:X} {3} {4} ms")]
+    public void ApplicationLaunched(
+        string app,
+        int processId,
+        long window,
+        string failure,
+        double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(
+            ApplicationLaunchedEventId, app, processId, window, failure, elapsedMilliseconds);
     }
 }

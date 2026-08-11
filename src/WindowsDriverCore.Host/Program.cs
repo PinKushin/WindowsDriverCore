@@ -6,8 +6,10 @@ using WindowsDriverCore.Host.Diagnostics;
 using Interop.UIAutomationClient;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Diagnostics;
+using WindowsDriverCore.Automation.Diagnostics;
 using WindowsDriverCore.Automation.Uia;
 using WindowsDriverCore.Platform.Applications;
+using WindowsDriverCore.Platform.Diagnostics;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Routing;
 using WindowsDriverCore.Protocol.Sessions;
@@ -66,6 +68,12 @@ public partial class Program
         builder.Services.AddSingleton<DriverEventSource>();
         builder.Services.AddSingleton<IRequestLog>(
             provider => provider.GetRequiredService<DriverEventSource>());
+        builder.Services.AddSingleton<IFindLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
+        builder.Services.AddSingleton<IInteractionLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
+        builder.Services.AddSingleton<ILaunchLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
 
         // The transcript's destination and the consumer that fills it. Both are
         // DI singletons so the host disposes them: the listener unsubscribes and
@@ -82,12 +90,24 @@ public partial class Program
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<MainWindowWaiter>();
         builder.Services.AddSingleton<IWindowLocator, WindowLocator>();
-        builder.Services.AddSingleton<IApplicationLauncher, ApplicationLauncher>();
+        // DECORATED, here and nowhere else. The real implementations stay
+        // unaware of the transcript, their nineteen construction sites across the
+        // test projects stay unchanged, and the wiring that adds the logging is
+        // one line each in the composition root.
+        builder.Services.AddSingleton<ApplicationLauncher>();
+        builder.Services.AddSingleton<IApplicationLauncher>(provider =>
+            new LoggingApplicationLauncher(
+                provider.GetRequiredService<ApplicationLauncher>(),
+                provider.GetRequiredService<ILaunchLog>()));
         builder.Services.AddSingleton<IApplicationTerminator, ApplicationTerminator>();
         builder.Services.AddSingleton<IPointerInput, SendInputPointer>();
         builder.Services.AddSingleton<IKeyboardInput, SendInputKeyboard>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
-        builder.Services.AddSingleton<IElementFinder, UiaElementFinder>();
+        builder.Services.AddSingleton<UiaElementFinder>();
+        builder.Services.AddSingleton<IElementFinder>(provider =>
+            new LoggingElementFinder(
+                provider.GetRequiredService<UiaElementFinder>(),
+                provider.GetRequiredService<IFindLog>()));
         // The resolver is layered: UiaElementResolver walks the tree, and
         // CachingElementResolver keeps the elements it finds so a second command
         // on the same element does not walk again. Measured at 19.4 ms against
@@ -103,7 +123,11 @@ public partial class Program
             provider => provider.GetRequiredService<CachingElementResolver>());
         builder.Services.AddSingleton<IElementInspector, UiaElementInspector>();
         builder.Services.AddSingleton<IPageSourceReader, UiaPageSource>();
-        builder.Services.AddSingleton<IElementInteractor, UiaElementInteractor>();
+        builder.Services.AddSingleton<UiaElementInteractor>();
+        builder.Services.AddSingleton<IElementInteractor>(provider =>
+            new LoggingElementInteractor(
+                provider.GetRequiredService<UiaElementInteractor>(),
+                provider.GetRequiredService<IInteractionLog>()));
         builder.Services.AddSingleton<IElementRegistry, ElementRegistry>();
 
         WebApplication app = builder.Build();

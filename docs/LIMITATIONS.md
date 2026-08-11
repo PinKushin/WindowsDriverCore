@@ -1692,14 +1692,38 @@ failed, with what status, at what point in a flow — needed a bespoke probe, si
 the server said nothing about what it had answered. WinAppDriver prints its own
 transcript, and that is the only reason its failures are readable.
 
-One line per request, console by default and to a file when
-`WINDOWSDRIVERCORE_LOG` names one:
+Console by default, or a file when `WINDOWSDRIVERCORE_LOG` names one. Requests at
+the margin, the work they caused indented under them. A real capture:
 
 ```
-2026-08-11T14:40:21.738Z GET /status                    -> 200 jwp -   185.6 ms
-2026-08-11T14:40:21.761Z GET /definitely-not-a-command  -> 404 jwp 9     9.1 ms
-2026-08-11T14:40:21.779Z GET /session/nope/orientation  -> 404 jwp 101   2.0 ms
+2026-08-11T14:54:35.238Z GET /status -> 200 jwp - 191.6 ms
+2026-08-11T14:54:36.030Z   launch 'Microsoft.WindowsCalculator_...!App' -> pid 34112 window 0x2A204C6 760.7 ms
+2026-08-11T14:54:36.038Z POST /session -> 200 jwp 0 776.9 ms
+2026-08-11T14:54:36.121Z   find AutomationId='num5Button' -> 1 match(es) 55.4 ms
+2026-08-11T14:54:36.123Z POST /session/{id}/element -> 200 jwp 0 79.0 ms
+2026-08-11T14:54:36.183Z   Click -> Performed via Invoke 49.2 ms
+2026-08-11T14:54:36.185Z POST /session/{id}/element/42.14553210.4.102/click -> 200 jwp 0 54.6 ms
+2026-08-11T14:54:36.226Z   find AutomationId='NormalOutput' -> 0 match(es) 35.5 ms
+2026-08-11T14:54:36.234Z POST /session/{id}/element -> 404 jwp 7 44.2 ms
+2026-08-11T14:54:36.296Z DELETE /session/{id} -> 200 jwp 0 47.4 ms
 ```
+
+Read what that answers, because each was a bespoke probe before:
+
+- **Where the time went.** The find cost 55.4 ms of the request's 79.0 ms, so
+  23.6 ms is this driver's own overhead — which is exactly the quantity
+  `bench/WindowsDriverCore.Benchmarks` exists to shrink.
+- **Which rung clicked.** `via Invoke`. A pattern, an ancestor climb and a real
+  mouse click all report status 0, and when the climb toggled an app bar instead
+  of pressing "Add new alarm" nothing downstream could tell.
+- **Whether a find failed or simply matched nothing.** `NormalOutput` ran and
+  returned 0, so the element is absent from the control view — a fact about the
+  application. A search that could not run reads `FAILED: NoSuchWindow` instead.
+- **How the application was reached.** 760.7 ms and a real window handle. The
+  window search times out at ten seconds, so a launch near that number ran out
+  rather than succeeded, and a `LaunchResult` carrying only a handle cannot say
+  which happened. Three separate claims about that search were once credited to
+  the wrong mechanism for exactly this reason.
 
 Four decisions worth keeping:
 
@@ -1708,10 +1732,14 @@ Four decisions worth keeping:
   and `105`. The two 404s above are completely different faults.
 - **`jwp -` means no envelope**, not status zero. `GET /status` genuinely has
   none, and printing `0` would read as a success that never happened.
-- **No payloads, and no parameter that could carry one.** `POST /element/{id}/value`
-  is how a login test sends a password. The choice was between a correct redactor
-  standing between a secret and a log file, and an interface with nothing to
-  redact; the second cannot regress.
+- **The line between a query and a payload, stated rather than implied.** A
+  *locator* is recorded, value and all — it is what the test author wrote, and no
+  find failure is diagnosable without it. What is never recorded is anything this
+  driver **transmits into** the application: `SetValue` and `SendKeys` arguments,
+  and a launch's command-line. `IInteractionLog` has no parameter that could take
+  them, so this is a property of the shape rather than of a redactor that has to
+  stay correct — and two tests push a password through both routes and assert it
+  appears in nothing the decorator hands the log.
 - **Nothing leaves the machine, structurally.** `EventSource` publishes
   in-process and a consumer attaches; the only destinations that exist are a
   console and a file. There is no sink, endpoint, or transport anywhere under
@@ -1723,8 +1751,18 @@ volatile read when nothing is listening. The five Serilog references that had sa
 unused in `WindowsDriverCore.Host.csproj` since the start were removed in the same
 change.
 
-Not yet done: nothing is emitted from the automation layer, so a slow find shows
-up as a slow request without saying which part was slow.
+**The automation layers are logged by decorators, not by themselves.**
+`UiaElementFinder` and `UiaElementInteractor` are constructed at nineteen call
+sites across fifteen files, nearly all UI tests that drive a real desktop.
+`LoggingElementFinder`, `LoggingElementInteractor` and `LoggingApplicationLauncher`
+wrap them; the real classes are untouched, the wiring is one registration each in
+the composition root, and the decorators are unit-tested against fakes in
+milliseconds. Each one records the exception type and **rethrows** — an action
+that threw is the line most worth having, and swallowing it would change the
+driver's behaviour to tidy a log.
+
+Still open: no event from the resolver or the page-source reader, so a slow
+`/source` is still just a slow request.
 
 ## Not implemented
 
