@@ -174,14 +174,23 @@ public sealed class WindowLocator : IWindowLocator
         // process idle", not "has my input been consumed" - so an application
         // busy for its own reasons makes this wait longer than strictly needed.
         // That is a known imprecision, not a proxy for something unobservable.
-        uint owner = Win32.GetWindowThreadProcessId(handle, out uint processId);
-        if (owner == 0 || processId == 0)
+        // The HOSTED process, not the window's owner. Since a session's window
+        // became the ApplicationFrameWindow, its owner is ApplicationFrameHost -
+        // a broker shared by every UWP window on the machine, whose idleness says
+        // nothing about the application and which may never be idle at all.
+        // Waiting on it is not a wait; it is a formality that returns.
+        //
+        // This regressed silently when frame rooting landed: the drain kept
+        // returning, so nothing failed loudly, and the input it was supposed to
+        // wait for went on arriving late.
+        int processId = GetHostedProcessId(handle);
+        if (processId == 0)
         {
             return false;
         }
 
         nint process = Win32.OpenProcess(
-            Win32.PROCESS_QUERY_INFORMATION | Win32.SYNCHRONIZE, false, processId);
+            Win32.PROCESS_QUERY_INFORMATION | Win32.SYNCHRONIZE, false, (uint)processId);
 
         if (process == 0)
         {
