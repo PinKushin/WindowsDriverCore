@@ -72,6 +72,32 @@ public sealed class SendInputKeyboardTests
     private readonly record struct Win32Input(ushort VirtualKey, ushort ScanCode, uint Flags);
 
     [Test]
+    public void ACharacterUnderAModifier_IsAVirtualKey_NotUnicode()
+    {
+        // THE BUG BEHIND 24 SUITE TESTS. KEYEVENTF_UNICODE injects a character
+        // directly and BYPASSES the keyboard layout, so modifier state does not
+        // combine with it: the application receives a literal "a" rather than
+        // Ctrl+A. The compatibility suite clears its edit box with
+        // Ctrl+A then Delete, so every clear appended one more "a" instead -
+        // measured, the residue grew by exactly one per test, from <a> in the
+        // first to <aaaaaaaaaaaa> in the twelfth.
+        //
+        // Under a held modifier the character has to be a VIRTUAL KEY so the
+        // application sees VK_A with control down and treats it as a shortcut.
+        (ushort VirtualKey, ushort ScanCode, uint Flags)[] batch =
+            Batch($"{Control}a{Control}");
+
+        batch.Length.ShouldBe(4, "control down, a down, a up, control up");
+
+        (batch[1].Flags & Unicode).ShouldBe(
+            0u, "a character typed under a modifier must not be injected as unicode");
+        batch[1].VirtualKey.ShouldBe(
+            (ushort)0x41, "VK_A, so the application sees Ctrl+A as a shortcut");
+        batch[2].VirtualKey.ShouldBe((ushort)0x41);
+        (batch[2].Flags & KeyUp).ShouldBe(KeyUp);
+    }
+
+    [Test]
     public void AModifierAppearingTwice_HoldsThenReleases()
     {
         // Control a Control. The middle keystroke must happen while control is

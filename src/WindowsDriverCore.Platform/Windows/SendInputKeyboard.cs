@@ -139,6 +139,37 @@ public sealed class SendInputKeyboard : IKeyboardInput
                 continue;
             }
 
+            // UNDER A HELD MODIFIER, A CHARACTER MUST BE A VIRTUAL KEY.
+            //
+            // KEYEVENTF_UNICODE injects the character directly and bypasses the
+            // keyboard layout, so modifier state does NOT combine with it: with
+            // control held, an injected "a" arrives as the letter rather than as
+            // Ctrl+A. The compatibility suite clears its edit box with Ctrl+A then
+            // Delete, so every clear appended one more "a" instead of selecting
+            // anything - measured, the residue grew by exactly one per test, <a>
+            // in the first through <aaaaaaaaaaaa> in the twelfth, and took 24
+            // tests with it.
+            //
+            // The shift bit VkKeyScan reports is deliberately ignored. It matters
+            // for producing the right CHARACTER, and this path exists for
+            // shortcuts, where Ctrl+A and Ctrl+Shift+A are different commands and
+            // the caller asked for the former by writing "a".
+            if (held.Count > 0)
+            {
+                short mapped = Win32.VkKeyScan((ushort)key);
+                if (mapped != -1)
+                {
+                    ushort virtualKey = (ushort)(mapped & 0xFF);
+                    batch.Add(VirtualKey(virtualKey, down: true));
+                    batch.Add(VirtualKey(virtualKey, down: false));
+                    continue;
+                }
+
+                // No key for it in this layout. Unicode is still the better
+                // answer than dropping the keystroke, even though the modifier
+                // will not apply.
+            }
+
             batch.Add(UnicodeKey(key, down: true));
             batch.Add(UnicodeKey(key, down: false));
         }
