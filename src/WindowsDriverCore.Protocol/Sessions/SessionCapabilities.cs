@@ -48,6 +48,9 @@ public sealed record SessionCapabilities(
 
     private const string EmptyAppMessage = "Capability: app cannot be empty";
 
+    private const string EmptyTopLevelWindowMessage =
+        "Capability: appTopLevelWindow cannot be empty";
+
     /// <summary>
     /// Capabilities WinAppDriver recognises. Anything else is dropped from the
     /// echo, which was measured: sending <c>deviceName</c> alongside <c>app</c>
@@ -107,6 +110,11 @@ public sealed record SessionCapabilities(
         if (app is not null && app.Length == 0)
         {
             return Rejected(EmptyAppMessage);
+        }
+
+        if (topLevelWindow is not null && topLevelWindow.Length == 0)
+        {
+            return Rejected(EmptyTopLevelWindowMessage);
         }
 
         return new CapabilityParseResult(

@@ -104,8 +104,24 @@ public sealed class SessionFactory
         // Hexadecimal, as WinAppDriver documents ("0xB822E2"). Parsing it as
         // decimal is the plausible mistake and would silently address a
         // completely different window rather than failing.
+        //
+        // THE 0x PREFIX MUST BE STRIPPED FIRST. NumberStyles.HexNumber parses
+        // bare hex digits only — it does not accept a leading "0x"/"0X", despite
+        // that being the exact format /window_handle emits (FormatHandle in
+        // WindowRoutes: "0x" + hex). Passing the prefixed string straight
+        // through made this driver unable to parse the handle its own
+        // /window_handle just produced, which is what
+        // CreateSessionFromExistingWindowHandle_ClassicApp and _ModernApp
+        // exercise: attach using a handle read back from a live session.
+        string? candidate = capabilities.AppTopLevelWindow;
+        if (candidate is not null &&
+            candidate.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = candidate[2..];
+        }
+
         if (!nint.TryParse(
-                capabilities.AppTopLevelWindow,
+                candidate,
                 NumberStyles.HexNumber,
                 CultureInfo.InvariantCulture,
                 out nint handle)
