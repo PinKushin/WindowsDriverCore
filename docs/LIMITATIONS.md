@@ -1282,11 +1282,40 @@ that is covered fails the second test and passes the first.
 **Fixed at `008f87a`** with `IWindowLocator.OwnsThePointAt`, plus one bounded
 re-attempt at raising the window before refusing.
 
-**It gained nothing, and the reasoning that motivated it was wrong.** The guard was
-built on a story: the WOW64 fix let the suite open File Explorer sessions whose
-windows outlive them, so later clicks were landing on Explorer.
-`MouseDoubleClick` and `MouseDownMoveUp` had gone failing to passing to failing
-across three commits, which looked like a regression.
+**It gained nothing — but the reasoning behind it was RIGHT, and the retraction
+written here was wrong.** Both corrections are kept, because the sequence is the
+lesson.
+
+The guard was built on a story: the WOW64 fix let the suite open File Explorer
+sessions whose windows outlive them, and those windows were costing the mouse
+tests. The guard did not recover them, so the story was retracted as unsupported.
+
+**Then the desktop was cleaned and they both came back.** MEASURED: the same
+commit `008f87a` scored **167** with 22 File Explorer windows open and **169**
+after closing them, and the two tests gained were exactly `MouseDoubleClick` and
+`MouseDownMoveUp`. Seven windows accumulate per run and nothing removed them —
+they belong to the shell process, so no process kill touches them and the
+`LEFT BEHIND` report could not see them.
+
+**A failed fix does not falsify the hypothesis it was built on. It falsifies the
+mechanism.** The windows really were the cause; "they cover the click point" was
+the wrong account of how, and the guard addressed only that account. Treating the
+guard's failure as evidence against the environment was the error, and it led to
+declaring a real, reproducible effect to be flake.
+
+With the environment controlled, all five runs explain themselves and none of them
+is flaky:
+
+| run | root | desktop | mouse pair |
+|---|---|---|---|
+| `e045b06` | CoreWindow | clean | Failed |
+| `c26e4d3` | frame | clean, Explorer could not launch yet | Passed |
+| `0cdadc6` x2 | frame | dirty | Failed |
+| `008f87a` | frame | dirty | Failed |
+| `008f87a` | frame | clean | Passed |
+
+Two independent causes — the wrong window root, then desktop contamination — read
+as one noisy signal for as long as neither was controlled.
 
 Across five runs they read:
 

@@ -87,7 +87,7 @@ The goal above is the claim. Two footnotes keep it honest:
   has a documented cause, a reproduction, and a measured before/after from a real
   application suite. Prefer it to anything about issue numbers.
 
-**Measured so far:** this driver scores **166/290** and WinAppDriver 1.2.1
+**Measured so far:** this driver scores **169/290** and WinAppDriver 1.2.1
 scores **281/290**, matched — same Windows 10 22H2 guest, same suite DLL, alarm
 store reset for both (2026-08-10). A suite score is only comparable if the alarm
 store was reset and Alarms & Clock warmed first; see `docs/LIMITATIONS.md`.
@@ -205,7 +205,7 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 
 ## Ground truth worth memorising
 
-- **166/290 for this driver, 281/290 for WinAppDriver 1.2.1**, matched on
+- **169/290 for this driver, 281/290 for WinAppDriver 1.2.1**, matched on
   Windows 10 22H2 with the alarm store reset. Reset the store and warm Alarms &
   Clock before any suite run — `tools/vm/Invoke-CompatibilitySuite.ps1` does
   both — or the score measures the previous run's residue, not the driver.
