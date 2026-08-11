@@ -64,6 +64,27 @@ public interface IResolveLog
 }
 
 /// <summary>
+/// Records a page-source read and how big the answer was.
+/// </summary>
+/// <remarks>
+/// <b>The size is why this exists.</b> A <c>GET /source</c> request is almost
+/// entirely the read, so the request line already carries the cost — but not the
+/// document. 37,413 characters against 19,656 is the difference between a dialog
+/// being open and not, and that distinction is what half a day of the 2026-08-11
+/// investigation turned on.
+/// </remarks>
+public interface IPageSourceLog
+{
+    /// <summary>Records a finished read.</summary>
+    /// <param name="characters">
+    /// Document length, or <c>-1</c> when the window was gone. Distinguished
+    /// because an empty document is a real answer for an empty window.
+    /// </param>
+    /// <param name="elapsedMilliseconds">Wall-clock cost.</param>
+    void PageSourceRead(int characters, double elapsedMilliseconds);
+}
+
+/// <summary>
 /// Records which rung of the click ladder acted, and what came of it.
 /// </summary>
 /// <remarks>

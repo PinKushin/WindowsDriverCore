@@ -1706,7 +1706,9 @@ the margin, the work they caused indented under them. A real capture:
 ...02.126Z POST /session/{id}/element/42.462484.4.102/click -> 200 jwp 0 51.8 ms
 ...02.173Z   find AutomationId='NormalOutput' -> 0 match(es) 40.6 ms
 ...02.182Z POST /session/{id}/element -> 404 jwp 7 49.8 ms
-...02.258Z   terminate pid 27128 -> ended 52.2 ms
+...21.217Z   source -> 9502 chars 46.9 ms
+...21.221Z GET /session/{id}/source -> 200 jwp 0 52.1 ms
+...21.273Z   terminate pid 29364 -> ended 44.4 ms
 ...02.259Z DELETE /session/{id} -> 200 jwp 0 58.3 ms
 ```
 
@@ -1770,9 +1772,29 @@ that threw is the line most worth having, and swallowing it would change the
 driver's behaviour to tidy a log.
 
 Every seam that answers a request is covered: requests, launch, find, resolve,
-element actions, and termination. Still open: no event from the page-source
-reader — and that one is close to redundant, since a `GET /source` request is
-almost entirely the read.
+element actions, page source, and termination.
+
+**The page-source line was argued away and then added, because the argument was
+wrong.** A `GET /source` request *is* almost entirely the read, so the request
+line does carry the cost — but not the document size, which is the part with
+information in it. The numbers that mattered on 2026-08-11 were 19,656 characters
+before a click and 37,413 after: a dialog opening, visible as nothing else. A dead
+window reports `NO WINDOW` rather than 0, because an empty document is a real
+answer for an empty window.
+
+### The console had to be quieted first
+
+`WebApplication.CreateBuilder` wires a console logger at Information, and ASP.NET
+emits `Request starting`, `Executing endpoint`, `Writing value of type ... as
+Json` and `Request finished` for every request. Measured: **six framework lines
+around each transcript line**, which made "console by default, like WinAppDriver"
+false as shipped. `builder.Logging.SetMinimumLevel(LogLevel.Warning)` fixes it.
+
+Warning rather than `ClearProviders()`: an unhandled exception is logged through
+that pipeline at Error, and silencing it to tidy the output would trade a real
+signal for a cosmetic one. Quieting the framework also removed
+`Now listening on: ...`, which was the one framework line worth having — so the
+host prints its own banner and names where the transcript is going.
 
 ### What it found on its first full run
 

@@ -30,7 +30,7 @@ namespace WindowsDriverCore.Diagnostics;
 /// </remarks>
 [EventSource(Name = SourceName)]
 public sealed class DriverEventSource
-    : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog, ITerminationLog, IResolveLog
+    : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog, ITerminationLog, IResolveLog, IPageSourceLog
 {
     /// <summary>
     /// The ETW/EventPipe provider name a consumer subscribes to.
@@ -64,6 +64,9 @@ public sealed class DriverEventSource
 
     /// <summary>Event id for <see cref="ElementResolved"/>.</summary>
     public const int ElementResolvedEventId = 6;
+
+    /// <summary>Event id for <see cref="PageSourceRead"/>.</summary>
+    public const int PageSourceReadEventId = 7;
 
     /// <inheritdoc />
     /// <remarks>
@@ -205,5 +208,20 @@ public sealed class DriverEventSource
         }
 
         WriteEvent(ElementResolvedEventId, outcome, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        PageSourceReadEventId,
+        Level = EventLevel.Informational,
+        Message = "source -> {0} chars {1} ms")]
+    public void PageSourceRead(int characters, double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(PageSourceReadEventId, characters, elapsedMilliseconds);
     }
 }
