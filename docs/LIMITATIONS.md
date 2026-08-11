@@ -1531,26 +1531,57 @@ and still passes these, so the application has not moved out from under the suit
 who cannot find it.** The check that settles a drift claim is the reference
 driver's outcomes on the same machine, and it was available the whole time.
 
-### The candidate: which TREE VIEW a find walks
+### The tree-view candidate: mechanism CONFIRMED, cause REFUTED
 
-`IUIAutomationElement::FindAll` filters to the **control view**. Any element whose
-`IsControlElement` is false is invisible to it while a raw-view walk still finds
-it. Our page source showed the flyout's chrome — `EditFlyout`, `PrimaryButton`,
-`CloseButton` — and not the save button, which is exactly the shape of a control-
-view omission rather than an absent element.
+The proposal was that `IUIAutomationElement::FindAll` filters to the **control
+view**, hiding `AlarmSaveButton` from every locator while a raw walk would reach
+it. Probed 2026-08-11 (`WhichViewAFindWalksTests`, Windows 11 host, Calculator).
 
-If that is the cause it is not confined to this cluster: every
-"element could not be located" failure in the suite is a candidate, and the fix is
-a view choice rather than eleven separate fixes.
+**The mechanism is real, and larger than expected.** From the same root:
 
-**The probe that settles it**, from the open flyout, asking three ways:
+```
+FindAll(TreeScope_Descendants, true condition)  =  73 elements
+raw TreeWalker descent                          = 125 elements
+reachable ONLY by the raw walk                  =  52
+reachable ONLY by FindAll                       =   0
+```
 
-1. our normal find for `AlarmSaveButton`
-2. a raw-view `FindAll` for the same automation id
-3. a full raw-view dump of the flyout's subtree, to see what the control view drops
+A strict subset, and **all 52 have `IsControlElement=False`**. It is not confined
+to anonymous scaffolding either — four carry real automation ids: `AppIcon`,
+`TextContainer`, `NormalOutput`, `ParenthesisCount`. The filter comes from the
+cache request's `TreeFilter`, whose default is the control view; setting it to a
+true condition and calling `FindAllBuildCache` reaches exactly 125, the raw set.
 
-Raw finding it and control not is the answer. Neither finding it moves the
-question back to where the button lives, not to how we look for it.
+**And it is not a defect, because WinAppDriver has it too.** Measured the same
+day, same host, through WinAppDriver 1.2.1:
+
+```
+num5Button        -> FOUND        (IsControlElement=True)
+NormalOutput      -> not found
+TextContainer     -> not found
+ParenthesisCount  -> not found
+AppIcon           -> not found
+GET /source (36242 chars) contains num5Button, and none of the other four
+```
+
+So the control view is **parity**, not a limitation to fix. Pulling the
+`TreeFilter` lever would emit 125 nodes from `/source` where the reference driver
+emits 73 and would double what `//Text` matches — a silent divergence dressed as
+a capability win. The test keeps the lever measured and deliberately unused.
+
+**The cause is refuted by the same measurement.** WinAppDriver shares the
+limitation and still finds `AlarmSaveButton` on the guest, so the view is not what
+stops us. This is the third time in this repository a confirmed mechanism was
+about to be credited with a failure it did not cause; the check that costs ten
+minutes is asking the reference driver whether it has the same constraint.
+
+**What is still open: where that button lives.** The next probe runs on the guest,
+through WinAppDriver, doing exactly what `GetStaleElement` does — click
+`AddAlarmButton`, then dump *WinAppDriver's own* `/source` — and diffs it against
+ours at the same point in the same flow. If its source names `AlarmSaveButton` and
+ours does not, the difference is in us and the source diff names it. If neither
+does, then the claim that WinAppDriver passes 21 of the 22 `*StaleElement` tests
+is what needs re-measuring, and that claim rests on a single run's failure list.
 
 ### The suite's own blindfold, still worth knowing
 
