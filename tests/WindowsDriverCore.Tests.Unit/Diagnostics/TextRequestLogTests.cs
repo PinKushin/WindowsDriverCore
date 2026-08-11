@@ -192,6 +192,32 @@ public sealed class TextRequestLogTests
     }
 
     [Test]
+    public void APageSourceRead_CarriesTheDocumentSize_AndSaysWhenTheWindowIsGone()
+    {
+        // The size is the informative part; the request line already carries the
+        // cost. 19,656 characters against 37,413 is a dialog opening, and nothing
+        // else in the transcript shows it.
+        //
+        // A dead window reports -1 rather than 0, because an empty document is a
+        // real answer for an empty window and collapsing the two would make a
+        // dead session look like an empty one.
+        StringWriter written = new();
+
+        using (TextRequestLogListener listener = new(written, new FixedClock(Noon)))
+        using (DriverEventSource source = new())
+        {
+            ((IPageSourceLog)source).PageSourceRead(37413, 61.2);
+            ((IPageSourceLog)source).PageSourceRead(0, 3.0);
+            ((IPageSourceLog)source).PageSourceRead(-1, 0.4);
+        }
+
+        written.ToString().ShouldBe(
+            "2026-08-11T09:15:04.250Z   source -> 37413 chars 61.2 ms" + Environment.NewLine +
+            "2026-08-11T09:15:04.250Z   source -> 0 chars 3.0 ms" + Environment.NewLine +
+            "2026-08-11T09:15:04.250Z   source -> NO WINDOW 0.4 ms" + Environment.NewLine);
+    }
+
+    [Test]
     public void AnUnrelatedEventSource_IsNotSubscribedTo()
     {
         // THE CONTROL, and it measures SUBSCRIPTION rather than output. An

@@ -144,8 +144,17 @@ public sealed class TextRequestLogListener : EventListener
                 CultureInfo.InvariantCulture,
                 $"    resolve -> {payload[0]} {Cost(payload[1])} ms"),
 
+            (DriverEventSource.PageSourceReadEventId, 2) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  source -> {Document(payload[0])} {Cost(payload[1])} ms"),
+
             _ => null,
         };
+
+    private static string Document(object? characters) =>
+        characters is int length && length >= 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{length} chars")
+            : "NO WINDOW";
 
     private static string Kind(object? windowClass) =>
         windowClass is string name && name.Length > 0 ? $" ({name})" : string.Empty;

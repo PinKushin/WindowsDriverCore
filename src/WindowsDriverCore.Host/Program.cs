@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using WindowsDriverCore.Host.CommandLine;
 using WindowsDriverCore.Host.Diagnostics;
 using Interop.UIAutomationClient;
@@ -62,6 +63,20 @@ public partial class Program
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
         builder.WebHost.UseUrls(address.ToListenUrl());
 
+        // QUIET THE FRAMEWORK'S OWN CONSOLE LOGGER, or the transcript is
+        // unreadable. WebApplication.CreateBuilder wires a console provider at
+        // Information, and ASP.NET emits "Request starting", "Executing
+        // endpoint", "Writing value of type ... as Json" and "Request finished"
+        // for EVERY request. Measured 2026-08-11: one GET /status produced six
+        // framework lines around one transcript line. WinAppDriver's console is
+        // clean, and matching it is the whole reason the transcript defaults to
+        // the console.
+        //
+        // Warning rather than ClearProviders: an unhandled exception is logged
+        // through this pipeline at Error, and silencing that to tidy the output
+        // would trade a real signal for a cosmetic one.
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
+
         // One EventSource for the process, reached only through its interface.
         // Registered by concrete type as well so DI owns the single instance and
         // disposes it; resolving IRequestLog separately would construct a second.
@@ -77,6 +92,8 @@ public partial class Program
         builder.Services.AddSingleton<ITerminationLog>(
             provider => provider.GetRequiredService<DriverEventSource>());
         builder.Services.AddSingleton<IResolveLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
+        builder.Services.AddSingleton<IPageSourceLog>(
             provider => provider.GetRequiredService<DriverEventSource>());
 
         // The transcript's destination and the consumer that fills it. Both are
@@ -135,7 +152,11 @@ public partial class Program
         builder.Services.AddSingleton<IElementHandleCache>(
             provider => provider.GetRequiredService<CachingElementResolver>());
         builder.Services.AddSingleton<IElementInspector, UiaElementInspector>();
-        builder.Services.AddSingleton<IPageSourceReader, UiaPageSource>();
+        builder.Services.AddSingleton<UiaPageSource>();
+        builder.Services.AddSingleton<IPageSourceReader>(provider =>
+            new LoggingPageSourceReader(
+                provider.GetRequiredService<UiaPageSource>(),
+                provider.GetRequiredService<IPageSourceLog>()));
         builder.Services.AddSingleton<UiaElementInteractor>();
         builder.Services.AddSingleton<IElementInteractor>(provider =>
             new LoggingElementInteractor(
@@ -155,11 +176,16 @@ public partial class Program
         // directory and that is not always where the person who set the variable
         // expected. Silence about a file is how a transcript gets written
         // somewhere nobody looks.
+        // OUR OWN BANNER. Silencing the framework logger above also silenced
+        // "Now listening on: ...", which is the one framework line that was worth
+        // having - and which WinAppDriver prints too. Losing it while quieting
+        // the noise around it would be a bad trade made by accident.
+        Console.WriteLine($"WindowsDriverCore listening on {address.ToListenUrl()}");
+
         string? logPath = app.Services.GetRequiredService<RequestLogDestination>().Path;
-        if (logPath is not null)
-        {
-            Console.WriteLine($"Request transcript: {logPath}");
-        }
+        Console.WriteLine(logPath is null
+            ? "Request transcript: this console"
+            : $"Request transcript: {logPath}");
 
         // FIRST, so nothing is invisible to it — including the base-path gate's
         // 404, which never reaches routing. A transcript with a hole in it is
