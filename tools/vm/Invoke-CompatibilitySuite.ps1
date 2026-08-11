@@ -63,7 +63,22 @@ param(
     [ValidateSet('WindowsDriverCore', 'WinAppDriver')][string] $Driver = 'WindowsDriverCore',
     [string] $VMName = "Win10-Baseline",
     [string] $Root = "F:\Hyper-V",
-    [int] $TimeoutMinutes = 30
+    [int] $TimeoutMinutes = 30,
+
+    # THE CONTROL FOR THE RESET ITSELF.
+    #
+    # The reset moves the app's entire Settings folder away, which is where a
+    # packaged application's first-run state lives - so every run since it was
+    # introduced has forced Alarms & Clock down a first-launch path.
+    #
+    # HYPOTHESIS: that is what loses WinAppDriver's window race, and the 21
+    # ActionsError failures attributed to "cold" are actually caused by the
+    # reset. The reset and the warm step were added in the SAME commit (c62ebde),
+    # so the 02:24 run that scored 281 had neither, and every run after it had
+    # both until the warm was removed today.
+    #
+    # This switch is how that gets tested rather than argued about.
+    [switch] $SkipStoreReset
 )
 
 $ErrorActionPreference = "Stop"
@@ -106,27 +121,31 @@ Start-Sleep -Seconds 4
 # The reset itself stays, because a CI runner genuinely starts clean and runs
 # have to be independent of each other. What it must never do is hide that we
 # are the reason it is needed.
-`$pkg = "`$env:LOCALAPPDATA\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe"
-`$settings = Join-Path `$pkg 'Settings'
-
-# Reported BEFORE the reset, or the evidence is destroyed by the thing being
-# measured. settings.dat is the alarm store; its size tracks how much the suite
-# left behind.
-`$store = Join-Path `$settings 'settings.dat'
-if (Test-Path `$store) {
-    'alarm store left by the previous run : {0:N0} bytes  (a run that cleaned up leaves the baseline size)' -f (Get-Item `$store).Length
+if ('$SkipStoreReset' -eq 'True') {
+    'alarm store    : NOT RESET - control run, testing whether the reset is what breaks the cold attach'
 } else {
-    'alarm store left by the previous run : none'
+    `$pkg = "`$env:LOCALAPPDATA\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe"
+    `$settings = Join-Path `$pkg 'Settings'
+    
+    # Reported BEFORE the reset, or the evidence is destroyed by the thing being
+    # measured. settings.dat is the alarm store; its size tracks how much the suite
+    # left behind.
+    `$store = Join-Path `$settings 'settings.dat'
+    if (Test-Path `$store) {
+        'alarm store left by the previous run : {0:N0} bytes  (a run that cleaned up leaves the baseline size)' -f (Get-Item `$store).Length
+    } else {
+        'alarm store left by the previous run : none'
+    }
+    if (Test-Path `$settings) {
+        try {
+            Move-Item -LiteralPath `$settings -Destination "`$settings.reset-`$(Get-Date -Format yyyyMMdd-HHmmss)" -ErrorAction Stop
+            'alarm store reset'
+        } catch { 'alarm store NOT reset: ' + `$_.Exception.Message }
+    }
+    Get-ChildItem `$pkg -Directory -Filter 'Settings.reset-*' -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -Skip 3 |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
-if (Test-Path `$settings) {
-    try {
-        Move-Item -LiteralPath `$settings -Destination "`$settings.reset-`$(Get-Date -Format yyyyMMdd-HHmmss)" -ErrorAction Stop
-        'alarm store reset'
-    } catch { 'alarm store NOT reset: ' + `$_.Exception.Message }
-}
-Get-ChildItem `$pkg -Directory -Filter 'Settings.reset-*' -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending | Select-Object -Skip 3 |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 # NO WARM STEP. A COLD RUN IS THE SCORE.
 #
