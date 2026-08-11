@@ -36,31 +36,50 @@ public sealed class ClosingAWindowWaitsForItTests : IDisposable
 
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
     private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
-            .Returns(LaunchResult.Success(new LaunchedApplication(4242, TheWindow)));
-
+        _launcher = Substitute.For<IApplicationLauncher>();
         _windows = Substitute.For<IWindowLocator>();
-        _windows.Exists(Arg.Any<nint>()).Returns(true);
-        _windows.Close(Arg.Any<nint>()).Returns(true);
-        _windows.WaitUntilGone(Arg.Any<nint>()).Returns(true);
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
+                services.AddSingleton(_launcher);
                 services.AddSingleton(_windows);
             }));
 
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Rearms every default before each test.
+    /// </summary>
+    /// <remarks>
+    /// <c>WhenTheWindowWasAlreadyGone_NothingIsWaitedFor</c> reconfigures
+    /// <c>_windows.Close(...)</c> to <c>false</c> inside its own body. Without
+    /// putting it back to <c>true</c> here, that leaks into whichever test NUnit
+    /// schedules next on the shared substitute.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _launcher.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
+            .Returns(LaunchResult.Success(new LaunchedApplication(4242, TheWindow)));
+
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+        _windows.Close(Arg.Any<nint>()).Returns(true);
+        _windows.WaitUntilGone(Arg.Any<nint>()).Returns(true);
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

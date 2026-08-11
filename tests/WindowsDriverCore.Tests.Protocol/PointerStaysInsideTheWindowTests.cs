@@ -51,31 +51,22 @@ public sealed class PointerStaysInsideTheWindowTests : IDisposable
 {
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private IApplicationLauncher _launcher = null!;
     private ISyntheticPointer _injector = null!;
     private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
-        IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
-        launcher.Launch(Arg.Any<ApplicationTarget>())
-            .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
-
+        _launcher = Substitute.For<IApplicationLauncher>();
         _windows = Substitute.For<IWindowLocator>();
-        _windows.Exists(Arg.Any<nint>()).Returns(true);
-
-        // The window sits at (500,300). A viewport point is measured from THERE,
-        // which is the whole arithmetic under test.
-        _windows.GetBounds(Arg.Any<nint>()).Returns(new WindowBounds(500, 300, 800, 600));
-
         _injector = Substitute.For<ISyntheticPointer>();
-        _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
-        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
-                services.AddSingleton(launcher);
+                services.AddSingleton(_launcher);
                 services.AddSingleton(_windows);
                 services.AddSingleton(_injector);
             }));
@@ -83,7 +74,32 @@ public sealed class PointerStaysInsideTheWindowTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Rearms every default before each test. <c>OwnsThePointAt</c> needs no
+    /// rearming — both tests fully configure it inline (<c>true</c> and
+    /// <c>false</c> respectively) regardless of which ran first.
+    /// </summary>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _launcher.ClearReceivedCalls();
+        _windows.ClearReceivedCalls();
+        _injector.ClearReceivedCalls();
+
+        _launcher.Launch(Arg.Any<ApplicationTarget>())
+            .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
+
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+
+        // The window sits at (500,300). A viewport point is measured from THERE,
+        // which is the whole arithmetic under test.
+        _windows.GetBounds(Arg.Any<nint>()).Returns(new WindowBounds(500, 300, 800, 600));
+
+        _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
+        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

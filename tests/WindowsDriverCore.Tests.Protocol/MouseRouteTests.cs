@@ -44,7 +44,13 @@ public sealed class MouseRouteTests : IDisposable
     private HttpClient _client = null!;
     private IPointerInput _pointer = null!;
 
-    [SetUp]
+    /// <summary>
+    /// Builds the server once. No test here reconfigures a default inline, so
+    /// <see cref="ArrangeDefaults"/> only clears <c>_pointer</c>'s call history —
+    /// the one substitute every test asserts <c>Received</c>/<c>DidNotReceive</c>
+    /// against.
+    /// </summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
         IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
@@ -86,7 +92,10 @@ public sealed class MouseRouteTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    [SetUp]
+    public void ArrangeDefaults() => _pointer.ClearReceivedCalls();
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>

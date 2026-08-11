@@ -41,7 +41,13 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
     private HttpClient _client = null!;
     private IWindowLocator _windows = null!;
 
-    [SetUp]
+    /// <summary>
+    /// Builds the server once. No other substitute here needs per-test rearming:
+    /// nothing in this fixture reconfigures a default inline, and only
+    /// <c>_windows</c> is ever asserted on with <c>Received</c>/
+    /// <c>DidNotReceive</c>, which <see cref="ArrangeDefaults"/> resets.
+    /// </summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
         IApplicationLauncher launcher = Substitute.For<IApplicationLauncher>();
@@ -106,7 +112,25 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         _client = _factory.CreateClient();
     }
 
-    [TearDown]
+    /// <summary>
+    /// Rearms <c>_windows</c> before each test.
+    /// </summary>
+    /// <remarks>
+    /// Every test here asserts <c>Received</c>/<c>DidNotReceive</c> on
+    /// <c>WaitForInputProcessed</c>. Without clearing call history between
+    /// tests, a later test's <c>DidNotReceive</c> would fail on a call that
+    /// actually belonged to an earlier one.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _windows.ClearReceivedCalls();
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+        _windows.WaitForInputProcessed(Arg.Any<nint>()).Returns(true);
+        _windows.BringToForeground(Arg.Any<nint>()).Returns(true);
+    }
+
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>
