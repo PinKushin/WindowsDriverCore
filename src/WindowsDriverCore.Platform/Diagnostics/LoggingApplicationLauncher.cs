@@ -25,6 +25,16 @@ namespace WindowsDriverCore.Platform.Diagnostics;
 /// </remarks>
 public sealed class LoggingApplicationLauncher : IApplicationLauncher
 {
+    /// <summary>
+    /// At or beyond this, the window search spent its whole budget.
+    /// </summary>
+    /// <remarks>
+    /// The waiter's own timeout is ten seconds. Slightly under it here, because
+    /// the measured elapsed time includes activation and the poll interval, so an
+    /// exhausted search reports a little OVER the timeout rather than exactly it.
+    /// </remarks>
+    private const double TimedOutAtMilliseconds = 9_500;
+
     private readonly IApplicationLauncher _inner;
     private readonly ILaunchLog _log;
 
@@ -77,14 +87,37 @@ public sealed class LoggingApplicationLauncher : IApplicationLauncher
         // alone cannot show it — which is how three claims about the window
         // search were each credited to the wrong mechanism.
         nint window = result.Application?.WindowHandle ?? 0;
+        double elapsed = Stopwatch.GetElapsedTime(began).TotalMilliseconds;
+
+        // A WAIT THAT SPENT ITS WHOLE BUDGET NEVER SAW THE THING.
+        //
+        // Nothing the compatibility suite drives legitimately takes ten seconds,
+        // so a launch that returns AT the timeout is not a slow application - it
+        // is a search that never detected a window. Those are different defects
+        // and they have opposite fixes: wait longer versus look somewhere else.
+        //
+        // Measured 2026-08-11, and read the wrong way round for an hour: a
+        // transcript line saying "10241.6 ms" was taken as Alarms & Clock being
+        // slow to start. It was not. The application was on screen the whole
+        // time under process 4852 while the search hunted for a window owned by
+        // 3024, which activation had returned. A second activation one second
+        // later returned 4852 and took 790 ms.
+        //
+        // So the transcript says TIMED OUT rather than printing a number a
+        // reader has to recognise as suspicious.
+        string outcome = result.FailureMessage ?? string.Empty;
+        if (outcome.Length == 0 && elapsed >= TimedOutAtMilliseconds)
+        {
+            outcome = "TIMED OUT - never detected a window (look for the wrong process, not a slow app)";
+        }
 
         _log.ApplicationLaunched(
             target.App,
             result.Application?.ProcessId ?? 0,
             window,
             window == 0 ? string.Empty : WindowLocator.ClassNameOf(window),
-            result.FailureMessage ?? string.Empty,
-            Stopwatch.GetElapsedTime(began).TotalMilliseconds);
+            outcome,
+            elapsed);
 
         return result;
     }
