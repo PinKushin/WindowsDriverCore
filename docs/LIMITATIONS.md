@@ -1554,6 +1554,29 @@ a window and reported `200 jwp 0`, which turned one bad session into **105
 failing finds**. Fixed in `044b71c`; the pid handling itself is still open and is
 where tests are actually recovered.
 
+### Why the reset existed at all — the workaround outlived the bug
+
+It was not arbitrary. When it was added, **alarms were not being deleted**: the
+suite's own `DeletePreviouslyCreatedAlarmEntry` was failing against this driver,
+so the store filled to the application's cap, `AddAlarmButton` went disabled, and
+nine tests died together. Resetting the store was a reasonable answer to a real
+defect.
+
+The deletion path was later fixed. Confirmed 2026-08-11 by looking in the
+application after a run: the alarms were gone, so the whole cleanup chain — the
+XPath find, the right-click through `/moveto` and `/click` with button 2, and the
+`FindElementByName("Delete")` on the context menu — now works.
+
+Nobody removed the workaround. It stopped compensating for anything and carried
+on costing 21 tests, and because the warm step added in the same commit hid the
+cost, the pair looked harmless for a day.
+
+**The general shape is worth more than this instance:** a workaround added for a
+real defect becomes invisible scaffolding the moment the defect is fixed, and it
+is never load-bearing in the direction anyone expects. Anything added here to
+stabilise a measurement needs the defect it compensates for written next to it, so
+that fixing the defect prompts removing the workaround.
+
 ### What this invalidates
 
 `169`, `231`, `163`, `164`, `259` and the "62-test gap" all appear in this
