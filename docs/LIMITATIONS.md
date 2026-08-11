@@ -1340,6 +1340,35 @@ the founding defect of this project, and `BringToForeground`'s result was being
 discarded. That is worth fixing whether or not any test moves. Claiming otherwise
 would be reading the number backwards into the reasoning.
 
+## ROADMAP: an explicit "this lookup is allowed to fail" flag
+
+Requested by the PokemonBattleJournal agent as acceptance criterion `A5`, and
+wanted by this repository's owner. **Not scheduled — recorded so it is not
+rediscovered.**
+
+**The problem it solves.** A suite that asks "is this element present?" has no way
+to say that absence is a legal answer. The only lever is the ambient implicit
+wait, so PBJ sets it to zero, does the lookup, and sets it back. That leaks: if an
+assertion throws in between, the wait stays at zero for every later test in the
+process, and the failures land somewhere else entirely.
+
+**Design constraints, before anything is written:**
+
+- **It is a vendor extension, not a protocol feature.** JSON Wire has no
+  expression for it, so per this project's own rule the extension is explicit
+  rather than a silent reinterpretation of an existing route — the same reasoning
+  that produced `windows: invoke` versus `windows: mouseClick`.
+- **It must not be a second ambient mode.** A session-scoped "optional lookups"
+  setting reproduces the leak it exists to fix. The flag belongs on the request.
+- **The answer must stay distinguishable.** "Found nothing, and that was allowed"
+  is not the same as "found nothing, and that is an error"; a client needs to tell
+  them apart without parsing a message.
+- **It interacts with the implicit wait.** An optional lookup that still burns the
+  full wait solves half the problem — PBJ's measured cost was six five-second
+  stalls in one fixture. Whether optional implies "do not wait" or "wait, then
+  answer cleanly" is the first thing to settle, and it is a question for the
+  consumer rather than for the driver.
+
 ## Not implemented
 
 | Area | State | Notes |
