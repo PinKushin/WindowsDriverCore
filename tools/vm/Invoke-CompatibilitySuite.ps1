@@ -96,6 +96,30 @@ $job = @"
 `$env:DOTNET_NOLOGO = 'true'
 `$vstest = 'C:\baseline\testplatform\tools\net462\Common7\IDE\Extensions\TestPlatform\vstest.console.exe'
 
+# FILE EXPLORER WINDOWS, WHICH CANNOT BE KILLED BY PROCESS NAME.
+#
+# explorer.exe is the desktop shell AND every File Explorer window, so
+# Stop-Process on it takes the taskbar and Start menu with it. The suite opens
+# Explorer windows (root and window-handle tests) and closes none of them; a
+# previous session found 22 accumulated on the guest, visible only from
+# session 1.
+#
+# They are not inert. Leftover top-level windows sit in the z-order and change
+# what is foreground and who owns a screen point - which this driver's click
+# path consults directly.
+#
+# Shell.Application enumerates the windows rather than the process, so .Quit()
+# closes each one and leaves the shell running. It has to run HERE, in the
+# agent's session 1: the same call from session 0 sees nothing at all.
+try {
+    `$shell = New-Object -ComObject Shell.Application
+    `$windows = @(`$shell.Windows())
+    'explorer windows open: ' + `$windows.Count
+    foreach (`$w in `$windows) { try { `$w.Quit() } catch { } }
+    Start-Sleep -Seconds 2
+    'explorer windows after: ' + @((New-Object -ComObject Shell.Application).Windows()).Count
+} catch { 'could not enumerate explorer windows: ' + `$_.Exception.Message }
+
 Get-Process Time, Calculator, notepad, WinAppDriver, WindowsDriverCore -ErrorAction SilentlyContinue |
     Stop-Process -Force
 Start-Sleep -Seconds 4
