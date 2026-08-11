@@ -49,6 +49,30 @@ public sealed class WindowLocator : IWindowLocator
         return Win32.GetAncestor(atPoint, Win32.GA_ROOT) == Win32.GetAncestor(handle, Win32.GA_ROOT);
     }
 
+    /// <summary>The process an input drain must wait on.</summary>
+    /// <param name="handle">The session's window.</param>
+    /// <returns>The hosted application's process id.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The HOSTED process, never the window's owner.</b> Since a session's
+    /// window became the <c>ApplicationFrameWindow</c>, its owner is
+    /// <c>ApplicationFrameHost</c> — a broker shared by every UWP window on the
+    /// machine, whose idleness says nothing about the application and which may
+    /// never be idle at all. Waiting on it is not a wait; it is a formality that
+    /// returns.
+    /// </para>
+    /// <para>
+    /// <b>Internal purely so a test can see the choice.</b> It regressed silently
+    /// when frame rooting landed — <c>WaitForInputIdle</c> on the broker returns
+    /// promptly, so the drain kept reporting success while the input it existed
+    /// to wait for went on arriving late. Every test that asserted only on the
+    /// drain's return value stayed green, because a wait that always returns is
+    /// indistinguishable from no wait at all. The only way to catch that is to
+    /// assert which process was chosen.
+    /// </para>
+    /// </remarks>
+    internal int InputTargetProcess(nint handle) => GetHostedProcessId(handle);
+
     /// <inheritdoc />
     public int GetHostedProcessId(nint handle)
     {
@@ -174,16 +198,7 @@ public sealed class WindowLocator : IWindowLocator
         // process idle", not "has my input been consumed" - so an application
         // busy for its own reasons makes this wait longer than strictly needed.
         // That is a known imprecision, not a proxy for something unobservable.
-        // The HOSTED process, not the window's owner. Since a session's window
-        // became the ApplicationFrameWindow, its owner is ApplicationFrameHost -
-        // a broker shared by every UWP window on the machine, whose idleness says
-        // nothing about the application and which may never be idle at all.
-        // Waiting on it is not a wait; it is a formality that returns.
-        //
-        // This regressed silently when frame rooting landed: the drain kept
-        // returning, so nothing failed loudly, and the input it was supposed to
-        // wait for went on arriving late.
-        int processId = GetHostedProcessId(handle);
+        int processId = InputTargetProcess(handle);
         if (processId == 0)
         {
             return false;

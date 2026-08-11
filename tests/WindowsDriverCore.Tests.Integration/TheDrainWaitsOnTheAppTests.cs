@@ -34,18 +34,12 @@ namespace WindowsDriverCore.Tests.Integration;
 /// reasonable and be wrong in exactly the same way.
 /// </para>
 /// <para>
-/// <b>What it does NOT verify, stated plainly: which process the drain actually
-/// opens.</b> Mutating <c>WaitForInputProcessed</c> back to the owning process
-/// leaves this green, because waiting on the broker also returns true — which is
-/// precisely the property that made the original regression invisible. Making it
-/// sensitive needs the chosen process to be observable, and exposing it purely
-/// for a test would put a member on the public surface that nothing else wants.
-/// </para>
-/// <para>
-/// The behavioural check therefore lives in the compatibility suite rather than
-/// here, and this fixture is a guard on the <i>distinction</i>: it fails the day
-/// the two process ids stop differing, which is the assumption every caller of
-/// either one is relying on.
+/// <b>The choice is asserted, not inferred.</b> A first version of this checked
+/// only that the drain returned <see langword="true"/>, and mutating it back to
+/// the owning process left it green — waiting on the broker returns true as well,
+/// which is precisely the property that made the regression invisible. The target
+/// process is therefore <c>internal</c> so the test can read it;
+/// <c>Platform</c> already grants internals to this assembly.
 /// </para>
 /// </remarks>
 [TestFixture]
@@ -92,8 +86,16 @@ public sealed class TheDrainWaitsOnTheAppTests
             hostedProcess.ProcessName.ShouldBe(
                 "CalculatorApp", "and the hosted process is the application itself");
 
-            // And the drain must succeed against the application. A false here
-            // means it could not open the process it intends to wait on.
+            // The assertion that can actually fail for the right reason.
+            windows.InputTargetProcess(window).ShouldBe(
+                hosted,
+                "the drain must wait on the application; waiting on the broker returns " +
+                "immediately and is indistinguishable from not waiting at all");
+
+            windows.InputTargetProcess(window).ShouldNotBe(owner);
+
+            // And it must be able to open what it chose. A false here means the
+            // wait cannot happen even with the right target.
             windows.WaitForInputProcessed(window).ShouldBeTrue(
                 "the drain must be able to wait on the hosted application");
         }
