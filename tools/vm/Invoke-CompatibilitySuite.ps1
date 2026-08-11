@@ -180,6 +180,24 @@ if (`$head -notmatch '^[0-9a-f]{7,40}$') {
     'git said: ' + `$head
     exit 1
 }
+
+# AND IT HAS TO BE THE ONE THAT WAS ASKED FOR.
+#
+# The format check above is not enough. Measured 2026-08-11: a run requested
+# 492484d, the guest's bundle did not contain it, `git reset --hard` failed, HEAD
+# stayed at the previous commit - and the run labelled itself with THAT, passing
+# the format check on the way through. A .trx named for a commit the run did not
+# use is worse than an unlabelled one, because it looks like evidence.
+#
+# Harmless for a WinAppDriver run, which builds nothing. Silently wrong for one
+# of ours.
+if (-not '$Commit'.StartsWith(`$head) -and -not `$head.StartsWith('$Commit')) {
+    'ABORT: asked for $Commit but HEAD is ' + `$head + '.'
+    'The guest repository does not have that commit - refresh the bundle:'
+    '  git bundle create <payload>\WindowsDriverCore.bundle --all'
+    '  Copy-VMFile ... -DestinationPath C:\baseline\payload\WindowsDriverCore.bundle'
+    exit 1
+}
 'head: ' + `$head
 
 if ('$Driver' -eq 'WindowsDriverCore') {
