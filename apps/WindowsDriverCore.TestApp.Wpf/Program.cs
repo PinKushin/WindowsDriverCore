@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace WindowsDriverCore.TestApp.Wpf;
 
@@ -35,6 +37,22 @@ internal static class Program
     [STAThread]
     public static void Main()
     {
+        // WPF MUST BE TOLD TO CONSUME WM_POINTER, or it cannot observe injected
+        // touch at all.
+        //
+        // By default WPF takes touch through the WISP stylus stack, which expects
+        // a real digitiser. Injected input arrives as WM_POINTER instead, WPF
+        // ignores it, and Windows promotes it to a mouse event - so the subject
+        // sees a mouse and reports one. Measured 2026-08-11: a synthetic tap that
+        // the system accepted arrived here as "mouse", with TouchDown never
+        // firing.
+        //
+        // This switch makes WPF process WM_POINTER directly. It changes what the
+        // SUBJECT can observe, not what the driver sends: a UWP application
+        // consumes WM_POINTER natively and needs nothing, which is why
+        // WinAppDriver's own touch tests pass against Alarms & Clock.
+        AppContext.SetSwitch("Switch.System.Windows.Input.Stylus.EnablePointerSupport", true);
+
         Application application = new();
         application.Run(BuildWindow());
     }
@@ -100,6 +118,73 @@ internal static class Program
             Child = Identified(new TextBlock { Text = "nothing can click this" }, "patternlessOrphan"),
         };
         panel.Children.Add(bare);
+
+        // TOUCH, WHICH A MOUSE CANNOT FAKE.
+        //
+        // A Button raises Click for touch and for a mouse alike, so a test that
+        // asserted on Click would pass just as well if the driver quietly sent a
+        // mouse event instead of a real contact - and "asked for touch, received
+        // a mouse" is precisely the substitution worth catching.
+        //
+        // TouchDown only fires for a real touch contact, so the subject records
+        // which kind of input actually arrived and puts it in its own automation
+        // NAME, where a test can read it without the driver mediating.
+        // A BUTTON, NOT A BORDER, AND THAT IS NOT CosmETIC.
+        //
+        // The first version of this was a Border, and no test could find it: a
+        // bare Border has no automation peer, so it is not a control element and
+        // FindAll - which walks the CONTROL view - cannot see it. Measured on
+        // Calculator the same day: 52 of 125 elements are invisible to a find for
+        // exactly this reason.
+        //
+        // PREVIEW events, because a Button handles touch itself and converts it
+        // to a click; the preview pass fires before that happens, so the subject
+        // records which kind of input actually ARRIVED rather than what the
+        // control made of it.
+        // Reported through CONTENT, not AutomationProperties.Name. A Button's
+        // UIA name follows its content, and an explicit name set after the
+        // automation peer already exists is not guaranteed to refresh - which
+        // would make this fixture fail for a reason that has nothing to do with
+        // the input under test.
+        Button touchTarget = new() { Content = "no input yet", Height = 44 };
+        Identified(touchTarget, "touchTarget");
+
+        // ACCUMULATED, NOT OVERWRITTEN, because Windows PROMOTES touch to mouse.
+        //
+        // A real touch contact raises TouchDown and then, for applications that
+        // do not consume it, Windows synthesises a mouse event too - so MouseDown
+        // fires afterwards. Handlers that each assign Content would leave the LAST
+        // one showing, and the subject would report "mouse" for input that
+        // genuinely arrived as touch. Measured 2026-08-11: that is exactly what it
+        // did, and it read as an injection failure for twenty minutes.
+        //
+        // So every kind seen is kept. "TOUCH mouse" is the truth about a promoted
+        // contact; "mouse" alone means no touch ever arrived.
+        SortedSet<string> seen = [];
+        void Saw(string kind)
+        {
+            if (seen.Add(kind))
+            {
+                touchTarget.Content = string.Join(" ", seen);
+            }
+        }
+
+        // STYLUS IS NOT PEN. WPF raises StylusDown for touch as well as for a
+        // pen - the stylus stack is the abstraction over both - so labelling it
+        // "PEN" would report pen input for a finger. Measured 2026-08-11 against
+        // WinAppDriver's own /touch/click, which produced "PEN TOUCH mouse" on
+        // the first version of this subject and would have supported a claim that
+        // it injects pen.
+        //
+        // The tablet device type is what actually separates them.
+        touchTarget.PreviewTouchDown += (_, _) => Saw("TOUCH");
+        touchTarget.PreviewMouseDown += (_, _) => Saw("mouse");
+        touchTarget.PreviewStylusDown += (_, e) =>
+            Saw(e.StylusDevice?.TabletDevice?.Type == TabletDeviceType.Stylus
+                ? "PEN"
+                : "stylus-of-touch");
+
+        panel.Children.Add(touchTarget);
 
         // What the application itself saw. Read by the tests instead of the
         // driver's own report of which rung fired.

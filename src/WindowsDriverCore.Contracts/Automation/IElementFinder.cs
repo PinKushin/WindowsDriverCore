@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using WindowsDriverCore.Automation.Locators;
 
 namespace WindowsDriverCore.Automation;
