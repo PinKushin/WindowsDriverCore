@@ -6,6 +6,15 @@
 > nothing downstream can then tell them apart. Refuted theories are kept rather
 > than deleted, so nobody re-walks them. The measurements themselves are never
 > adjusted to fit: a number that disagrees with the theory kills the theory.
+>
+> **Hedge the conclusion, never the data.** A theory is written with the doubt
+> visible in the sentence — *as far as we can tell*, *that we know of* — because
+> the label alone stops being read after the third paragraph. A measurement gets
+> no hedging at all, and instead carries the conditions that produced it: which
+> commit, which machine, cold or warm, how many runs. Both halves matter. An
+> unhedged theory gets built on; a number with no conditions attached is just as
+> deceiving, because the reader supplies conditions of their own and they are
+> usually the flattering ones.
 # Known Limitations
 
 Living document. Every entry is something measured or deliberately chosen, not a
