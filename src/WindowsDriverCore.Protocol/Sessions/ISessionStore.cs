@@ -28,4 +28,17 @@ public interface ISessionStore
     /// <summary>Every live session, in creation order.</summary>
     /// <returns>The sessions.</returns>
     IReadOnlyList<DriverSession> All();
+
+    /// <summary>Removes every session, unconditionally.</summary>
+    /// <remarks>
+    /// <b>Not a production operation — a test seam.</b> Nothing in the running
+    /// server has a reason to drop every session at once; a real client deletes
+    /// its own. This exists so a test fixture sharing one
+    /// <c>WebApplicationFactory</c> across many <c>[Test]</c> methods can start
+    /// each one from a known-empty store, including after a PREVIOUS test threw
+    /// before reaching its own cleanup — the case self-cleanup through
+    /// <c>DELETE /session</c> cannot cover, because a test that never finishes
+    /// never calls it.
+    /// </remarks>
+    void Clear();
 }

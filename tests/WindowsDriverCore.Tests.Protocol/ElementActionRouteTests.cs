@@ -39,8 +39,10 @@ public sealed class ElementActionRouteTests : IDisposable
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
     private IElementInteractor _interactor = null!;
+    private IWindowLocator _windowsAlive = null!;
 
-    [SetUp]
+    /// <summary>Builds the server once. See <see cref="ArrangeDefaults"/> for per-test state.</summary>
+    [OneTimeSetUp]
     public void StartServer()
     {
         _interactor = Substitute.For<IElementInteractor>();
@@ -50,26 +52,45 @@ public sealed class ElementActionRouteTests : IDisposable
         // element command now answers "the window has been closed" for
         // that, which outranks stale or unknown. They are about an element
         // being gone from a LIVE window, so the window has to be alive.
-        IWindowLocator windowsAlive = Substitute.For<IWindowLocator>();
-        windowsAlive.Exists(Arg.Any<nint>()).Returns(true);
+        _windowsAlive = Substitute.For<IWindowLocator>();
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
                 {
                     services.AddSingleton(_interactor);
-                    services.AddSingleton(windowsAlive);
+                    services.AddSingleton(_windowsAlive);
                 }));
 
         _client = _factory.CreateClient();
+    }
 
-        _factory.Services.GetRequiredService<ISessionStore>().Add(new DriverSession(
+    /// <summary>
+    /// Clears the real store and reseeds the one session every test needs.
+    /// </summary>
+    /// <remarks>
+    /// No test here relies on a default the interactor never had — each one
+    /// configures its own <c>Click</c>/<c>Clear</c>/<c>SendKeys</c> return
+    /// inline. The only shared state is the seeded session, which this puts
+    /// back fresh every time rather than trusting that no test mutates or
+    /// removes it.
+    /// </remarks>
+    [SetUp]
+    public void ArrangeDefaults()
+    {
+        _interactor.ClearReceivedCalls();
+        _windowsAlive.ClearReceivedCalls();
+        _windowsAlive.Exists(Arg.Any<nint>()).Returns(true);
+
+        ISessionStore store = _factory.Services.GetRequiredService<ISessionStore>();
+        store.Clear();
+        store.Add(new DriverSession(
             SessionId,
             new Dictionary<string, string> { ["app"] = "Calculator" },
             ProcessId: 1234,
             WindowHandle: Window));
     }
 
-    [TearDown]
+    [OneTimeTearDown]
     public void StopServer() => Dispose();
 
     /// <summary>Disposes the in-memory server.</summary>
