@@ -1454,6 +1454,78 @@ need a UWP package that will not install (`0x80073CF1`). Chasing the last few
 points of the score means chasing tests that cannot pass, so the honest ceiling on
 this guest is **279**, not 290.
 
+## The stale-element cluster is NOT a message bug — it is alarm deletion failing
+
+Eleven `*Error_StaleElement` tests assert
+`"An element command failed because the referenced element is no longer attached
+to the DOM."` and receive
+`"An element command could not be completed because the element is not pointer- or
+keyboard interactable."`. That reads as a fault-mapping bug. It is not one.
+
+**Source reading, not measurement, settles where the message comes from.**
+`ElementFault.For` handles `Read`, `NotFound` and `NoSuchWindow` and **throws** on
+anything else, so it can never produce `NotInteractable`. That message can only
+come from `ElementActionRoutes` — an action. But `GetElementSizeError_StaleElement`
+and friends are **reads**. So the failing command is not the one under test.
+
+`AlarmClockBase.GetStaleElement()` reaches its subject like this:
+
+```csharp
+session.FindElementByAccessibilityId("AddAlarmButton").Click();   // <-- ours fails HERE
+Thread.Sleep(500);
+WindowsElement staleElement = session.FindElementByAccessibilityId("AlarmSaveButton");
+DismissAddAlarmPage();
+return staleElement;
+```
+
+The click throws, the exception leaves the helper, and each test's
+`catch (InvalidOperationException)` compares **the helper's** message with the
+expected stale string. Eleven tests, one failing click.
+
+**Why that click fails, and it is upstream again.** `AddAlarmButton` goes disabled
+when the alarm list reaches the application's cap — measured 2026-08-10, and the
+same mechanism that once cost nine unrelated tests. The suite deletes the alarms it
+creates:
+
+```csharp
+protected void DeletePreviouslyCreatedAlarmEntry(string alarmName)
+{
+    while (true)
+    {
+        try
+        {
+            var alarmEntry = session.FindElementByXPath($"//ListItem[starts-with(@Name, \"{alarmName}\")]");
+            session.Mouse.ContextClick(alarmEntry.Coordinates);
+            Thread.Sleep(TimeSpan.FromSeconds(3));
+            session.FindElementByName("Delete").Click();
+        }
+        catch { break; }          // any failure silently stops deleting
+    }
+}
+```
+
+**A bare `catch { break; }` makes every failure in that loop invisible and
+identical.** If any of its four steps fails against this driver, deletion stops,
+alarms accumulate for the rest of the run, the cap is reached, `AddAlarmButton`
+goes disabled, and eleven tests in a completely different area start reporting a
+click failure. Resetting the alarm store before a run — which
+`Invoke-CompatibilitySuite.ps1` does — only helps until the suite refills it.
+
+**Four candidates, in order of suspicion:**
+
+1. `FindElementByName("Delete")` — the context-menu item. The suite states
+   elsewhere that a title-bar context menu is parented on the **desktop** rather
+   than the application, and uses a Desktop session to reach it. If this flyout is
+   too, a search rooted at the session's window cannot see it.
+2. `ContextClick` — `/moveto {element}` then `/click {button:2}`. Implemented and
+   never verified against a list item.
+3. The XPath itself. The engine is the BCL's so `starts-with` is not in doubt;
+   whether our projection tags an alarm row as `ListItem` is.
+4. The final `Click()` on the menu item.
+
+**The probe that settles it** drives those four steps one at a time and reports
+each, which is exactly what the bare `catch` prevents the suite from ever showing.
+
 ## Not implemented
 
 | Area | State | Notes |
