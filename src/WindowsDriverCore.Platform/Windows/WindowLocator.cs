@@ -150,6 +150,24 @@ public sealed class WindowLocator : IWindowLocator
         Exists(handle) && Win32.PostMessage(handle, Win32.WM_CLOSE, 0, 0);
 
     /// <inheritdoc />
+    public bool WaitUntilGone(nint handle)
+    {
+        // Synchronise on the window actually going, not on a guess about how
+        // long that takes. SpinUntil escalates from spinning to yielding, so a
+        // fast machine returns at once and a loaded one is not starved by the
+        // waiter - the application being closed needs the CPU more than we do.
+        return SpinWait.SpinUntil(() => !Exists(handle), CloseTimeoutMs);
+    }
+
+    /// <summary>How long to wait for a closing window to disappear.</summary>
+    /// <remarks>
+    /// Bounds a failure, not a success: a window that closes does so in
+    /// milliseconds, and only one that refuses - a "save changes?" prompt -
+    /// waits this out.
+    /// </remarks>
+    private const int CloseTimeoutMs = 5000;
+
+    /// <inheritdoc />
     public bool BringToForeground(nint handle)
     {
         if (!Exists(handle))
