@@ -1562,10 +1562,26 @@ so the store filled to the application's cap, `AddAlarmButton` went disabled, an
 nine tests died together. Resetting the store was a reasonable answer to a real
 defect.
 
-The deletion path was later fixed. Confirmed 2026-08-11 by looking in the
-application after a run: the alarms were gone, so the whole cleanup chain — the
-XPath find, the right-click through `/moveto` and `/click` with button 2, and the
-`FindElementByName("Delete")` on the context menu — now works.
+The deletion path was later **partially** fixed, and "partially" is the operative
+word. Observed 2026-08-11 after two separate runs: most alarms are gone, and
+**two are left behind every time**. So the chain — the XPath find, the right-click
+through `/moveto` and `/click` with button 2, and the
+`FindElementByName("Delete")` on the context menu — works for most entries and
+fails for some.
+
+`DeletePreviouslyCreatedAlarmEntry` wraps its four steps in a bare
+`catch { break; }`, so the first failure ends the loop silently and everything
+after it stays. Two per run is nowhere near the cap on its own, but it
+**accumulates**: enough runs and the store reaches the application's limit,
+`AddAlarmButton` goes disabled, and the nine-test failure the reset was invented
+for returns — this time with no reset to hide it.
+
+That makes the store reset **not fully obsolete after all**. It compensates for a
+leak that still exists. The right shape is not per-run resetting, which costs 21
+tests, but resetting *occasionally* — or fixing whatever makes two of them
+undeletable, which is the better answer and is not yet diagnosed. The transcript
+records every find and click, so the failing step is recoverable from a run rather
+than needing a new probe.
 
 Nobody removed the workaround. It stopped compensating for anything and carried
 on costing 21 tests, and because the warm step added in the same commit hid the
