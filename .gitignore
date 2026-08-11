@@ -364,10 +364,15 @@ FodyWeavers.xsd
 
 # Build tools
 vs_BuildTools.exe
-# Local run artifacts (server logs, test result dumps, decompiler output)
+# Local run artifacts (server logs, test result dumps)
 server-*.txt
 test-results*.txt
-winappdriver-decompiled/
+
+# NOTE: decompiler output is NOT listed here on purpose. It does not belong in
+# this working tree at all - not the output, not a project file, not an empty
+# folder waiting for one, and not a gitignored one. An ignore rule is an
+# invitation to put it here anyway. Point ILSpy/Ghidra at a temp directory
+# outside every repo and carry back only hand-written notes.
 
 # Mutation testing output.
 StrykerOutput/
