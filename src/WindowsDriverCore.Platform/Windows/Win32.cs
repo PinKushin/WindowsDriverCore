@@ -111,6 +111,36 @@ internal static partial class Win32
     internal static partial nint SendMessageTimeout(
         nint hWnd, uint message, nint wParam, nint lParam, uint flags, uint timeout, out nint result);
 
+    /// <summary>Which window on a thread has focus, capture and so on.</summary>
+    /// <param name="threadId">The thread, or 0 for the foreground thread.</param>
+    /// <param name="info">Receives the thread's GUI state.</param>
+    /// <returns>False when the thread has no GUI state.</returns>
+    /// <remarks>
+    /// Needed to find the window keystrokes will actually reach. For a packaged
+    /// application the session's window is the <c>ApplicationFrameWindow</c>,
+    /// which belongs to <c>ApplicationFrameHost.exe</c> — a different process and
+    /// thread from the application. Synchronising on it waits on the wrong
+    /// message queue and returns immediately, which is measurably no wait at all.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
+
+    /// <summary>Win32 <c>GUITHREADINFO</c>.</summary>
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    internal struct GuiThreadInfo
+    {
+        public int Size;
+        public uint Flags;
+        public nint Active;
+        public nint Focus;
+        public nint Capture;
+        public nint MenuOwner;
+        public nint MoveSize;
+        public nint Caret;
+        public Rect CaretRect;
+    }
+
     /// <summary>Do not hang if the target thread stops responding.</summary>
     internal const uint SMTO_ABORTIFHUNG = 0x0002;
 
