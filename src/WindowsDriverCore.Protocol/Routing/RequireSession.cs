@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -50,8 +49,6 @@ public static class RequireSession
                     statusCode: WebDriverFault.InvalidSessionId.HttpStatus);
             }
 
-            ReResolveTheWindowIfItDied(session, http);
-
             http.Items[SessionItemKey] = session;
 
             // ASP.NET Core has no synchronization context, so this is a formality
@@ -59,62 +56,6 @@ public static class RequireSession
             // the protocol layer would hide the cases where it does matter.
             return await next(context).ConfigureAwait(false);
         });
-    }
-
-    /// <summary>
-    /// Points the session at the application's current window when the one it
-    /// holds has been destroyed.
-    /// </summary>
-    /// <param name="session">The session, updated in place.</param>
-    /// <param name="http">The request, for resolving services.</param>
-    /// <remarks>
-    /// <para>
-    /// <b>A session's window is not fixed for its lifetime, and assuming it was
-    /// is the bug.</b> Measured 2026-08-10: a packaged application's
-    /// <c>Windows.UI.Core.CoreWindow</c> is top-level and its own root when the
-    /// session is created, and is later <i>destroyed</i> — not reparented — as the
-    /// application is rehosted into its <c>ApplicationFrameWindow</c>. Every
-    /// command afterwards answered "Currently selected window has been closed",
-    /// which killed every <c>ActionsError_*</c> test at <c>TestInit</c> and read
-    /// as a cold-start bug because a warm application never showed it.
-    /// </para>
-    /// <para>
-    /// It cannot be fixed where the window is first chosen: at that instant the
-    /// frame does not exist yet, and three attempts to prefer or wait for it all
-    /// ran the poll loop to its deadline and returned window 0.
-    /// </para>
-    /// <para>
-    /// <b>Only when the handle is actually dead.</b> A live handle is never
-    /// second-guessed, so a client that deliberately switched windows with
-    /// <c>POST /session/:id/window</c> keeps the window it asked for. And a
-    /// re-resolve that finds nothing leaves the dead handle in place, so the
-    /// routes still answer "no such window" rather than silently retargeting.
-    /// </para>
-    /// <para>
-    /// The cost on the healthy path is one <c>IsWindow</c> call per request.
-    /// </para>
-    /// </remarks>
-    private static void ReResolveTheWindowIfItDied(DriverSession session, HttpContext http)
-    {
-        // A desktop session has no process to re-resolve against, and its window
-        // is the desktop, which does not die.
-        if (session.ProcessId == 0)
-        {
-            return;
-        }
-
-        IWindowLocator windows = http.RequestServices.GetRequiredService<IWindowLocator>();
-
-        if (windows.Exists(session.WindowHandle))
-        {
-            return;
-        }
-
-        nint replacement = windows.FindMainWindow(session.ProcessId);
-        if (replacement != 0)
-        {
-            session.WindowHandle = replacement;
-        }
     }
 
     /// <summary>

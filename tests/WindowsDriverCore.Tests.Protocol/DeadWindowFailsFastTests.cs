@@ -110,9 +110,8 @@ public sealed class DeadWindowFailsFastTests : IDisposable
     {
         string sessionId = await NewSessionWithAnImplicitWait();
 
-        // The window dies, and nothing replaces it.
+        // The window dies.
         _windows.Exists(TheWindow).Returns(false);
-        _windows.FindMainWindow(Arg.Any<int>()).Returns(0);
 
         HttpResponseMessage response = await Find(sessionId);
 

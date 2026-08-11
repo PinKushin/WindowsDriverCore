@@ -107,18 +107,6 @@ public sealed class MainWindowWaiter
         return 0;
     }
 
-    /// <summary>The process's window right now, without a before-snapshot.</summary>
-    /// <param name="processId">The process.</param>
-    /// <returns>A window handle, or zero.</returns>
-    /// <remarks>
-    /// For re-resolving a session whose window was destroyed. The "a window that
-    /// did not exist before" stage is deliberately skipped: the replacement
-    /// window is not new relative to anything this call knows about, and that
-    /// stage is the loose one that a busy desktop can get wrong.
-    /// </remarks>
-    public static nint FindCurrentWindow(int processId) =>
-        FindWindow(processId, new HashSet<nint>());
-
     private static nint FindWindow(int processId, IReadOnlySet<nint> before)
     {
         nint owned = FindVisibleWindowOwnedByAnyOf([processId]);
@@ -187,13 +175,16 @@ public sealed class MainWindowWaiter
     // — that destruction is the "Currently selected window has been closed" seen
     // much later, at the first test of a run.
     //
-    // So the fix does not belong at attach time at all. The session must be able
-    // to RE-RESOLVE its window when the handle it holds dies, instead of treating
-    // the first window as immutable for the session's lifetime. That is also what
-    // makes /window_handle answer the frame, which is what WinAppDriver reports.
+    // A session-level RE-RESOLVE was tried as a way round this and has since been
+    // REMOVED. Measured 2026-08-11: enabling and disabling it produced the same
+    // cold score of 127 and the same passing set bar one test each way, which is
+    // this suite's noise band. It was worth +4 when added and nothing once the
+    // dead-window fail-fast landed, so it was carrying risk - it can mask a
+    // genuinely closed window - for no measured benefit.
     //
-    // GetAncestor and GA_ROOT are left in Win32 because attempt 3 is the most
-    // likely shape of the eventual fix.
+    // Stage 3 above is the real target, and it cannot be checked from here:
+    // this type is in Platform, which is Win32-only by design, while UIA lives
+    // in Automation.
 
     /// <summary>
     /// Processes whose parent is <paramref name="processId"/>, transitively.
