@@ -150,6 +150,45 @@ public sealed class UiaElementInteractor : IElementInteractor
         });
     }
 
+    /// <inheritdoc />
+    public ElementAction TypeValue(nint window, string elementId, string keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (_keyboard is null)
+        {
+            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        }
+
+        return Act(window, elementId, element =>
+        {
+            // THE GATE IS THE PATTERN, THE ACTION IS THE KEYBOARD.
+            //
+            // Asked before anything is typed, because this is the branch that
+            // reproduces the recorded 400: an element with no value refuses,
+            // where typing at it would report success for putting characters
+            // somewhere nobody asked for.
+            if (!Has(element, UiaPropertyIds.IsValuePatternAvailable))
+            {
+                return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+            }
+
+            // Same order as SendKeys, and for the same measured reason: UIA's
+            // SetFocus fails against a control in a background window even when
+            // it reports focusable and on screen.
+            _windows?.BringToForeground(window);
+
+            if (!TryFocus(element))
+            {
+                return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+            }
+
+            return _keyboard.Type(keys)
+                ? ElementAction.Performed("keys")
+                : ElementAction.Failed(ElementActionOutcome.NotInteractable);
+        });
+    }
+
     /// <summary>
     /// Resolves an id and runs an action against the element.
     /// </summary>

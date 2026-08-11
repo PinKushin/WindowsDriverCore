@@ -1,4 +1,6 @@
 using Interop.UIAutomationClient;
+using NSubstitute;
+using WindowsDriverCore.Platform.Windows;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Automation;
@@ -118,6 +120,42 @@ public sealed class UiaElementInteractorTests
         ElementAction action = _interactor.SetValue(_window, Find("num5Button"), "hello");
 
         action.Outcome.ShouldBe(ElementActionOutcome.NotInteractable);
+    }
+
+    /// <summary>
+    /// <c>TypeValue</c> refuses an element with no value BEFORE sending a key.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The outcome alone cannot measure this, and asserting it was the first
+    /// mistake.</b> A Calculator button refuses for two independent reasons — it
+    /// has no ValuePattern, and its provider also declines focus — so
+    /// <c>NotInteractable</c> is what both the correct code and code with no gate
+    /// at all produce. Inverting the gate left that assertion passing, which is a
+    /// test insensitive to its own manipulation.
+    /// </para>
+    /// <para>
+    /// The keyboard is the faithful instrument: the claim is that nothing is
+    /// TYPED, and a substituted keyboard can say so directly. With the gate
+    /// removed, the keystroke goes out and this fails.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void TypingAValueIntoSomethingThatCannotHoldOne_IsRefusedBeforeAnyKeyIsSent()
+    {
+        IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
+        keyboard.Type(Arg.Any<string>()).Returns(true);
+
+        UiaElementInteractor typing = new(
+            _automation,
+            new UiaElementResolver(_automation),
+            windows: new WindowLocator(),
+            keyboard: keyboard);
+
+        ElementAction action = typing.TypeValue(_window, Find("num5Button"), "hello");
+
+        action.Outcome.ShouldBe(ElementActionOutcome.NotInteractable);
+        keyboard.DidNotReceive().Type(Arg.Any<string>());
     }
 
     [Test]

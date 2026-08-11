@@ -54,16 +54,21 @@ public static class ElementActionRoutes
 
                 DriverSession session = context.GetSession();
 
-                // SetValue, NOT SendKeys, and that is the recorded contract
-                // rather than a preference. Measured behaviour: this route
-                // answers 400 ElementNotInteractable for an element that cannot
-                // hold a value, which typing would turn into a 200. Switching it
-                // to send-keys was tried and reverted for exactly that.
+                // BOTH HALVES, WHICH IS WHY THIS IS NOT SetValue AND NOT
+                // SendKeys.
                 //
-                // The suite's SendKeysToElement tests want typing semantics —
-                // Control+A then Delete to clear, Alt+Enter to move focus — so
-                // those need a path that does not contradict this recording.
-                ElementAction action = interactor.SetValue(
+                // The recorded contract answers 400 ElementNotInteractable for an
+                // element that cannot hold a value, which plain typing would turn
+                // into a 200 by typing at a button. But SetValue cannot express
+                // what the suite actually sends: SendKeys(Control+A) then
+                // SendKeys(Delete) arrived as a ValuePattern write of the literal
+                // key CODES, so the box ended up holding U+E009 and U+E017 —
+                // invisible, non-empty, and the initializer's
+                // Assert.AreEqual(string.Empty, Text) failed with
+                // "Expected:<>. Actual:<>." Eleven tests died there.
+                //
+                // TypeValue gates on the pattern and acts with the keyboard.
+                ElementAction action = interactor.TypeValue(
                     session.WindowHandle,
                     elementId,
                     string.Concat(request?.Value ?? []));
