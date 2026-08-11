@@ -787,11 +787,51 @@ opened and closed across three probe attempts (`MoreButton` alternating between
 "More app bar" and "Less app bar", an `OverflowPopup` appearing and vanishing)
 while the driver answered `status 0`.
 
-Fixed: a disabled element is refused with `NotInteractable` before any rung runs,
-before scrolling and before foregrounding, so a refusal has no side effects. The
-regression test asserts a **bystander** — the hosting control's `ToggleState` —
-because "refused" and "climbed and toggled the parent" both leave the disabled
-button untouched.
+The climb is the defect. **The first remedy was not, and it cost twelve tests.**
+
+`e9cb249` refused the click outright with `NotInteractable`. **MEASURED
+2026-08-11:** `GetElementEnabledState`, `GetElementSizeError_StaleElement` and
+`GetElementTagNameError_StaleElement` passed in every cold run from `53ced71`
+through `21a18dd` and failed in every run from `05768de` onward; `e9cb249` is in
+`05768de` and is not in `21a18dd`. In the `eb0a467` run twelve tests carry our
+own `not pointer- or keyboard interactable` message where the suite expected
+success or `StaleElementReference`.
+
+**MEASURED, from the suite source.** `ElementEnabled.cs:48` clicks
+`ClearMemoryButton` while it is deliberately disabled — its own comment says
+"button could initially be already disabled" — and expects the click to succeed.
+`AlarmClockBase.GetStaleElement` reaches its subject by clicking `AddAlarmButton`,
+which is the button that goes disabled at the cap. So WinAppDriver does not refuse
+a disabled element, and eleven `StaleElement` tests plus one `Enabled` test depend
+on it not refusing.
+
+Fixed differently: a disabled element gets the **mouse rung and nothing else** —
+a click at its own coordinates, no pattern ladder, no climb. That is what a user
+gets, and reporting it as performed is honest about what happened.
+
+**Two instrument defects surfaced here, and they generalise past this fix.**
+
+*The subject could not discriminate.* `disabledInsideToggle` sat inside a real
+`CheckBox`. A disabled element does not consume mouse input, so the coordinate
+click routed to the check box and toggled it — the same observation a wrong climb
+produces. Correct and broken predicted the same thing and the test passed either
+way. Replaced with `InertToggleHost`: a container carrying `IToggleProvider` and
+no mouse handling at all, so a click does nothing and only `Toggle()` moves the
+state.
+
+*The fixture was missing a collaborator, which made a refusal unfalsifiable.*
+`LadderAgainstOwnSubjectTests` built its interactor with no `IPointerInput`, so
+the mouse rung could not run. "The ladder refused" and "the rung was unreachable"
+are the same observation when `_pointer` is null, so `APatternlessOrphan_IsRefused`
+was green for a reason unrelated to its name. Handing the fixture a real pointer
+is what exposed it.
+
+The regression test asserts the **bystander** — the host's `ToggleState`, read
+from the other side of the COM boundary — *before* it asserts
+`ElementAction.Path`, because the path is the driver's own account of what it did
+and a driver that climbed and mislabelled the rung passes that check. Verified by
+mutation: restoring the climb moves the host from `0` to `1`, and the bystander
+assertion kills it on its own.
 
 ### 5. The four wrong explanations, kept deliberately
 
