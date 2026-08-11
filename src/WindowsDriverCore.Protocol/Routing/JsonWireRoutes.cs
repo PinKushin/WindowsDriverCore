@@ -23,24 +23,31 @@ public static class JsonWireRoutes
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapGet("/status", (IServerStatusProvider status) =>
+        // An empty group, purely so ONE filter attaches to every route below it.
+        // Adding it per-route would mean remembering it at every future Map call,
+        // and a route that forgot would go missing from the transcript with no
+        // symptom other than a gap nobody notices.
+        RouteGroupBuilder logged = app.MapGroup(string.Empty);
+        logged.AddEndpointFilter<JsonWireStatusFilter>();
+
+        logged.MapGet("/status", (IServerStatusProvider status) =>
             Results.Json(status.GetStatus()));
 
-        app.MapSessionRoutes();
-        app.MapElementRoutes();
-        app.MapTimeoutRoutes();
-        app.MapWindowRoutes();
-        app.MapPageSourceRoutes();
-        app.MapActionRoutes();
-        app.MapKeyboardRoutes();
-        app.MapElementPropertyRoutes();
-        app.MapElementActionRoutes();
-        app.MapMouseRoutes();
+        logged.MapSessionRoutes();
+        logged.MapElementRoutes();
+        logged.MapTimeoutRoutes();
+        logged.MapWindowRoutes();
+        logged.MapPageSourceRoutes();
+        logged.MapActionRoutes();
+        logged.MapKeyboardRoutes();
+        logged.MapElementPropertyRoutes();
+        logged.MapElementActionRoutes();
+        logged.MapMouseRoutes();
 
         // Anything not matched above. WinAppDriver answers an unrecognised route
         // with status 9 and a message naming the method and path — not with an
         // empty 404 — so a client sees what it asked for.
-        app.MapFallback(static (HttpContext context) =>
+        logged.MapFallback(static (HttpContext context) =>
         {
             FaultResponse fault = JsonWireResponse.ForFault(
                 WebDriverFault.UnknownCommand,
