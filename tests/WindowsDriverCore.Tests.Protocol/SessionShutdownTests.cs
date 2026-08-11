@@ -59,7 +59,7 @@ public sealed class SessionShutdownTests : IDisposable
         _windows.DesktopWindow.Returns(0x1000);
         // An attached session resolves a REAL process that this driver did not
         // start. This is the number that must never be terminated.
-        _windows.GetOwningProcessId(Arg.Any<nint>()).Returns(9999);
+        _windows.GetHostedProcessId(Arg.Any<nint>()).Returns(9999);
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>

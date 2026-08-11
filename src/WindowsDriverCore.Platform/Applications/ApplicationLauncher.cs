@@ -119,10 +119,13 @@ public sealed class ApplicationLauncher : IApplicationLauncher
             return LaunchResult.Failure(NoWindowMessage);
         }
 
-        // The window's owner is the process to track, which for a packaged app is
-        // not the one activation returned. Getting this wrong makes every later
-        // process-scoped operation address the broker instead of the app.
-        int owningProcess = _windows.GetOwningProcessId(window);
+        // The process to track is the one whose CONTENT the window shows, which
+        // for a packaged app is neither the process activation returned nor the
+        // window's owner. Getting this wrong makes every later process-scoped
+        // operation address the broker instead of the app — and DELETE /session
+        // terminates what it tracks, so aimed at ApplicationFrameHost it would
+        // close every UWP window on the machine.
+        int owningProcess = _windows.GetHostedProcessId(window);
 
         return LaunchResult.Success(
             new LaunchedApplication(

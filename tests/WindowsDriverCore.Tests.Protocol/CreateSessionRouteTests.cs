@@ -230,7 +230,11 @@ public sealed class CreateSessionRouteTests : IDisposable
     public async Task CreateSession_AttachesToAnExistingWindow_WithoutLaunchingAnything()
     {
         _windows.Exists(0xB822E2).Returns(true);
-        _windows.GetOwningProcessId(0xB822E2).Returns(9876);
+        // GetHostedProcessId, not GetOwningProcessId: a session tracks the process
+        // whose CONTENT the window shows. For a packaged application those differ
+        // — the frame belongs to ApplicationFrameHost — and terminating the wrong
+        // one closes every UWP window on the machine.
+        _windows.GetHostedProcessId(0xB822E2).Returns(9876);
 
         HttpResponseMessage response = await CreateSession(new { appTopLevelWindow = "B822E2" });
 
@@ -270,7 +274,7 @@ public sealed class CreateSessionRouteTests : IDisposable
         // is 12064994 and not 822 or a parse failure. Decimal parsing is the
         // plausible mistake and would look for an entirely different window.
         _windows.Exists(Arg.Any<nint>()).Returns(true);
-        _windows.GetOwningProcessId(Arg.Any<nint>()).Returns(1);
+        _windows.GetHostedProcessId(Arg.Any<nint>()).Returns(1);
 
         await CreateSession(new { appTopLevelWindow = "B822E2" });
 

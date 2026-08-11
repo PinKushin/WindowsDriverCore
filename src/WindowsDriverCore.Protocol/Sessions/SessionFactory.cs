@@ -117,7 +117,7 @@ public sealed class SessionFactory
                 MissingWindowMessage);
         }
 
-        return Created(capabilities, _windows.GetOwningProcessId(handle), handle);
+        return Created(capabilities, _windows.GetHostedProcessId(handle), handle);
     }
 
     /// <summary>Builds a session for a window this driver has resolved.</summary>
