@@ -1,39 +1,44 @@
 # 019 — Protocol fixture consolidation, and a real timeout cluster on the guest
 
 **Date:** 2026-08-11
-**Status:** 11/21 protocol fixtures converted and pushed (`cd8a91a`, `e8ee62c`);
-7 deliberately deferred pending a session-store reset decision; fixture-folding
-(point 2 below) and the guest timeout cluster (point 3) both still unstarted.
+**Status:** ALL 21 protocol fixtures converted and pushed (`cd8a91a`, `e8ee62c`,
+`90252c9`). Fixture-folding (point 2 below) and the guest timeout cluster
+(point 3) both still unstarted.
 
-## 1. 11 of 21 protocol fixtures now share one `WebApplicationFactory`
+## 1. All 21 protocol fixtures now share one `WebApplicationFactory`
 
 Originally 19 of 21 each booted their own per `[Test]`. Converted to
 `[OneTimeSetUp]` + a per-test `[SetUp]` that rearms substitute defaults and
 clears received-call history — verified green individually, green 3x in a
 row for the full protocol project (185/185 unchanged each run, ruling out
 order-dependence), and green once for the full solution. Protocol project
-duration dropped from ~36-40s to a stable ~29-30s.
+duration dropped from ~36-40s at the start of the day to a stable ~18-21s.
 
-**The hazard that made this non-mechanical:** a test that reconfigures a
-substitute's `.Returns()` inline, which a sibling test's default silently
-depended on. Found by reading every file, not by pattern-matching — confirmed
-live in four of the ten (`ClosingAWindowWaitsForItTests`,
-`DeadWindowFailsFastTests`, `PageSourceRouteTests`,
-`PointerStaysInsideTheWindowTests`). Mutation-verified on the template file:
-removing one rearm line failed two tests because a third, declared LAST in
-the file, ran before them — proving NUnit's default execution order was
-never something to rely on.
+**The hazard that made the first 11 non-mechanical:** a test that
+reconfigures a substitute's `.Returns()` inline, which a sibling test's
+default silently depended on. Found by reading every file, not by
+pattern-matching — confirmed live in four of the ten
+(`ClosingAWindowWaitsForItTests`, `DeadWindowFailsFastTests`,
+`PageSourceRouteTests`, `PointerStaysInsideTheWindowTests`).
+Mutation-verified on the template file: removing one rearm line failed two
+tests because a third, declared LAST in the file, ran before them — proving
+NUnit's default execution order was never something to rely on.
 
-**7 files deliberately left unconverted**, because they use `ISessionStore`
-(and two of them `IElementRegistry`) as a REAL, unsubstituted singleton:
-`CreateSessionRouteTests`, `ElementActionRouteTests`,
-`ElementPropertyRouteTests`, `ElementRouteTests`, `LongLivedSessionTests`,
-`OrientationRouteTests`, `SessionRouteTests`. `CreateSessionRouteTests`
-specifically asserts `.All().ShouldBeEmpty()`, which a shared factory would
-break in an order-dependent way, and `ISessionStore` has no reset method.
-Surfaced to the user as a real fork (add a test-only reset vs. require
-self-cleanup via `DELETE` vs. leave as-is); no answer given yet, so left
-alone rather than guessed at.
+**The remaining 7 files** (`CreateSessionRouteTests`,
+`ElementActionRouteTests`, `ElementPropertyRouteTests`, `ElementRouteTests`,
+`LongLivedSessionTests`, `OrientationRouteTests`, `SessionRouteTests`) use
+`ISessionStore` (and two of them `IElementRegistry`) as REAL, unsubstituted
+singletons. `ISessionStore.Clear()` and `IElementRegistry.Clear()` were
+added — explicit test seams, never called by production code, called once
+per test in `[SetUp]`. Two alternatives were considered and rejected for this
+batch: NUnit `[Order]` (makes the leak deterministic rather than removing it,
+and does nothing for the three `ElementXxxRouteTests` files, which seed a
+session directly with no delete step to order around); self-cleanup via
+`DELETE /session` (real API only, but circular for `SessionRouteTests`
+specifically, which tests `DELETE /session` itself — a failing delete test
+would fail to clean up and compound into whatever ran next).
+`LongLivedSessionTests` was the sharpest case: every one of its 5 tests
+asserts an EXACT `Registry.CountFor` after issuing 500-2000 element ids.
 
 ## Original survey, for reference
 
