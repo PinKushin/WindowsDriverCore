@@ -176,6 +176,18 @@ Invoke-Command -VMName $VMName -Credential $credential -ScriptBlock {
             'C:\baseline\WindowsDriverCore' 2>&1 | Out-Null
     }
 
+    # THE CLONE IS OWNED BY ADMINISTRATORS, because this provisioning session is
+    # elevated, and the agent that runs the suite is not. git refuses a repository
+    # owned by somebody else - "detected dubious ownership" - and the failure is
+    # nastier than it looks: the error text ends up in $head and becomes the .trx
+    # filename, which vstest then rejects as an invalid logger URI, so a run
+    # completes with no results and exit code 0.
+    #
+    # Elevated and non-elevated tester share one profile, so a --global setting
+    # written here is the one the agent reads.
+    & 'C:\Program Files\Git\cmd\git.exe' config --global --add safe.directory 'C:/baseline/WindowsDriverCore' 2>&1 | Out-Null
+    $report.Add('git safe.directory : set for the agent')
+
     $report.Add('--- versions, which must match what prior scores were taken with ---')
     $report.Add('dotnet       : ' + (& C:\dotnet\dotnet.exe --version 2>&1))
     $report.Add('git          : ' + ((& 'C:\Program Files\Git\cmd\git.exe' --version 2>&1) -join ''))

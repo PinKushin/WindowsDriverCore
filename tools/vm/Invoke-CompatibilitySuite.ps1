@@ -162,7 +162,24 @@ Set-Location 'C:\baseline\WindowsDriverCore'
 & git.exe fetch origin 2>&1 | Out-String | Write-Host
 & git.exe reset --hard $Commit 2>&1 | Out-String | Write-Host
 `$head = (& git.exe rev-parse --short HEAD 2>&1 | Out-String).Trim()
-if (-not `$head) { 'ABORT: HEAD unknown, refusing to measure an unidentified commit'; exit 1 }
+
+# VALIDATED AS A SHA, not merely as non-empty.
+#
+# `$head is built from a command whose STDERR is merged in, so a git failure does
+# not produce an empty string - it produces the error text. The old guard was
+# `if (-not `$head)`, which that passes. Measured 2026-08-11: a "dubious
+# ownership" failure put four lines of diagnostics into `$head, the run continued,
+# the .trx filename became that text, vstest rejected the logger URI as invalid
+# and ran WITH NO LOGGER. Zero results, exit code 0, and a log that looked like a
+# completed run.
+#
+# The guard exists to refuse an UNIDENTIFIED commit. It also has to refuse a
+# MISIDENTIFIED one.
+if (`$head -notmatch '^[0-9a-f]{7,40}$') {
+    'ABORT: HEAD is not a commit id, refusing to measure an unidentified commit.'
+    'git said: ' + `$head
+    exit 1
+}
 'head: ' + `$head
 
 if ('$Driver' -eq 'WindowsDriverCore') {
