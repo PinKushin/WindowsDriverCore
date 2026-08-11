@@ -1577,6 +1577,27 @@ is never load-bearing in the direction anyone expects. Anything added here to
 stabilise a measurement needs the defect it compensates for written next to it, so
 that fixing the defect prompts removing the workaround.
 
+### What 231 still means, and why it cannot be re-measured
+
+The 231/290 taken against the drifted Alarms & Clock `11.2606.11.0` is NOT
+invalidated by the scaffolding finding, because it was measured under the same
+conditions as the 281 it was compared against — its log records both
+`alarm store reset` and `app warmed (AddAlarmButton enabled): True`. Under that
+pair the reset's damage and the warm's compensation roughly cancel, which is why
+the good app scored 281 with them and 280 without.
+
+So **281 against 231 is a fair app-drift comparison**, and the ~50 tests between
+them are the drift itself: `AlarmSaveButton`, `AlarmNameTextBox` and
+`CancelButton` are gone from that build, and no scaffolding recovers them.
+Removing the scaffolding would likely have left it near 230 rather than lifting it
+to 252 — the reset's 21 were already being paid back by the warm.
+
+**It can never be corrected by measurement.** Alarms `11.2606.11.0` is not on any
+machine here: the drifted guest was deleted and the rebuilt one is offline at
+`10.1906.2182.0`, with Store updates disabled by policy so it cannot drift there.
+231 is frozen under its original conditions, and that is the honest status —
+neither promoted to a comparable figure nor thrown away.
+
 ### What this invalidates
 
 `169`, `231`, `163`, `164`, `259` and the "62-test gap" all appear in this
