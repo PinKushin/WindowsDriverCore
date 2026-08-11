@@ -53,6 +53,24 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         _windows.WaitForInputProcessed(Arg.Any<nint>()).Returns(true);
         _windows.BringToForeground(Arg.Any<nint>()).Returns(true);
 
+        // THE MOUSE IS SUBSTITUTED, AND THAT IS NOT OPTIONAL.
+        //
+        // This fixture posts /click, and /click acts WHEREVER THE POINTER
+        // ALREADY IS — there is no coordinate in the request to make it safe.
+        // WebApplicationFactory boots the real container, so without this the
+        // route resolves SendInputPointer and fires a genuine left click at
+        // whatever the person running the suite happens to be pointing at.
+        // Reported for real on 2026-08-11: "random clicks that click whatever my
+        // mouse happens to be over".
+        //
+        // Same lesson as the injector in ActionsValidationTests, one route
+        // later: a protocol test is about the wire, and any test that boots this
+        // pipeline must substitute every path that can reach the desktop.
+        IPointerInput pointer = Substitute.For<IPointerInput>();
+        pointer.Click(Arg.Any<PointerButton>()).Returns(true);
+        pointer.MoveTo(Arg.Any<int>(), Arg.Any<int>()).Returns(true);
+        pointer.TryGetPosition(out Arg.Any<int>(), out Arg.Any<int>()).Returns(true);
+
         IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
         keyboard.Type(Arg.Any<string>()).Returns(true);
 
@@ -80,6 +98,7 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
                 services.AddSingleton(launcher);
                 services.AddSingleton(_windows);
                 services.AddSingleton(keyboard);
+                services.AddSingleton(pointer);
                 services.AddSingleton(inspector);
                 services.AddSingleton(interactor);
             }));
