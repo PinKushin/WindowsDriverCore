@@ -1,4 +1,5 @@
 using System;
+using System.Xml;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
@@ -37,6 +38,7 @@ public sealed class XPathAgainstOwnSubjectTests
 {
     private UiaElementFinder _finder = null!;
     private UiaElementInspector _inspector = null!;
+    private UiaPageSource _source = null!;
     private nint _window;
 
     [OneTimeSetUp]
@@ -52,6 +54,7 @@ public sealed class XPathAgainstOwnSubjectTests
         UiaElementResolver resolver = new(automation);
         _finder = new UiaElementFinder(automation, resolver);
         _inspector = new UiaElementInspector(automation, resolver);
+        _source = new UiaPageSource(automation);
 
         LaunchResult launched = new ApplicationLauncher(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator())
@@ -79,6 +82,40 @@ public sealed class XPathAgainstOwnSubjectTests
 
     private string NameOf(string elementId) =>
         _inspector.Attribute(_window, elementId, "Name").Value ?? string.Empty;
+
+
+    [Test]
+    public void PageSource_IsTheSameProjection_AndCarriesNoBookkeeping()
+    {
+        // The suite's own assertion: Source.GetSource loads the answer with
+        // XmlDocument.LoadXml and requires //Button to match. Both halves matter
+        // — a well-formed document with the wrong node names passes the parse and
+        // fails the client.
+        string? document = _source.Source(_window);
+
+        document.ShouldNotBeNull();
+
+        XmlDocument parsed = new();
+        parsed.LoadXml(document);
+
+        int buttons = parsed.SelectNodes("//Button")!.Count;
+        buttons.ShouldBeGreaterThan(0, "the subject has buttons and the suite looks for them by node name");
+
+        // The projection's index attribute is how a matched node maps back to its
+        // element. It has no meaning outside this process, and a client that
+        // wrote an expression against it would be depending on that.
+        parsed.SelectNodes("//*[@__i]")!.Count
+            .ShouldBe(0, "the index attribute must not leave the process");
+
+        // The control that ties the two consumers together. Page source and XPath
+        // read the same projection, so a node the document contains must be
+        // reachable by an expression that selects it — two renderings would let
+        // these disagree, and the disagreement would look like a correct
+        // expression matching nothing.
+        parsed.SelectNodes("//Button[@AutomationId='invokeOnly']")!.Count
+            .ShouldBe(1, "and the document must describe the same tree XPath searches");
+        Select("//Button[@AutomationId='invokeOnly']").ElementIds.Count.ShouldBe(1);
+    }
 
     [Test]
     public void AnExpressionMatchingByAutomationId_FindsTheElement()

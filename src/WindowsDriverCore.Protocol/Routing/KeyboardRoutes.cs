@@ -26,7 +26,6 @@ namespace WindowsDriverCore.Protocol.Routing;
 /// </remarks>
 public static class KeyboardRoutes
 {
-    private const string WindowClosedMessage = "Currently selected window has been closed";
 
     /// <summary>Maps the keyboard routes.</summary>
     /// <param name="app">The route builder.</param>
@@ -44,7 +43,7 @@ public static class KeyboardRoutes
             if (!windows.Exists(session.WindowHandle))
             {
                 return Results.Json(
-                    JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, WindowClosedMessage),
+                    JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, ElementFault.WindowClosedMessage),
                     statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
             }
 

@@ -31,7 +31,6 @@ public static class ElementRoutes
     private const string NoSuchElementMessage =
         "An element could not be located on the page using the given search parameters.";
 
-    private const string WindowClosedMessage = "Currently selected window has been closed";
 
     /// <summary>Maps the element search routes.</summary>
     /// <param name="app">The route builder.</param>
@@ -70,7 +69,7 @@ public static class ElementRoutes
                 // dead when the request arrived.
                 if (!windows.Exists(session.WindowHandle))
                 {
-                    return Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage);
+                    return Fault(WebDriverFault.NoSuchWindow, ElementFault.WindowClosedMessage);
                 }
 
                 // FindFirst, not FindAll: this route uses one match and UIA can
@@ -101,7 +100,7 @@ public static class ElementRoutes
                     // "Currently selected window has been closed" here.
                     if (!windows.Exists(session.WindowHandle))
                     {
-                        return Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage);
+                        return Fault(WebDriverFault.NoSuchWindow, ElementFault.WindowClosedMessage);
                     }
 
                     return Fault(WebDriverFault.NoSuchElement, NoSuchElementMessage);
@@ -244,7 +243,7 @@ public static class ElementRoutes
 
     private static IResult FailureResponse(FindFailure failure, string locatorValue) => failure switch
     {
-        FindFailure.NoSuchWindow => Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage),
+        FindFailure.NoSuchWindow => Fault(WebDriverFault.NoSuchWindow, ElementFault.WindowClosedMessage),
 
         // The server sends only the expression. The client appends
         // " (XPathLookupError)" from the error string with spaces removed, so
