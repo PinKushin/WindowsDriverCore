@@ -16,6 +16,11 @@
 .PARAMETER IsoPath
     A Windows 10 installation ISO. Not downloaded by this script.
 
+.PARAMETER SwitchName
+    Empty by default, which means the network adapter is DISCONNECTED. The first
+    guest was built on "Default Switch" and its inbox applications updated
+    themselves mid-investigation; see the parameter's own comment.
+
 .EXAMPLE
     .\New-BaselineVm.ps1 -IsoPath C:\Users\pinku\Downloads\Win10_22H2.iso
 #>
@@ -33,7 +38,26 @@ param(
     [int] $ProcessorCount = 4,
     [int64] $StartupMemory = 4GB,
     [int64] $MaximumMemory = 8GB,
-    [int64] $DiskSize = 80GB
+    [int64] $DiskSize = 80GB,
+
+    # EMPTY MEANS DISCONNECTED, AND THAT IS THE DEFAULT.
+    #
+    # This was "Default Switch", which NATs to the internet, and it cost the
+    # first guest. Its Alarms & Clock updated itself from the Store on
+    # 2026-08-10 between the 13:53 baseline run and the runs that resumed at
+    # 17:12 - renaming AlarmSaveButton to PrimaryButton and taking WinAppDriver's
+    # own score on that machine from 281/290 to 231/290. Fifty tests, and nothing
+    # in any log said the subject had changed.
+    #
+    # Nothing needs the network. Copy-VMFile and PowerShell Direct both ride the
+    # VMBus, so the payload push, the job-queue agent and the log pull-back all
+    # work with no adapter connected. Provision with
+    # tools/vm/Initialize-OfflineGuest.ps1, which refuses to run against a
+    # connected adapter for the same reason.
+    #
+    # Pass a HOST-ONLY switch name if a git remote is genuinely wanted. Do not
+    # pass "Default Switch".
+    [string] $SwitchName = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -166,7 +190,20 @@ Write-Host "Creating $VMName"
 
 # Generation 2 for UEFI, which is what the answer file's GPT layout assumes.
 $vm = New-VM -Name $VMName -Generation 2 -MemoryStartupBytes $StartupMemory `
-    -NewVHDPath $vhdPath -NewVHDSizeBytes $DiskSize -SwitchName "Default Switch"
+    -NewVHDPath $vhdPath -NewVHDSizeBytes $DiskSize
+
+if ($SwitchName) {
+    Write-Warning "Connecting to '$SwitchName'. If that switch reaches the internet, the"
+    Write-Warning "guest's inbox applications will update themselves and stop being a"
+    Write-Warning "baseline. See the -SwitchName comment above."
+    Connect-VMNetworkAdapter -VMName $VMName -SwitchName $SwitchName
+} else {
+    # Explicit, though New-VM without -SwitchName already leaves it this way.
+    # Saying it out loud is the point: an adapter that is disconnected by
+    # accident becomes connected by accident too.
+    Get-VMNetworkAdapter -VMName $VMName | Disconnect-VMNetworkAdapter
+    Write-Host "  network adapter: DISCONNECTED (the whole point; see -SwitchName)"
+}
 
 Set-VM -VM $vm -ProcessorCount $ProcessorCount -AutomaticCheckpointsEnabled $false
 Set-VMMemory -VM $vm -DynamicMemoryEnabled $true `
@@ -186,8 +223,8 @@ Set-VMMemory -VM $vm -DynamicMemoryEnabled $true `
 # Windows 11 host enforces that. So EVERY Windows 10 installer fails Secure Boot
 # on a current host — this is not something a different ISO fixes.
 #
-# Acceptable here because the guest is a disposable measurement rig on an
-# internal switch. It would not be acceptable for anything that mattered.
+# Acceptable here because the guest is a disposable measurement rig with no
+# network at all. It would not be acceptable for anything that mattered.
 Set-VMFirmware -VM $vm -EnableSecureBoot Off
 
 Add-VMDvdDrive -VM $vm -Path $IsoPath
@@ -224,4 +261,16 @@ Write-Host "That keystroke is the only manual step. The install then runs"
 Write-Host "unattended for roughly 15 minutes."
 Write-Host ""
 Write-Host "Account 'tester', password written to $credentialPath"
-Write-Host "When it idles at the desktop: .\Initialize-BaselineGuest.ps1 -VMName '$VMName'"
+if ($SwitchName) {
+    Write-Host "When it idles at the desktop: .\Initialize-BaselineGuest.ps1 -VMName '$VMName'"
+} else {
+    # NOT Initialize-BaselineGuest.ps1. That one downloads the SDK, git and the
+    # WinAppDriver MSI, and this guest has no network by design - it would fail
+    # at the first Invoke-WebRequest.
+    Write-Host "When it idles at the desktop, provision it from the staged payload:"
+    Write-Host "  .\Initialize-OfflineGuest.ps1 -VMName '$VMName'"
+    Write-Host ""
+    Write-Host "Then CHECKPOINT it before anything else touches it, and record the"
+    Write-Host "Alarms & Clock version with any score taken on it. The last guest was"
+    Write-Host "lost to a Store update and had no checkpoint to go back to."
+}
