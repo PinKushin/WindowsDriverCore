@@ -312,6 +312,25 @@ if (-not `$up) { 'ABORT: driver never answered'; exit 1 }
 
 Stop-Process -Id `$srv.Id -Force -ErrorAction SilentlyContinue
 
+# AND THE EXPLORER WINDOWS, WHICH THE SUITE LEAVES BEHIND EVERY TIME.
+#
+# Cleaned at the START of a run since bc2889f, which stopped runs inheriting
+# each other's clutter but left the desktop covered afterwards - 6 or 7 windows
+# survived the run that scored 182, matching the 8 explorer launches its
+# transcript recorded.
+#
+# DELETE /session cannot fix this from inside the driver, and that is the real
+# problem underneath. Our terminator ends the tracked PROCESS, and an Explorer
+# window belongs to the long-running shell - killing that pid takes the desktop,
+# taskbar and Start menu with it. So the driver correctly does nothing, and the
+# windows accumulate. Closing a WINDOW rather than ending a process is a
+# capability this driver does not have yet; see docs/LIMITATIONS.md.
+try {
+    `$open = @((New-Object -ComObject Shell.Application).Windows())
+    foreach (`$w in `$open) { try { `$w.Quit() } catch { } }
+    'explorer windows closed after the run: ' + `$open.Count
+} catch { 'could not close explorer windows: ' + `$_.Exception.Message }
+
 # CLOSE THE APPLICATIONS TOO. The run kills these on the way IN and used to leave
 # them running on the way OUT, so every run handed the next one a warm application
 # it had not asked for - which is exactly the difference between a cold launch and
