@@ -178,11 +178,69 @@ public sealed class ApplicationLauncher : IApplicationLauncher
         return hr < 0 ? 0 : (int)processId;
     }
 
+    /// <summary>
+    /// Resolves a <c>System32</c> path the way a 32-bit client means it.
+    /// </summary>
+    /// <param name="app">The executable path a client sent.</param>
+    /// <returns>The path to start, redirected only when that is what resolves it.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>MEASURED 2026-08-11</b>, on the Windows 11 host and the Windows 10 guest
+    /// alike:
+    /// </para>
+    /// <code>
+    /// C:\Windows\System32\explorer.exe   absent
+    /// C:\Windows\SysWOW64\explorer.exe   present
+    /// C:\Windows\explorer.exe             present
+    /// </code>
+    /// <para>
+    /// <b>WinAppDriver.exe is a 32-bit process</b> — measured from its PE header,
+    /// machine <c>0x014C</c>, no CLR directory. WOW64 therefore redirects every
+    /// <c>System32</c> path it opens to <c>SysWOW64</c>, silently and by design.
+    /// So when a client says <c>C:\Windows\System32\explorer.exe</c> to
+    /// WinAppDriver it gets the SysWOW64 file, and the compatibility suite
+    /// hardcodes exactly that path in <c>CommonTestSettings.ExplorerAppId</c>.
+    /// </para>
+    /// <para>
+    /// This driver is 64-bit, sees the real <c>System32</c>, finds nothing, and
+    /// answers "The system cannot find the file specified" — which is literally
+    /// true and useless. Nine suite tests fail on it. The incompatibility is one
+    /// of process architecture, not of behaviour, and it cannot be fixed by
+    /// matching a message.
+    /// </para>
+    /// <para>
+    /// <b>Only when the original does not exist</b>, so a real 64-bit
+    /// <c>System32</c> executable is never silently swapped for its 32-bit
+    /// sibling. That ordering is the whole safety of this: it can rescue a path
+    /// that would otherwise fail and can never redirect one that works.
+    /// </para>
+    /// </remarks>
+    private static string AsA32BitClientMeansIt(string app)
+    {
+        if (string.IsNullOrEmpty(app) || File.Exists(app))
+        {
+            return app;
+        }
+
+        string system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        if (!app.StartsWith(system32 + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            return app;
+        }
+
+        string wow64 = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SysWOW64");
+
+        string redirected = Path.Combine(wow64, app[(system32.Length + 1)..]);
+
+        return File.Exists(redirected) ? redirected : app;
+    }
+
     private static int StartClassicProcess(ApplicationTarget target)
     {
         ProcessStartInfo startInfo = new()
         {
-            FileName = target.App,
+            FileName = AsA32BitClientMeansIt(target.App),
             UseShellExecute = false,
         };
 
