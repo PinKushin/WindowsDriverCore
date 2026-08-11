@@ -1454,77 +1454,94 @@ need a UWP package that will not install (`0x80073CF1`). Chasing the last few
 points of the score means chasing tests that cannot pass, so the honest ceiling on
 this guest is **279**, not 290.
 
-## The stale-element cluster is NOT a message bug — it is alarm deletion failing
+## The stale-element cluster: measured to the point where OUR bug starts
 
 Eleven `*Error_StaleElement` tests assert
 `"An element command failed because the referenced element is no longer attached
-to the DOM."` and receive
-`"An element command could not be completed because the element is not pointer- or
-keyboard interactable."`. That reads as a fault-mapping bug. It is not one.
+to the DOM."` and receive one of our own messages instead. That reads as a
+fault-mapping bug. It is not one.
 
-**Source reading, not measurement, settles where the message comes from.**
+### Where the message actually comes from
+
 `ElementFault.For` handles `Read`, `NotFound` and `NoSuchWindow` and **throws** on
-anything else, so it can never produce `NotInteractable`. That message can only
-come from `ElementActionRoutes` — an action. But `GetElementSizeError_StaleElement`
-and friends are **reads**. So the failing command is not the one under test.
+anything else, so it can never emit `NotInteractable`. That message comes only
+from `ElementActionRoutes` — an action. But `GetElementSizeError_StaleElement` and
+its siblings are **reads**. So the failing command is not the one under test.
 
-`AlarmClockBase.GetStaleElement()` reaches its subject like this:
+`AlarmClockBase.GetStaleElement()` reaches its subject through two calls before
+the test's own:
 
 ```csharp
-session.FindElementByAccessibilityId("AddAlarmButton").Click();   // <-- ours fails HERE
+session.FindElementByAccessibilityId("AddAlarmButton").Click();
 Thread.Sleep(500);
 WindowsElement staleElement = session.FindElementByAccessibilityId("AlarmSaveButton");
-DismissAddAlarmPage();
-return staleElement;
 ```
 
-The click throws, the exception leaves the helper, and each test's
+Whatever those throw leaves the helper, and each test's
 `catch (InvalidOperationException)` compares **the helper's** message with the
-expected stale string. Eleven tests, one failing click.
+expected stale string. Eleven tests, one upstream failure.
 
-**Why that click fails, and it is upstream again.** `AddAlarmButton` goes disabled
-when the alarm list reaches the application's cap — measured 2026-08-10, and the
-same mechanism that once cost nine unrelated tests. The suite deletes the alarms it
-creates:
+### MEASURED, on the guest, through this driver
 
-```csharp
-protected void DeletePreviouslyCreatedAlarmEntry(string alarmName)
-{
-    while (true)
-    {
-        try
-        {
-            var alarmEntry = session.FindElementByXPath($"//ListItem[starts-with(@Name, \"{alarmName}\")]");
-            session.Mouse.ContextClick(alarmEntry.Coordinates);
-            Thread.Sleep(TimeSpan.FromSeconds(3));
-            session.FindElementByName("Delete").Click();
-        }
-        catch { break; }          // any failure silently stops deleting
-    }
-}
+```
+STEP 0  //ListItem count                = 6
+        AddAlarmButton enabled          = True
+        AddAlarmButton click            = 200
+        AlarmSaveButton find            = 404 no such element
+        page source AutomationIds       53 before -> 68 after the click
+        NEW: EditFlyout, DurationPicker, HourPicker, MinutePicker,
+             RepeatCheckBox, ChimeComboBox, SnoozeComboBox,
+             PrimaryButton, CloseButton, Light Dismiss
 ```
 
-**A bare `catch { break; }` makes every failure in that loop invisible and
-identical.** If any of its four steps fails against this driver, deletion stops,
-alarms accumulate for the rest of the run, the cap is reached, `AddAlarmButton`
-goes disabled, and eleven tests in a completely different area start reporting a
-click failure. Resetting the alarm store before a run — which
-`Invoke-CompatibilitySuite.ps1` does — only helps until the suite refills it.
+**The click works.** It opens the add-alarm flyout; fifteen elements appear that
+were not there before. What is missing from our view of that flyout is
+`AlarmSaveButton`.
 
-**Four candidates, in order of suspicion:**
+### The app is NOT drifted, and assuming it was cost a wrong conclusion
 
-1. `FindElementByName("Delete")` — the context-menu item. The suite states
-   elsewhere that a title-bar context menu is parented on the **desktop** rather
-   than the application, and uses a Desktop session to reach it. If this flyout is
-   too, a search rooted at the session's window cannot see it.
-2. `ContextClick` — `/moveto {element}` then `/click {button:2}`. Implemented and
-   never verified against a list item.
-3. The XPath itself. The engine is the BCL's so `starts-with` is not in doubt;
-   whether our projection tags an alarm row as `ListItem` is.
-4. The final `Click()` on the menu item.
+`EditFlyout` with `PrimaryButton`/`CloseButton` looks like a newer UI than the
+suite was written for, and that was written here as the explanation. **It is
+wrong.** WinAppDriver 1.2.1, same guest, same application, passes **21 of 22**
+`*StaleElement* tests, and its only failure among them is
+`TouchSingleTapError_StaleElement`, which derives from `EdgeBase`.
 
-**The probe that settles it** drives those four steps one at a time and reports
-each, which is exactly what the bare `catch` prevents the suite from ever showing.
+Its nine failures overall are **eight Edge tests and `GetLocation`** — no alarm
+tests at all. WinAppDriver targets a slightly earlier Windows 10 than this guest
+and still passes these, so the application has not moved out from under the suite.
+
+`AlarmSaveButton` is therefore reachable on this machine, and **we are the ones
+who cannot find it.** The check that settles a drift claim is the reference
+driver's outcomes on the same machine, and it was available the whole time.
+
+### The candidate: which TREE VIEW a find walks
+
+`IUIAutomationElement::FindAll` filters to the **control view**. Any element whose
+`IsControlElement` is false is invisible to it while a raw-view walk still finds
+it. Our page source showed the flyout's chrome — `EditFlyout`, `PrimaryButton`,
+`CloseButton` — and not the save button, which is exactly the shape of a control-
+view omission rather than an absent element.
+
+If that is the cause it is not confined to this cluster: every
+"element could not be located" failure in the suite is a candidate, and the fix is
+a view choice rather than eleven separate fixes.
+
+**The probe that settles it**, from the open flyout, asking three ways:
+
+1. our normal find for `AlarmSaveButton`
+2. a raw-view `FindAll` for the same automation id
+3. a full raw-view dump of the flyout's subtree, to see what the control view drops
+
+Raw finding it and control not is the answer. Neither finding it moves the
+question back to where the button lives, not to how we look for it.
+
+### The suite's own blindfold, still worth knowing
+
+`DeletePreviouslyCreatedAlarmEntry` wraps its four steps in a bare
+`catch { break; }`, so if deletion ever does fail against this driver, alarms
+accumulate silently until the cap disables `AddAlarmButton`. That is a real
+mechanism — it cost nine unrelated tests once already — but it is **not** what is
+failing here: the button was measured enabled and its click returned 200.
 
 ## Not implemented
 
