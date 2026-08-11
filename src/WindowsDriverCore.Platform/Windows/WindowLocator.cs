@@ -283,29 +283,6 @@ public sealed class WindowLocator : IWindowLocator
         uint them = foreground == 0 ? 0 : Win32.GetWindowThreadProcessId(foreground, out _);
         bool attached = them != 0 && them != us && Win32.AttachThreadInput(us, them, true);
 
-        // ATTACHING IS NOT ALWAYS ENOUGH, and the case where it is not is the
-        // ordinary one here. AttachThreadInput can fail outright against a
-        // packaged application's host thread, and then SetForegroundWindow is
-        // silently ignored — measured 2026-08-11 as a launch that could not be
-        // raised while Calculator held the foreground, which is the same refusal
-        // five SendKeys tests report as "could not be brought to the foreground".
-        //
-        // The foreground LOCK TIMEOUT is the setting that decides whether the
-        // refusal applies. Zeroed for the duration of the call and put back
-        // afterwards, because it is a per-user value and leaving it changed would
-        // alter how every other application on the machine behaves — a driver
-        // that silently reconfigures the desktop it is testing on is the kind of
-        // side effect this project refuses elsewhere.
-        uint lockTimeout = 0;
-        bool readTimeout = Win32.SystemParametersInfo(
-            Win32.SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref lockTimeout, 0);
-
-        if (readTimeout && lockTimeout != 0)
-        {
-            uint none = 0;
-            Win32.SystemParametersInfo(Win32.SPI_SETFOREGROUNDLOCKTIMEOUT, 0, ref none, 0);
-        }
-
         try
         {
             Win32.ShowWindow(handle, Win32.SW_RESTORE);
@@ -314,12 +291,6 @@ public sealed class WindowLocator : IWindowLocator
         }
         finally
         {
-            if (readTimeout && lockTimeout != 0)
-            {
-                Win32.SystemParametersInfo(
-                    Win32.SPI_SETFOREGROUNDLOCKTIMEOUT, 0, ref lockTimeout, 0);
-            }
-
             if (attached)
             {
                 Win32.AttachThreadInput(us, them, false);

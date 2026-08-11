@@ -333,26 +333,6 @@ internal static partial class Win32
     [LibraryImport("kernel32.dll")]
     internal static partial uint GetCurrentThreadId();
 
-    /// <summary>Reads or writes a system-wide user setting.</summary>
-    /// <remarks>
-    /// <b>Used for one setting only: the foreground lock timeout.</b> Windows
-    /// refuses <c>SetForegroundWindow</c> from a process that does not own the
-    /// foreground input queue, and <c>AttachThreadInput</c> is not always enough
-    /// to join it — attaching to a packaged application's host thread can simply
-    /// fail. The lock timeout is the switch that decides whether the refusal
-    /// applies, and it is a per-user value that this restores after use.
-    /// </remarks>
-    [LibraryImport("user32.dll", EntryPoint = "SystemParametersInfoW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool SystemParametersInfo(
-        uint action, uint param, ref uint value, uint update);
-
-    /// <summary>Reads the foreground lock timeout, in milliseconds.</summary>
-    internal const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
-
-    /// <summary>Writes the foreground lock timeout.</summary>
-    internal const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
-
     /// <summary>Screen metrics, including the virtual desktop's extent.</summary>
     [LibraryImport("user32.dll")]
     internal static partial int GetSystemMetrics(int index);
