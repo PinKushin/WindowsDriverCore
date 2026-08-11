@@ -8,6 +8,9 @@ namespace WindowsDriverCore.Tests.Integration.Support;
 /// <summary>Starting and stopping applications a fixture owns.</summary>
 internal static class AppLifetime
 {
+    /// <summary>ERROR_ACCESS_DENIED, which a process that is EXITING also returns.</summary>
+    private const int AccessDenied = 5;
+
     /// <summary>
     /// Kills one application by process id.
     /// </summary>
@@ -83,9 +86,8 @@ internal static class AppLifetime
         }
     }
 
-    /// <summary>Kills every process with a name, for fixture teardown.</summary>
-    /// <param name="processName">The name, without extension.</param>
     /// <summary>Ends every process whose name contains <paramref name="processName"/>.</summary>
+    /// <param name="processName">The name, without extension.</param>
     /// <remarks>
     /// <para>
     /// <b>Substring, not exact, and that is a correctness fix rather than
@@ -123,6 +125,21 @@ internal static class AppLifetime
             catch (InvalidOperationException)
             {
                 // Already gone.
+            }
+            catch (System.ComponentModel.Win32Exception failure)
+                when (failure.NativeErrorCode == AccessDenied)
+            {
+                // MEASURED 2026-08-11: a process that is already EXITING cannot be
+                // opened, and Kill(entireProcessTree) opens it to walk the tree —
+                // so a fixture that ends a session and then sweeps for leftovers
+                // races its own cleanup and fails in the finally block. Two tests
+                // failed this way while passing minutes earlier, which is the
+                // signature of a race rather than of a defect in the product.
+                //
+                // Caught narrowly and only for ACCESS_DENIED. The other reading of
+                // this code — a genuinely protected process — has the same answer
+                // for a leftover sweep: it cannot be killed and does not belong to
+                // this suite. Anything else still propagates.
             }
             finally
             {
