@@ -122,6 +122,58 @@ public interface IInteractionLog
 }
 
 /// <summary>
+/// Records where a pointer command aimed.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Two 200s and no effect is the case this exists for.</b> The compatibility
+/// suite deletes its alarms with <c>Mouse.ContextClick</c> — a <c>/moveto</c>
+/// then a <c>/click</c> with button 2. Measured 2026-08-11: both answered 200,
+/// no context menu appeared, and the <c>find Name='Delete'</c> after them
+/// matched nothing. The transcript could say the input was dispatched and
+/// nothing about where it went, so there was no way to tell a wrong coordinate
+/// from a coordinate the system delivered elsewhere.
+/// </para>
+/// <para>
+/// <b>The rectangle rides along because the point alone is ambiguous.</b> UIA
+/// answers with an empty rectangle for an element it can see but cannot place,
+/// and the centre of nothing is <c>(0,0)</c> — the top-left of the screen, which
+/// reads as an ordinary coordinate. Beside a size of <c>0x0</c> it does not.
+/// </para>
+/// <para>
+/// <b>This does not weaken <see cref="IInteractionLog"/>'s rule.</b> A
+/// coordinate is where this driver aimed, which is the driver's own behaviour.
+/// No parameter here can carry a string the caller supplied, so there is still
+/// nothing to redact.
+/// </para>
+/// </remarks>
+public interface IPointerLog
+{
+    /// <summary>Records a dispatched pointer command.</summary>
+    /// <param name="command">
+    /// What was asked for — <c>moveto</c>, <c>click button 2</c>. A command name,
+    /// never an argument.
+    /// </param>
+    /// <param name="x">Screen x aimed at.</param>
+    /// <param name="y">Screen y aimed at.</param>
+    /// <param name="width">
+    /// Width of the element the point came from, <c>-1</c> when the command had
+    /// no element. Absent and empty must stay distinguishable: <c>0</c> means UIA
+    /// could not place an element it could see, and <c>-1</c> means there was
+    /// nothing to place.
+    /// </param>
+    /// <param name="height">Height of that element, on the same rule.</param>
+    /// <param name="elapsedMilliseconds">Wall-clock cost.</param>
+    void PointerTargeted(
+        string command,
+        int x,
+        int y,
+        int width,
+        int height,
+        double elapsedMilliseconds);
+}
+
+/// <summary>
 /// Records how an application was reached and how long it took.
 /// </summary>
 /// <remarks>

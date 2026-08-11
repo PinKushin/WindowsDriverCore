@@ -30,7 +30,8 @@ namespace WindowsDriverCore.Diagnostics;
 /// </remarks>
 [EventSource(Name = SourceName)]
 public sealed class DriverEventSource
-    : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog, ITerminationLog, IResolveLog, IPageSourceLog
+    : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog, ITerminationLog, IResolveLog,
+      IPageSourceLog, IPointerLog
 {
     /// <summary>
     /// The ETW/EventPipe provider name a consumer subscribes to.
@@ -67,6 +68,9 @@ public sealed class DriverEventSource
 
     /// <summary>Event id for <see cref="PageSourceRead"/>.</summary>
     public const int PageSourceReadEventId = 7;
+
+    /// <summary>Event id for <see cref="PointerTargeted"/>.</summary>
+    public const int PointerTargetedEventId = 8;
 
     /// <inheritdoc />
     /// <remarks>
@@ -223,5 +227,32 @@ public sealed class DriverEventSource
         }
 
         WriteEvent(PageSourceReadEventId, characters, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Six arguments, so there is no fast <c>WriteEvent</c> overload and this
+    /// takes the params array path — the same trade
+    /// <see cref="RequestCompleted"/> makes, and for the same reason: a pointer
+    /// command is one event per dispatched input, not a per-frame stream.
+    /// </remarks>
+    [Event(
+        PointerTargetedEventId,
+        Level = EventLevel.Informational,
+        Message = "{0} -> ({1},{2}) of {3}x{4} {5} ms")]
+    public void PointerTargeted(
+        string command,
+        int x,
+        int y,
+        int width,
+        int height,
+        double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(PointerTargetedEventId, command, x, y, width, height, elapsedMilliseconds);
     }
 }

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using System.Diagnostics;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Diagnostics;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
@@ -66,8 +68,11 @@ public static class MouseRoutes
                 IElementInspector inspector,
                 IPointerInput? pointer,
                 IElementRegistry registry,
-                IWindowLocator windows) =>
+                IWindowLocator windows,
+                IPointerLog log) =>
             {
+                long began = Stopwatch.GetTimestamp();
+
                 MoveToRequest? request = await context.Request
                     .ReadFromJsonAsync<MoveToRequest>(context.RequestAborted)
                     .ConfigureAwait(false);
@@ -95,6 +100,12 @@ public static class MouseRoutes
                 int x;
                 int y;
 
+                // -1 until an element supplies one, so "no element" and "an
+                // element UIA could not place" stay distinguishable in the
+                // transcript. They are the same coordinate and different bugs.
+                int width = NoRectangle;
+                int height = NoRectangle;
+
                 if (hasElement)
                 {
                     ElementRead<ElementBounds> bounds =
@@ -120,6 +131,9 @@ public static class MouseRoutes
                     y = hasOffset
                         ? bounds.Value.Y + request.YOffset!.Value
                         : bounds.Value.Y + (bounds.Value.Height / 2);
+
+                    width = bounds.Value.Width;
+                    height = bounds.Value.Height;
                 }
                 else
                 {
@@ -133,6 +147,17 @@ public static class MouseRoutes
                     x = currentX + request!.XOffset!.Value;
                     y = currentY + request.YOffset!.Value;
                 }
+
+                // WRITTEN DOWN BEFORE THE RESULT, because a MoveTo that returns
+                // true is exactly the case with nothing else to look at. Two
+                // 200s and no context menu is what this line exists to explain.
+                log.PointerTargeted(
+                    "moveto",
+                    x,
+                    y,
+                    hasElement ? width : NoRectangle,
+                    hasElement ? height : NoRectangle,
+                    Elapsed(began));
 
                 return pointer.MoveTo(x, y)
                     ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
@@ -154,8 +179,10 @@ public static class MouseRoutes
         Func<IPointerInput, PointerButton, bool> act)
     {
         app.MapPost($"/session/{{sessionId}}/{suffix}",
-            async (HttpContext context, IPointerInput? pointer) =>
+            async (HttpContext context, IPointerInput? pointer, IPointerLog log) =>
             {
+                long began = Stopwatch.GetTimestamp();
+
                 ButtonRequest? request = await context.Request
                     .ReadFromJsonAsync<ButtonRequest>(context.RequestAborted)
                     .ConfigureAwait(false);
@@ -183,6 +210,19 @@ public static class MouseRoutes
                     return Fault(WebDriverFault.UnknownError, "The system rejected the pointer input.");
                 }
 
+                // WHERE, not just what. A button command acts wherever the
+                // pointer is, so the position read back here is the only record
+                // of what the preceding /moveto actually achieved — and a
+                // /moveto that answered 200 can still have left the cursor
+                // somewhere else.
+                log.PointerTargeted(
+                    $"{suffix} button {button}",
+                    pointer.TryGetPosition(out int atX, out int atY) ? atX : NoRectangle,
+                    atY,
+                    NoRectangle,
+                    NoRectangle,
+                    Elapsed(began));
+
                 // Dispatched, not yet consumed. The next read that depends on it
                 // waits; this call does not, so a burst of clicks pays once.
                 session.InputPending = true;
@@ -191,6 +231,12 @@ public static class MouseRoutes
             })
             .RequiresSession();
     }
+
+    /// <summary>There was no element, so there is no rectangle to report.</summary>
+    private const int NoRectangle = -1;
+
+    private static double Elapsed(long began) =>
+        Stopwatch.GetElapsedTime(began).TotalMilliseconds;
 
     private static IResult Fault(WebDriverFault fault, string message) =>
         Results.Json(JsonWireResponse.ForFault(fault, message), statusCode: fault.HttpStatus);

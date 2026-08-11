@@ -95,6 +95,8 @@ public partial class Program
             provider => provider.GetRequiredService<DriverEventSource>());
         builder.Services.AddSingleton<IPageSourceLog>(
             provider => provider.GetRequiredService<DriverEventSource>());
+        builder.Services.AddSingleton<IPointerLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
 
         // The transcript's destination and the consumer that fills it. Both are
         // DI singletons so the host disposes them: the listener unsubscribes and
