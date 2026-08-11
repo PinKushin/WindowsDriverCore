@@ -96,7 +96,8 @@ no warm step**:
 | WinAppDriver 1.2.1 | **280/290** |
 | environmental failures | 9 (3 ModernApp, 5 browser/EdgeBase, 1 `GetLocation`) |
 | **reachable ceiling** | **281** |
-| this driver | being re-measured |
+| **this driver** | **182/290** |
+| **the gap** | **98 tests** |
 
 **Every earlier figure in this file was wrong, including ones measured
 repeatedly.** Two pieces of scaffolding introduced on 2026-08-10 in a single
@@ -261,8 +262,15 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 - **280/290 for WinAppDriver 1.2.1 on the rebuilt guest**, cold, no reset, no
   warm — Windows 10 19045, Alarms & Clock `10.1906.2182.0`, offline, static 4 GB.
   Nine of the ten failures are environmental, so the reachable ceiling is **281**.
-  Our own figure is being re-measured; every previous one was taken through
-  scaffolding that moved the result.
+  **This driver scores 182/290 under the same conditions — a gap of 98.** Every
+  earlier figure for either driver was taken through scaffolding that moved the
+  result.
+- **The backlog, read from a request transcript rather than a test list:** 80
+  finds answering `no such element`, 18 `POST /actions` rejecting arguments with
+  status 100, 10 session creations failing on absent Edge. Removing the reset and
+  refusing to return a dead window took our failing requests from 294 to 203, and
+  `POST /element` answering `no such window` from **105 to 1** — a prediction
+  stated in `044b71c` before the run that tested it.
 - **The alarm-store reset costs 21 tests, and the warm step hid that.** Both were
   added in one commit (`c62ebde`, 2026-08-10) to stabilise the score:
 
