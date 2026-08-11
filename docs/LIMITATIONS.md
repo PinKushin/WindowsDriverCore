@@ -313,6 +313,34 @@ Two API facts found the hard way while measuring:
 
 ## Why attaching to the frame keeps failing — the loose fallback grabs an EMPTY frame
 
+> **CONFIRMED 2026-08-11 — the guess below is now MEASURED, on the wire.** A real
+> WinAppDriver 1.2.1 session on Calculator in the Win10 guest, `GET /window_handle`,
+> handle resolved through Win32:
+>
+> ```
+> window_handle  = 0x001E024E
+> class          = ApplicationFrameWindow
+> title          = 'Calculator'
+> owning pid     = 3704            (ApplicationFrameHost)
+> CoreWindow kid = Windows.UI.Core.CoreWindow(pid=1236)   (the app)
+> GA_ROOT        = itself
+> ```
+>
+> **WinAppDriver roots a packaged session at the frame.** We root at the
+> CoreWindow, which is destroyed roughly 300 ms after launch — so a session holds
+> a handle that dies on its own *and* searches from the wrong element.
+>
+> This also reclassifies the eight integration tests that failed when the frame
+> was returned instead (resolver, cache, packaged lifecycle, reproduced twice on a
+> clean machine). They assert the CoreWindow tree, so they are specifying the
+> defect and change with the code rather than blocking it. Rooting at the frame
+> was reverted on that evidence; the revert was correct at the time and is not the
+> destination.
+>
+> Measured rather than decompiled. WinAppDriver is installed on the guest and
+> answers questions about its own contract directly, which is neither a licensing
+> problem nor an inference.
+
 **WinAppDriver has no cold/warm difference at all.** Its matched run logged
 `app warmed: False` and still scored 281. Ours is 124 cold against 133 warm, so
 that 9-test gap is entirely our defect, and the obvious explanation is that
@@ -1048,6 +1076,41 @@ multiplied across their members — which is why it recovers to 281/290 on Windo
 10 with nothing changed but the operating system.
 
 ---
+
+## /source does not match WinAppDriver's shape yet — MEASURED
+
+From the same wire probe, 2026-08-11, WinAppDriver 1.2.1 on the Win10 guest,
+`GET /session/{id}/source` against Calculator:
+
+```
+root element : <Calculator>   ClassName='ApplicationFrameWindow'
+attributes   : AcceleratorKey, AccessKey, AutomationId, ClassName, FrameworkId,
+               HasKeyboardFocus, HelpText, IsContentElement, IsControlElement,
+               IsEnabled, IsKeyboardFocusable, IsOffscreen, IsPassword,
+               IsRequiredForForm, ItemStatus, ItemType, LocalizedControlType,
+               Name, Orientation, ProcessId, RuntimeId, x, y, width, height,
+               CanMaximize, CanMinimize, IsModal, WindowVisualState,
+               WindowInteractionState, IsTopmost, CanRotate, CanResize, CanMove,
+               IsAvailable                                        (33 in total)
+descendants  : 54        //Button : 36
+```
+
+Two differences from ours, and the first is the surprising one:
+
+- **The root element is tagged with the window's NAME, not its control type.**
+  `<Calculator>`, where ours emits `<Window>`. Buttons are still `<Button>`, so
+  this is not a blanket naming rule and one sample is not enough to say what the
+  rule is — it needs a second subject before anything is built on it.
+- **Thirty-three attributes against our five.** Ours carries `Name`,
+  `AutomationId`, `ClassName`, `IsEnabled`, `ControlType`. An expression written
+  against a real driver's source — `//*[@RuntimeId=...]`, anything positional on
+  `x`/`y`, `[@IsOffscreen='False']` — matches nothing here.
+
+The projection is shared between `/source` and XPath by construction, so widening
+it changes both surfaces at once. That is the point of sharing it, and it is also
+why the cost has to be measured before it lands: every attribute is a property in
+the cache request, and the cache request was measured to win at five properties
+and lose at one.
 
 ## Not implemented
 
