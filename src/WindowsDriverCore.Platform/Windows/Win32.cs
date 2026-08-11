@@ -65,6 +65,7 @@ internal static partial class Win32
     [LibraryImport("user32.dll")]
     internal static partial nint GetAncestor(nint hWnd, uint flags);
 
+
     /// <summary>Length of a window's title.</summary>
     /// <param name="hWnd">The window.</param>
     /// <returns>The length in characters, excluding the terminator.</returns>

@@ -51,10 +51,6 @@ public sealed class PackagedAppAttachesToTheFrameTests
         "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
 
     [Test]
-    [Ignore("SPECIFICATION, not a defect in the test. Handing back the frame " +
-            "instead of the CoreWindow was implemented and reverted: it broke " +
-            "eight integration tests on a clean machine, twice. See the class " +
-            "remarks and docs/LIMITATIONS.md.")]
     public void APackagedApplication_AttachesToItsFrame_NotToTheDoomedCoreWindow()
     {
         LaunchResult launched = new ApplicationLauncher(
