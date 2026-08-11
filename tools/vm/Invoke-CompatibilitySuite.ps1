@@ -201,16 +201,16 @@ if (-not '$Commit'.StartsWith(`$head) -and -not `$head.StartsWith('$Commit')) {
 'head: ' + `$head
 
 if ('$Driver' -eq 'WindowsDriverCore') {
-    & C:\dotnet\dotnet.exe publish src\WindowsDriverCore.Host -c Release -o C:\baseline\host --nologo -v q 2>&1 |
-        Select-String -Pattern 'WindowsDriverCore.Host ->|error' | ForEach-Object { `$_.Line }
-    # THE TRANSCRIPT IS THE POINT OF RUNNING OURS.
+    # BUILT ON THE HOST, NOT HERE. The guest has no network by design, so a
+    # NuGet restore cannot run: measured 2026-08-11, every project failed with
+    # NU1301 "No such host is known (api.nuget.org:443)" and the run aborted with
+    # no driver. Staging the SDK was not enough - the package cache would have to
+    # be staged too, and then kept in sync with every PackageReference forever.
     #
-    # A count says 290 ran and N failed. This says WHICH request failed, with
-    # which locator, at which step of which command, and what each one cost -
-    # for all 290. Chasing the last set of failures took a bespoke probe per
-    # question because the server said nothing about what it had answered.
-    `$env:WINDOWSDRIVERCORE_LOG = 'C:\baseline\transcript-' + `$head + '-' + (Get-Date -Format HHmmss) + '.log'
-    'transcript: ' + `$env:WINDOWSDRIVERCORE_LOG
+    # Publishing on the host removes the whole problem: the guest needs binaries,
+    # not a build. What arrives is exactly what the requested commit produces.
+    Expand-Archive -Path 'C:\baseline\payload\host.zip' -DestinationPath 'C:\baseline\host' -Force
+    'host binaries: ' + (Get-ChildItem 'C:\baseline\host' -Filter 'WindowsDriverCore.exe').Length + ' bytes'
     `$srv = Start-Process -FilePath 'C:\baseline\host\WindowsDriverCore.exe' -PassThru
 } else {
     `$srv = Start-Process -FilePath 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe' -PassThru
@@ -263,6 +263,49 @@ if (Test-Path `$path) {
 }
 'run complete'
 "@
+
+# ---------------------------------------------------------------------------
+# Publish on the HOST when the driver under test is ours.
+#
+# The guest has no network, so it cannot restore packages. It also does not
+# need to: it needs binaries. Publishing here means what runs on the guest is
+# exactly what the requested commit produces, and it removes an entire class of
+# guest-side build failure from the measurement path.
+#
+# The host tree must BE that commit. Building a different tree and labelling the
+# result with $Commit is precisely the mislabelling the HEAD guard exists to
+# stop, one machine over.
+# ---------------------------------------------------------------------------
+if ($Driver -eq 'WindowsDriverCore') {
+    $hostHead = (& git rev-parse --short HEAD).Trim()
+    if (-not $Commit.StartsWith($hostHead) -and -not $hostHead.StartsWith($Commit)) {
+        throw "The host tree is at $hostHead but $Commit was requested. Check out $Commit first - publishing a different tree and labelling it $Commit is a fabricated result."
+    }
+
+    $dirty = (& git status --porcelain) | Where-Object { $_ }
+    if ($dirty) {
+        Write-Warning "The host tree has uncommitted changes. The published binaries will not match $hostHead exactly:"
+        $dirty | ForEach-Object { Write-Warning "  $_" }
+    }
+
+    $publish = Join-Path $env:TEMP "wdc-publish-$hostHead"
+    if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
+
+    Write-Host "Publishing $hostHead on the host..."
+    & dotnet publish src/WindowsDriverCore.Host -c Release -o $publish --nologo -v q 2>&1 |
+        Select-String -Pattern 'error|warning' | ForEach-Object { $_.Line }
+
+    $exe = Join-Path $publish 'WindowsDriverCore.exe'
+    if (-not (Test-Path $exe)) { throw "Publish produced no WindowsDriverCore.exe in $publish" }
+
+    $zip = Join-Path $env:TEMP "wdc-host-$hostHead.zip"
+    if (Test-Path $zip) { Remove-Item $zip -Force }
+    Compress-Archive -Path (Join-Path $publish '*') -DestinationPath $zip -CompressionLevel Optimal
+    'published {0:N1} MB' -f ((Get-Item $zip).Length / 1MB)
+
+    Copy-VMFile -Name $VMName -SourcePath $zip -DestinationPath 'C:\baseline\payload\host.zip' -CreateFullPath -FileSource Host -Force
+    Write-Host 'host binaries pushed to the guest'
+}
 
 $name = "compat-$(Get-Date -Format HHmmss)"
 Invoke-Command -VMName $VMName -Credential $credential -ArgumentList $job, $name -ScriptBlock {
