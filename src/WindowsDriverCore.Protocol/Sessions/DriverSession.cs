@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 
+using WindowsDriverCore.Platform.Windows;
+
 namespace WindowsDriverCore.Protocol.Sessions;
 
 /// <summary>
@@ -63,6 +65,17 @@ public sealed record DriverSession(
     /// queues and the application consumes on its own message loop.
     /// </remarks>
     public bool InputPending { get; set; }
+
+    /// <summary>The modifier keys this session is holding between calls.</summary>
+    /// <remarks>
+    /// <b>Session state because the protocol says so.</b> <c>POST /keys</c>
+    /// persists modifiers across calls — "Keys persist all modifier between API
+    /// call and requires explicit modifier release" — so a shift opened by one
+    /// request has to still be down when the next arrives. The element route is
+    /// deliberately not part of this: it releases at the end of every call, which
+    /// is the contract its own tests assert.
+    /// </remarks>
+    public HeldModifiers Modifiers { get; } = new();
 
     /// <summary>How long a find retries before reporting nothing found.</summary>
     /// <remarks>

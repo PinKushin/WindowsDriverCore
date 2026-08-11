@@ -42,14 +42,15 @@ public sealed class SendInputKeyboardTests
     /// become public API just to be testable — and the alternative is typing
     /// into the developer's machine during a unit test run.
     /// </remarks>
-    private static (ushort VirtualKey, ushort ScanCode, uint Flags)[] Batch(string keys)
+    private static (ushort VirtualKey, ushort ScanCode, uint Flags)[] Batch(
+        string keys, HeldModifiers? carried = null)
     {
         MethodInfo? build = typeof(SendInputKeyboard).GetMethod(
             "BuildBatch", BindingFlags.NonPublic | BindingFlags.Static);
 
         build.ShouldNotBeNull("the batch builder must be reachable for this to test anything");
 
-        object? result = build.Invoke(null, [keys]);
+        object? result = build.Invoke(null, [keys, carried]);
         Win32Input[] inputs = ((Array)result!).Cast<object>()
             .Select(Convert)
             .ToArray();
@@ -168,6 +169,76 @@ public sealed class SendInputKeyboardTests
         (ushort VirtualKey, ushort ScanCode, uint Flags)[] batch = Batch($"{Shift}a");
 
         batch[^1].ShouldBe(((ushort)0x10, (ushort)0, KeyUp));
+    }
+
+    /// <summary>
+    /// A session keeps a modifier down between calls.
+    /// </summary>
+    /// <remarks>
+    /// <b>The opposite of the element rule, and the suite states both.</b>
+    /// <c>SendKeys_ModifierExplicitRelease</c>: "Keys persist all modifier
+    /// between API call and requires explicit modifier release". Three calls
+    /// must produce ABCWXYZ!@#&amp;*()ABCWXYZ!@#&amp;*()abcwxyz1237890 — shift
+    /// survives the first call and shifts the second — where releasing at the end
+    /// produced ABCWXYZ!@#&amp;*()abcwxyz1237890abcwxyz1237890, which is exactly
+    /// what was measured.
+    /// </remarks>
+    [Test]
+    public void AModifierHeldAtTheEnd_StaysDownWhenTheSessionCarriesIt()
+    {
+        HeldModifiers carried = new();
+
+        (ushort VirtualKey, ushort ScanCode, uint Flags)[] batch = Batch($"{Shift}a", carried);
+
+        // The SHIFT is never lifted. Checking the last input instead would be
+        // wrong: the sequence legitimately ends with the key-up of "a".
+        batch.ShouldNotContain(
+            i => i.VirtualKey == 0x10 && i.Flags == KeyUp,
+            "the sequence must not lift the shift it is holding");
+
+        batch.ShouldContain(
+            i => i.VirtualKey == 0x10 && i.Flags != KeyUp,
+            "and it must have pressed it");
+
+        carried.Contains(Shift).ShouldBeTrue("the session is still holding shift");
+    }
+
+    /// <summary>
+    /// A carried modifier is not pressed a second time.
+    /// </summary>
+    /// <remarks>
+    /// It is already physically down. A second key-down arrives at the
+    /// application as an auto-repeat, which is a different event from the one the
+    /// client asked for — and the carried set would then be wrong about what is
+    /// held.
+    /// </remarks>
+    [Test]
+    public void AModifierAlreadyCarried_IsNotPressedAgain()
+    {
+        HeldModifiers carried = new();
+        carried.Hold(Shift);
+
+        (ushort VirtualKey, ushort ScanCode, uint Flags)[] batch = Batch("a", carried);
+
+        batch.ShouldNotContain(
+            i => i.VirtualKey == 0x10,
+            "shift is already down, so this sequence must not touch it");
+        carried.Contains(Shift).ShouldBeTrue("it is still held afterwards");
+    }
+
+    /// <summary>
+    /// A carried modifier named again is released, and the session forgets it.
+    /// </summary>
+    [Test]
+    public void ACarriedModifierNamedAgain_IsReleased()
+    {
+        HeldModifiers carried = new();
+        carried.Hold(Shift);
+
+        (ushort VirtualKey, ushort ScanCode, uint Flags)[] batch = Batch($"a{Shift}", carried);
+
+        batch[^1].ShouldBe(((ushort)0x10, (ushort)0, KeyUp));
+        carried.Contains(Shift).ShouldBeFalse("the explicit release is what the caller asked for");
     }
 
     [Test]
