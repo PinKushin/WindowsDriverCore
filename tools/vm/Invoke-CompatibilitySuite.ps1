@@ -230,6 +230,17 @@ if ('$Driver' -eq 'WindowsDriverCore') {
     # not a build. What arrives is exactly what the requested commit produces.
     Expand-Archive -Path 'C:\baseline\payload\host.zip' -DestinationPath 'C:\baseline\host' -Force
     'host binaries: ' + (Get-ChildItem 'C:\baseline\host' -Filter 'WindowsDriverCore.exe').Length + ' bytes'
+    # THE TRANSCRIPT IS THE POINT OF RUNNING OURS.
+    #
+    # A count says 290 ran and N failed. This says WHICH request failed, with
+    # which locator, at which step of which command, and what each one cost.
+    #
+    # Added once already and deleted by a later edit to this same block, which
+    # is why the first 163/290 run produced a number and no evidence. Set it
+    # IMMEDIATELY before Start-Process so anything inserted above cannot
+    # silently separate the two.
+    `$env:WINDOWSDRIVERCORE_LOG = 'C:\baseline\transcript-' + `$head + '-' + (Get-Date -Format HHmmss) + '.log'
+    'transcript: ' + `$env:WINDOWSDRIVERCORE_LOG
     `$srv = Start-Process -FilePath 'C:\baseline\host\WindowsDriverCore.exe' -PassThru
 } else {
     `$srv = Start-Process -FilePath 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe' -PassThru
