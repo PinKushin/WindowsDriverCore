@@ -40,9 +40,30 @@ namespace WindowsDriverCore.Tests.Integration;
 /// </remarks>
 [TestFixture]
 [Category("Integration")]
+[Category("SynthesisesRealInput")]
 [NonParallelizable]
 public sealed class LadderAgainstOwnSubjectTests
 {
+    // **THIS FIXTURE MOVES THE REAL MOUSE.** It was given a live SendInputPointer
+    // on 2026-08-11 so the ladder's last rung was reachable at all; before that
+    // the rung could not run and "the ladder refused" was indistinguishable from
+    // "the rung was unreachable".
+    //
+    // The cost is that it dispatches physical input at computed screen
+    // coordinates, and physical input goes wherever the pointer actually is. The
+    // interactor foregrounds the target first, but a window that moves between
+    // the bounds check and the click, or a focus change from anything else on the
+    // machine, puts the click somewhere nobody asked for. On the session it was
+    // added, a developer's Settings window stopped responding and had to be
+    // closed - not proven to be this, and nothing else in the session synthesises
+    // input.
+    //
+    // Hence the SynthesisesRealInput category. Exclude it on a workstation:
+    //
+    //     dotnet test --filter "TestCategory!=SynthesisesRealInput"
+    //
+    // It belongs on the guest VM, where there is no human sharing the desktop.
+
     private UiaElementFinder _finder = null!;
     private UiaElementInspector _inspector = null!;
     private UiaElementInteractor _interactor = null!;

@@ -83,7 +83,7 @@ public sealed class ApplicationLauncherTests
             // address the wrong process. Asserting only "non-zero" would pass on
             // the broker id and hide exactly that bug.
             result.Application.ProcessId
-                .ShouldBe(_windows.GetOwningProcessId(result.Application.WindowHandle));
+                .ShouldBe(_windows.GetHostedProcessId(result.Application.WindowHandle));
             result.Application.ProcessId.ShouldBeGreaterThan(0);
         }
         finally
@@ -109,7 +109,7 @@ public sealed class ApplicationLauncherTests
             result.Application.ShouldNotBeNull();
             _windows.Exists(result.Application.WindowHandle).ShouldBeTrue();
             result.Application.ProcessId
-                .ShouldBe(_windows.GetOwningProcessId(result.Application.WindowHandle));
+                .ShouldBe(_windows.GetHostedProcessId(result.Application.WindowHandle));
         }
         finally
         {

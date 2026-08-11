@@ -5,6 +5,8 @@ namespace WindowsDriverCore.Platform.Windows;
 /// </summary>
 public sealed class WindowLocator : IWindowLocator
 {
+    private const string CoreWindowClass = "Windows.UI.Core.CoreWindow";
+
     /// <inheritdoc />
     public nint DesktopWindow => Win32.GetDesktopWindow();
 
@@ -24,6 +26,46 @@ public sealed class WindowLocator : IWindowLocator
         // through the out parameter.
         Win32.GetWindowThreadProcessId(handle, out uint processId);
         return (int)processId;
+    }
+
+    /// <inheritdoc />
+    public int GetHostedProcessId(nint handle)
+    {
+        int owner = GetOwningProcessId(handle);
+        if (owner == 0)
+        {
+            return 0;
+        }
+
+        // A frame shows somebody else's content. Its CoreWindow child is the only
+        // place the hosted application's process id appears — measured on the
+        // Windows 10 guest: frame owned by ApplicationFrameHost 3704, CoreWindow
+        // child owned by CalculatorApp 10832, one window.
+        int hosted = 0;
+
+        Win32.EnumChildWindows(handle, (child, _) =>
+        {
+            if (ClassNameOf(child) != CoreWindowClass)
+            {
+                return true;
+            }
+
+            Win32.GetWindowThreadProcessId(child, out uint childProcess);
+            hosted = (int)childProcess;
+            return false;
+        }, 0);
+
+        // The window's own owner when it hosts nothing, which is every classic
+        // Win32 and WinUI 3 application — they create and own their window
+        // outright and there is no broker in the path at all.
+        return hosted != 0 ? hosted : owner;
+    }
+
+    private static string ClassNameOf(nint window)
+    {
+        char[] buffer = new char[256];
+        int length = Win32.GetClassName(window, buffer, buffer.Length);
+        return length > 0 ? new string(buffer, 0, length) : string.Empty;
     }
 
     /// <inheritdoc />

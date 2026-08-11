@@ -24,6 +24,31 @@ public interface IWindowLocator
     /// <returns>The owning process id, or 0 when the window does not exist.</returns>
     int GetOwningProcessId(nint handle);
 
+    /// <summary>The process whose content a window shows.</summary>
+    /// <param name="handle">The window handle.</param>
+    /// <returns>
+    /// The hosted application's process id; the window's own owner when it hosts
+    /// nothing; 0 when the window does not exist.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Not the same question as <see cref="GetOwningProcessId"/>, and the
+    /// difference is a hazard.</b> A packaged application's window is an
+    /// <c>ApplicationFrameWindow</c> owned by <c>ApplicationFrameHost</c> — a
+    /// broker shared by every UWP window on the machine — while the application
+    /// owns only the <c>Windows.UI.Core.CoreWindow</c> inside it. Measured on the
+    /// Windows 10 guest: frame pid 3704, application pid 10832, one window.
+    /// </para>
+    /// <para>
+    /// Everything process-scoped must follow the CONTENT: terminating a session,
+    /// waiting for input to be consumed, telling two instances apart. Aimed at
+    /// the owner of a frame, <c>DELETE /session</c> would close every UWP window
+    /// the user has open, and <c>WaitForInputIdle</c> would wait on a broker that
+    /// need never be idle.
+    /// </para>
+    /// </remarks>
+    int GetHostedProcessId(nint handle);
+
     /// <summary>The window's title bar text.</summary>
     /// <param name="handle">The window.</param>
     /// <returns>The title, or an empty string if the window has none or is gone.</returns>
