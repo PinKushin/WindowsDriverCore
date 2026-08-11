@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Platform.Applications;
@@ -37,18 +39,112 @@ public sealed class ApplicationLauncherTests
         _launcher = new ApplicationLauncher(new MainWindowWaiter(TimeProvider.System), _windows);
     }
 
-    private static void KillIfRunning(string processName)
+    /// <summary>The process ids currently running under a name.</summary>
+    /// <remarks>
+    /// Taken before a launch so that afterwards the difference names what the
+    /// launch added. Ids rather than <see cref="Process"/> objects: the objects
+    /// would have to be disposed, and only the identity is wanted.
+    /// </remarks>
+    private static HashSet<int> ProcessIdsNamed(string processName)
     {
+        HashSet<int> running = [];
+
+        foreach (Process process in Process.GetProcessesByName(processName))
+        {
+            running.Add(process.Id);
+            process.Dispose();
+        }
+
+        return running;
+    }
+
+    /// <summary>
+    /// Ends what a launch added, and nothing that was already running.
+    /// </summary>
+    /// <param name="processName">The process name to look under.</param>
+    /// <param name="before">The ids from before the launch.</param>
+    /// <param name="application">
+    /// What the launch returned, whose window is closed first. Null when there is
+    /// no window — the bystander fixture drives this helper with plain console
+    /// processes, and a launch that failed has nothing to close.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>This used to kill every process with the name, and it took the owner's
+    /// own Notepad with it</b> — observed 2026-08-11. That is the same class of
+    /// mistake as aiming a session teardown at <c>ApplicationFrameHost</c>, which
+    /// this project already forbids: a name is not an identity, and a test has no
+    /// claim on a window somebody else opened.
+    /// </para>
+    /// <para>
+    /// <b>The difference, rather than the launched id, and that part is not
+    /// tidiness.</b> On Windows 11 <c>System32\notepad.exe</c> redirects to the
+    /// packaged Notepad, which is single-instance and session-restoring — so the
+    /// process that ends up owning the window is frequently NOT the one that was
+    /// started, the same intermediate-process-id problem the driver already knows
+    /// about from packaged activation. Killing the reported id alone left a
+    /// Notepad running that then showed a "Not a valid file name." modal from a
+    /// failed session restore.
+    /// </para>
+    /// <para>
+    /// A process that another agent starts under the same name inside this window
+    /// would be caught too. The window is the length of one launch, and the
+    /// alternative — trusting a parent id across a packaged relaunch — is the
+    /// thing that does not work here.
+    /// </para>
+    /// </remarks>
+    private void StopWhatWasStarted(
+        string processName, HashSet<int> before, LaunchedApplication? application)
+    {
+        // THE WINDOW FIRST, because on a single-instance application that is the
+        // only thing the launch actually added. Measured 2026-08-11 with a
+        // Notepad already open: a run took the process count from 1 to 1 and the
+        // window count from 1 to 2, so a difference of process ids saw nothing to
+        // clean and left the test's window on the desktop.
+        //
+        // WM_CLOSE through the same locator the driver uses, so a test tears an
+        // application down the way DELETE /session does.
+        if (application is not null && _windows.Exists(application.WindowHandle))
+        {
+            _windows.Close(application.WindowHandle);
+            _windows.WaitUntilGone(application.WindowHandle);
+        }
+
         foreach (Process process in Process.GetProcessesByName(processName))
         {
             try
             {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
+                if (before.Contains(process.Id))
+                {
+                    continue;
+                }
+
+                // ASKED TO CLOSE BEFORE BEING KILLED, and that ordering is the
+                // fix rather than politeness. Killing the packaged Notepad makes
+                // it come back: it treats the death as a crash and restores its
+                // session under a new pid, which is how a run that "cleaned up"
+                // left a Notepad on the desktop at 16:22 showing a "Not a valid
+                // file name." modal from the restore it had just attempted.
+                // WM_CLOSE is an ordinary exit and nothing is restored.
+                //
+                // The same verb ApplicationTerminator uses for the same reason,
+                // so a test tears an application down the way the driver does.
+                if (process.CloseMainWindow())
+                {
+                    process.WaitForExit(5000);
+                }
+
+                if (!process.HasExited)
+                {
+                    // It ignored the request, or never had a window to send it
+                    // to. Nothing gentler is left.
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                }
             }
             catch (InvalidOperationException)
             {
-                // Already gone between the enumeration and the kill.
+                // Already gone between the enumeration and the close.
             }
             finally
             {
@@ -57,10 +153,106 @@ public sealed class ApplicationLauncherTests
         }
     }
 
+    /// <summary>
+    /// The cleanup ends what a launch added and leaves what was already there.
+    /// </summary>
+    /// <remarks>
+    /// <b>The bystander is the whole experiment.</b> With one subject, "ended the
+    /// right process" and "ended every process with that name" predict the same
+    /// observation — and the second is what the old helper did, which closed the
+    /// owner's own Notepad on 2026-08-11. Notepad cannot play the subject here
+    /// because it is single-instance: two launches are one process, so there
+    /// would be nothing to tell apart.
+    /// </remarks>
+    [Test]
+    public void StoppingWhatWasStarted_EndsTheNewProcess_AndSparesTheOneAlreadyRunning()
+    {
+        using Process bystander = StartWaiter();
+
+        HashSet<int> before = ProcessIdsNamed(WaiterName);
+        before.ShouldContain(bystander.Id, "the snapshot must include the bystander");
+
+        using Process started = StartWaiter();
+
+        StopWhatWasStarted(WaiterName, before, application: null);
+
+        started.WaitForExit(5000);
+        started.HasExited.ShouldBeTrue("the process the launch added must be ended");
+        bystander.HasExited.ShouldBeFalse(
+            "a process that was already running is not this test's to kill");
+
+        bystander.Kill(entireProcessTree: true);
+        bystander.WaitForExit(5000);
+    }
+
+    /// <summary>A process that waits rather than exiting, and owns no window.</summary>
+    /// <remarks>
+    /// <c>cmd /c pause</c> blocks reading its input, so redirecting that input and
+    /// never writing to it holds the process open for exactly as long as the test
+    /// needs — with no window to steal focus from whatever else is on the desktop.
+    /// </remarks>
+    private static Process StartWaiter()
+    {
+        ProcessStartInfo waiting = new()
+        {
+            FileName = "cmd.exe",
+            Arguments = "/c pause",
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            CreateNoWindow = true,
+        };
+
+        Process? started = Process.Start(waiting);
+        started.ShouldNotBeNull();
+        return started;
+    }
+
+    private const string WaiterName = "cmd";
+
+    /// <summary>
+    /// The window a launch produced is gone afterwards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The instrument, corrected.</b> Counting processes was the wrong
+    /// measurement and it passed while the defect was in plain sight: measured
+    /// 2026-08-11 with a Notepad already open, a run took the process count from
+    /// 1 to 1 and the WINDOW count from 1 to 2. Modern Notepad is single-instance
+    /// and multi-window, so the thing a launch adds is a window, and a difference
+    /// of process ids can never see it.
+    /// </para>
+    /// <para>
+    /// This is the case the owner reported as "neither closed" — both windows
+    /// were in one process that the cleanup correctly declined to kill, because
+    /// it had been running before the test started.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void Launching_ThenStopping_LeavesNoWindowBehind()
+    {
+        HashSet<int> before = ProcessIdsNamed("Notepad");
+
+        LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
+
+        if (result.FailureMessage is not null)
+        {
+            Assert.Ignore($"Notepad is not available on this machine: {result.FailureMessage}");
+        }
+
+        result.Application.ShouldNotBeNull();
+        nint window = result.Application.WindowHandle;
+
+        StopWhatWasStarted("Notepad", before, result.Application);
+
+        _windows.Exists(window).ShouldBeFalse(
+            "the window the launch produced must be gone; a process count cannot " +
+            "see it, because Notepad is single-instance and multi-window");
+    }
+
     [Test]
     public void Launch_PackagedApplication_ReturnsAWindowOwnedByALiveProcess()
     {
-        KillIfRunning("CalculatorApp");
+        HashSet<int> before = ProcessIdsNamed("CalculatorApp");
 
         LaunchResult result = _launcher.Launch(new ApplicationTarget(CalculatorAumid, null, null));
 
@@ -88,14 +280,14 @@ public sealed class ApplicationLauncherTests
         }
         finally
         {
-            KillIfRunning("CalculatorApp");
+            StopWhatWasStarted("CalculatorApp", before, result.Application);
         }
     }
 
     [Test]
     public void Launch_ClassicApplication_ReturnsAWindowOwnedByThatProcess()
     {
-        KillIfRunning("Notepad");
+        HashSet<int> before = ProcessIdsNamed("Notepad");
 
         LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
 
@@ -113,7 +305,7 @@ public sealed class ApplicationLauncherTests
         }
         finally
         {
-            KillIfRunning("Notepad");
+            StopWhatWasStarted("Notepad", before, result.Application);
         }
     }
 
@@ -155,7 +347,7 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void Launch_InvalidWorkingDirectory_FailsBeforeStartingAnything()
     {
-        KillIfRunning("Notepad");
+        HashSet<int> before = ProcessIdsNamed("Notepad");
 
         LaunchResult result = _launcher.Launch(
             new ApplicationTarget(NotepadPath, null, @"C:\no\such\directory"));
@@ -166,7 +358,12 @@ public sealed class ApplicationLauncherTests
         // The bystander: rejecting the request must not have started the
         // application anyway. Without this, "validated first" and "started then
         // failed" look identical from the result alone.
-        Process.GetProcessesByName("Notepad").ShouldBeEmpty();
+        //
+        // The DIFFERENCE, not the total. Asserting the machine has no Notepad at
+        // all made this test a statement about the developer's desktop, and the
+        // pre-kill that made it pass is what closed the owner's own window.
+        ProcessIdsNamed("Notepad").Except(before).ShouldBeEmpty(
+            "rejecting the request must not have started the application anyway");
     }
 
     [TestCase("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", true)]
