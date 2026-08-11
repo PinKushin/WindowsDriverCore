@@ -173,6 +173,25 @@ public sealed class TextRequestLogTests
     }
 
     [Test]
+    public void AResolve_IsIndentedInsideTheActionThatNeededIt()
+    {
+        // Two levels of indent: a resolve happens inside an element action,
+        // which happens inside a request. The cost is the point - 19.4 ms is a
+        // tree walk and 0.45 ms is a cached handle, and nothing else in the
+        // transcript separates them.
+        StringWriter written = new();
+
+        using (TextRequestLogListener listener = new(written, new FixedClock(Noon)))
+        using (DriverEventSource source = new())
+        {
+            ((IResolveLog)source).ElementResolved("Resolved", 0.45);
+        }
+
+        written.ToString().ShouldBe(
+            "2026-08-11T09:15:04.250Z     resolve -> Resolved 0.5 ms" + Environment.NewLine);
+    }
+
+    [Test]
     public void AnUnrelatedEventSource_IsNotSubscribedTo()
     {
         // THE CONTROL, and it measures SUBSCRIPTION rather than output. An

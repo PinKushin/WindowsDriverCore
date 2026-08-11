@@ -43,6 +43,27 @@ public interface IFindLog
 }
 
 /// <summary>
+/// Records the lookup that turns an element id back into a live element.
+/// </summary>
+/// <remarks>
+/// <b>The driver's main performance claim is invisible without it.</b> Resolving
+/// an id walks the tree at a measured 19.4 ms; the same lookup against a held
+/// handle is 0.45 ms. Which of those happened is not visible in any request line
+/// — the whole command just takes longer — so a cache that quietly stopped
+/// hitting would look like a slow application.
+/// </remarks>
+public interface IResolveLog
+{
+    /// <summary>Records a finished lookup.</summary>
+    /// <param name="outcome">Resolved, NotFound or NoSuchWindow.</param>
+    /// <param name="elapsedMilliseconds">
+    /// Wall-clock cost, which is what distinguishes a cached handle from a full
+    /// tree walk.
+    /// </param>
+    void ElementResolved(string outcome, double elapsedMilliseconds);
+}
+
+/// <summary>
 /// Records which rung of the click ladder acted, and what came of it.
 /// </summary>
 /// <remarks>

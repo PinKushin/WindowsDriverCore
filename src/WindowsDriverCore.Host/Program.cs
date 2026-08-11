@@ -76,6 +76,8 @@ public partial class Program
             provider => provider.GetRequiredService<DriverEventSource>());
         builder.Services.AddSingleton<ITerminationLog>(
             provider => provider.GetRequiredService<DriverEventSource>());
+        builder.Services.AddSingleton<IResolveLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
 
         // The transcript's destination and the consumer that fills it. Both are
         // DI singletons so the host disposes them: the listener unsubscribes and
@@ -123,8 +125,13 @@ public partial class Program
         builder.Services.AddSingleton<UiaElementResolver>();
         builder.Services.AddSingleton(provider =>
             new CachingElementResolver(provider.GetRequiredService<UiaElementResolver>()));
-        builder.Services.AddSingleton<IElementResolver>(
-            provider => provider.GetRequiredService<CachingElementResolver>());
+        // Wrapped OUTSIDE the cache, so the recorded cost is what the caller
+        // paid. Inside it would time only the misses and report the hits as
+        // nothing at all, which is the opposite of the question being asked.
+        builder.Services.AddSingleton<IElementResolver>(provider =>
+            new LoggingElementResolver(
+                provider.GetRequiredService<CachingElementResolver>(),
+                provider.GetRequiredService<IResolveLog>()));
         builder.Services.AddSingleton<IElementHandleCache>(
             provider => provider.GetRequiredService<CachingElementResolver>());
         builder.Services.AddSingleton<IElementInspector, UiaElementInspector>();

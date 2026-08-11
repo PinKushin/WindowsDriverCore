@@ -30,7 +30,7 @@ namespace WindowsDriverCore.Diagnostics;
 /// </remarks>
 [EventSource(Name = SourceName)]
 public sealed class DriverEventSource
-    : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog, ITerminationLog
+    : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog, ITerminationLog, IResolveLog
 {
     /// <summary>
     /// The ETW/EventPipe provider name a consumer subscribes to.
@@ -61,6 +61,9 @@ public sealed class DriverEventSource
 
     /// <summary>Event id for <see cref="ApplicationTerminated"/>.</summary>
     public const int ApplicationTerminatedEventId = 5;
+
+    /// <summary>Event id for <see cref="ElementResolved"/>.</summary>
+    public const int ElementResolvedEventId = 6;
 
     /// <inheritdoc />
     /// <remarks>
@@ -187,5 +190,20 @@ public sealed class DriverEventSource
         }
 
         WriteEvent(ApplicationTerminatedEventId, processId, ended, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        ElementResolvedEventId,
+        Level = EventLevel.Informational,
+        Message = "resolve -> {0} {1} ms")]
+    public void ElementResolved(string outcome, double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(ElementResolvedEventId, outcome, elapsedMilliseconds);
     }
 }
