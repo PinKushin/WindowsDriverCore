@@ -269,6 +269,39 @@ internal static partial class Win32
     [LibraryImport("user32.dll")]
     internal static partial nint GetShellWindow();
 
+    /// <summary>Prepares the process to inject touch. Once only; a second call fails.</summary>
+    /// <remarks>
+    /// Windows 8 and later, so inside this driver's Windows 10 1607 floor.
+    /// </remarks>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool InitializeTouchInjection(uint maxCount, uint dwMode);
+
+    /// <summary>Injects one frame of touch contacts.</summary>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool InjectTouchInput(
+        uint count,
+        [In] SyntheticPointer.PointerTouchInfo[] contacts);
+
+    /// <summary>Creates a synthetic pen device.</summary>
+    /// <remarks>
+    /// Windows 10 <b>1809</b>, which is ABOVE the 1607 floor - so this can
+    /// genuinely be absent on a supported system and the caller must cope rather
+    /// than assume.
+    /// </remarks>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial nint CreateSyntheticPointerDevice(
+        uint pointerType, uint maxCount, uint mode);
+
+    /// <summary>Injects one frame through a synthetic pointer device.</summary>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool InjectSyntheticPointerInput(
+        nint device,
+        [In] SyntheticPointer.PointerTypeInfo[] pointerInfo,
+        uint count);
+
     internal const uint WM_CLOSE = 0x0010;
 
     /// <summary>Brings a window to the foreground.</summary>
