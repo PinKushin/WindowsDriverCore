@@ -280,4 +280,30 @@ public sealed class CreateSessionRouteTests : IDisposable
 
         _windows.Received().Exists(0xB822E2);
     }
+
+    /// <summary>
+    /// A handle attaches even when it carries the "0x" prefix this driver's own
+    /// <c>/window_handle</c> emits.
+    /// </summary>
+    /// <remarks>
+    /// <b>The untested seam.</b> Every other case here uses bare hex
+    /// (<c>"B822E2"</c>), which <c>NumberStyles.HexNumber</c> accepts. It does
+    /// NOT accept a leading "0x" — and <c>FormatHandle</c> in
+    /// <c>WindowRoutes</c> always produces one. So a client that reads a real
+    /// session's own handle back with <c>GET /window_handle</c> and feeds it
+    /// straight into <c>appTopLevelWindow</c>, which is exactly what
+    /// <c>CreateSessionFromExistingWindowHandle_ClassicApp</c> does, could never
+    /// attach: this driver could not parse the handle it had just produced.
+    /// </remarks>
+    [Test]
+    public async Task CreateSession_AttachToWindow_AcceptsTheZeroXPrefixItsOwnHandleFormatUses()
+    {
+        _windows.Exists(0xB822E2).Returns(true);
+        _windows.GetHostedProcessId(0xB822E2).Returns(1);
+
+        HttpResponseMessage response = await CreateSession(new { appTopLevelWindow = "0xB822E2" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        _windows.Received().Exists(0xB822E2);
+    }
 }

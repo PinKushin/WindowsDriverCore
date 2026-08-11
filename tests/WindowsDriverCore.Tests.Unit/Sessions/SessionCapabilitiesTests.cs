@@ -83,6 +83,25 @@ public sealed class SessionCapabilitiesTests
         result.Message.ShouldBe("Capability: app cannot be empty");
     }
 
+    /// <summary>
+    /// An empty <c>appTopLevelWindow</c> gets its own message, not the generic
+    /// "cannot find" fault a genuinely missing window gets.
+    /// </summary>
+    /// <remarks>
+    /// Measured against WinAppDriver by the suite's own
+    /// <c>CreateSessionFromExistingWindowHandleError_EmptyValue</c>: an empty
+    /// string is a caller mistake at the capability level, distinct from a
+    /// well-formed handle that names nothing.
+    /// </remarks>
+    [Test]
+    public void EmptyTopLevelWindow_IsRejectedWithItsOwnMessage()
+    {
+        CapabilityParseResult result = Parse("""{"desiredCapabilities":{"appTopLevelWindow":""}}""");
+
+        result.Fault.ShouldBe(WebDriverFault.InvalidArgument);
+        result.Message.ShouldBe("Capability: appTopLevelWindow cannot be empty");
+    }
+
     [Test]
     public void W3CAlwaysMatchShape_IsNotUnderstood()
     {
