@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace WindowsDriverCore.Platform.Windows;
 
 /// <summary>
@@ -97,14 +99,40 @@ public sealed class WindowLocator : IWindowLocator
             return false;
         }
 
-        // A message queue is ordered, so a synchronous WM_NULL cannot be handled
-        // until everything queued before it has been. No sleep and no guess: this
-        // waits for the condition itself.
+        // SYNCHRONISE ON THE WINDOW WITH FOCUS, not on the session's window.
         //
-        // ABORTIFHUNG so a wedged application fails the command instead of
-        // hanging the driver, and a bounded timeout for the same reason.
+        // Measured 2026-08-11: waiting on the session window changed nothing at
+        // all - a 52-character string still read back as "ab". For a packaged
+        // application the session window is the ApplicationFrameWindow, which
+        // belongs to ApplicationFrameHost.exe, a DIFFERENT process and thread
+        // from the application. A WM_NULL there is answered by a queue that never
+        // saw the keystrokes, so it returns at once and waits for nothing.
+        //
+        // The keystrokes go to whatever has keyboard focus, so that is the queue
+        // that has to drain.
+        nint target = FocusedWindow();
+        if (target == 0)
+        {
+            target = handle;
+        }
+
+        // A message queue is ordered, so a synchronous WM_NULL cannot be handled
+        // until everything queued before it has been. No sleep and no guess.
+        // ABORTIFHUNG and a bounded timeout so a wedged application fails the
+        // command rather than hanging the driver.
         return Win32.SendMessageTimeout(
-            handle, Win32.WM_NULL, 0, 0, Win32.SMTO_ABORTIFHUNG, InputDrainTimeoutMs, out _) != 0;
+            target, Win32.WM_NULL, 0, 0, Win32.SMTO_ABORTIFHUNG, InputDrainTimeoutMs, out _) != 0;
+    }
+
+    /// <summary>The window with keyboard focus, or zero.</summary>
+    /// <returns>The focused window on the foreground thread.</returns>
+    private static nint FocusedWindow()
+    {
+        Win32.GuiThreadInfo info = default;
+        info.Size = Marshal.SizeOf<Win32.GuiThreadInfo>();
+
+        // Thread 0 means the foreground thread, which is where typed input goes.
+        return Win32.GetGUIThreadInfo(0, ref info) ? info.Focus : 0;
     }
 
     /// <summary>How long to wait for an application to consume queued input.</summary>
