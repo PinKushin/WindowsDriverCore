@@ -31,7 +31,7 @@ public sealed class CloseSharedApplications
 {
     /// <summary>Closes the shared Calculator, and only that one.</summary>
     /// <remarks>
-    /// <b>By process id, never by name.</b> KillAll("CalculatorApp") would close
+    /// <b>By process id, never by name.</b> KillAll("Calculator") would close
     /// a Calculator the developer had open for their own reasons — a test suite
     /// reaching outside its own blast radius. Only the instance this suite
     /// started is its to close.
