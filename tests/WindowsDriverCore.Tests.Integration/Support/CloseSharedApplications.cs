@@ -40,12 +40,21 @@ public sealed class CloseSharedApplications
     /// Settings, charmap and the WPF subject own those and close them
     /// themselves.
     /// </remarks>
+    /// <summary>Records what was already running, so leaks can be attributed.</summary>
+    [OneTimeSetUp]
+    public void RecordWhatWasAlreadyRunning() => Support.ProcessLeaks.Snapshot();
+
+    /// <summary>Closes the shared applications once, after the whole run.</summary>
+    /// <remarks>
+    /// <b>The leak ASSERTION is not here, and that is deliberate.</b> A failure
+    /// raised in a SetUpFixture teardown is reported in the output and then
+    /// ignored: measured 2026-08-11, a deliberate leak printed its message and
+    /// the run still finished "Passed! - Failed: 0" with exit code 0, whether it
+    /// used Assert.Fail or threw. An instrument nothing counts is the very
+    /// problem it was written to fix, so the assertion lives in a real test —
+    /// see <c>ZzzzLeakedApplicationsTests</c>.
+    /// </remarks>
     [OneTimeTearDown]
-    public void CloseEverything()
-    {
-        // Ends the SESSION, and the driver closes the application it started.
-        // No process name, no process id, nothing for a test to get wrong on a
-        // Windows version where the process is called something else.
-        Support.SharedDriverSession.Close();
-    }
+    public void CloseEverything() => Support.SharedDriverSession.Close();
 }
+
