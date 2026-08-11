@@ -474,6 +474,34 @@ Incidental, and worth keeping: on the Windows 11 host the original CoreWindow is
 guest it is **destroyed**. That is why the whole defect only ever appeared in the
 guest, and why three attach-time fixes looked fine on the host.
 
+## The re-resolve is removed: measured inert
+
+The session window re-resolve was worth **+4 net** when it was added. Measured
+2026-08-11 at `04dcfaf`, enabling and disabling it gave the **same cold score of
+127** and the same passing set except one test each way:
+
+```
+only with re-resolve ON  : SwitchWindowsError_NoSuchWindow
+only with re-resolve OFF : GetWindowSize
+```
+
+The dead-window fail-fast landed in between and subsumed it. So it was carrying
+real risk — it can mask a genuinely closed window, which is the exact condition
+sixteen `*Error_NoSuchWindow` tests check — for no measured benefit. Removed.
+
+**Two hypotheses died here, both mine.** That the re-resolve was masking those
+sixteen: it is not, they fail identically either way. And that the re-resolve was
+what fixed the sixteen `ActionsError_*`: they pass with it disabled.
+
+### Those two flip-flopping tests are a SIGNAL, not noise
+
+`SwitchWindowsError_NoSuchWindow` and `GetWindowSize` have now moved in both
+directions across several runs. It is tempting to write that off as a noise band,
+but that phrasing asserts something not in evidence: that it is meaningless.
+**It is unexplained variance, and it may well become consistent once something
+else is fixed.** Treat it as a small open question, not as measurement error —
+and do not let a ±1 movement decide anything on its own.
+
 ## Only a COLD run is a score. A warm run is an instrument.
 
 **CI never gets a warm boot and should not need one**, so a warm number measures
