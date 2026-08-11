@@ -1592,11 +1592,23 @@ them are the drift itself: `AlarmSaveButton`, `AlarmNameTextBox` and
 Removing the scaffolding would likely have left it near 230 rather than lifting it
 to 252 — the reset's 21 were already being paid back by the warm.
 
-**It can never be corrected by measurement.** Alarms `11.2606.11.0` is not on any
-machine here: the drifted guest was deleted and the rebuilt one is offline at
-`10.1906.2182.0`, with Store updates disabled by policy so it cannot drift there.
-231 is frozen under its original conditions, and that is the honest status —
-neither promoted to a comparable figure nor thrown away.
+**It CAN be re-measured, and the checkpoint is what makes that safe.** An earlier
+version of this paragraph said the number was frozen forever because the drifted
+guest was deleted and the rebuilt one is offline. That is wrong: reconnect the
+adapter, let the Store update Alarms & Clock, run the suite with no scaffolding,
+then restore the `pristine-alarms-10.1906.2182.0` checkpoint. The instrument
+survives the experiment, which is the entire reason the checkpoint was taken
+before anything touched the guest.
+
+Two caveats on what such a run would prove. The Store would deliver whatever
+version is current, which may be newer than `11.2606.11.0` — so it re-measures
+"the drifted app without scaffolding", not that specific run. And the network has
+to be reconnected, which is the exact hazard the offline build exists to prevent;
+it must be disconnected again before the checkpoint is restored, or the next
+rebuild inherits the problem.
+
+Until then 231 stands as measured, under reset+warm, comparable to 281 and to
+nothing else.
 
 ### What this invalidates
 
