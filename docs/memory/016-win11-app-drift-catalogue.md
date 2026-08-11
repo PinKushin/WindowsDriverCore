@@ -1,6 +1,26 @@
-# 016 — Win11 App Drift Catalogue
+# 016 — App Drift Catalogue (was: Win11)
 
-## Date: 2026-08-08
+## Date: 2026-08-08, amended 2026-08-11
+
+> **AMENDMENT 2026-08-11 — this is no longer a Windows 11 document.** The Windows 10
+> guest's Alarms & Clock **updated to `11.2606.11.0`**, the same version catalogued
+> below, on 2026-08-10 between the 13:53 WinAppDriver baseline run and the runs that
+> resumed at 17:12; the package folder under `C:\Program Files\WindowsApps` was created
+> at 16:38. Every Alarms rename in the table below now applies to the guest as well.
+>
+> Verified on the guest through WinAppDriver itself: it clicks `AddAlarmButton`, and
+> then repeated one-shot finds for `AlarmSaveButton` with `implicit_wait=0` never
+> succeed across 8 s. `PrimaryButton` (`Name="Save"`, `IsControlElement="True"`)
+> appears at 3172 ms. So the entry below was right and this is not a driver defect,
+> not a tree-view problem, and not something an implicit wait would rescue.
+>
+> **Consequence: the 281/290 baseline was measured against a different application
+> than every score taken after 2026-08-10 16:38.** Comparisons across that boundary
+> are invalid, in both directions. The guest was chosen as the instrument because the
+> suite was readable there (281 against 112 on Win11); the part of that advantage that
+> came from an older Alarms build is gone. Record the app version next to any score,
+> and consider stopping Store auto-update on the guest — an instrument that updates
+> itself is not an instrument.
 
 Every difference found between what the WinAppDriver test suite expects and what Windows 11 26200
 actually exposes. Recorded here because the `WinAppDriver/` working tree is being reverted to
