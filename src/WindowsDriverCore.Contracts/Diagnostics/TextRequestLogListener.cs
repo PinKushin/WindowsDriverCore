@@ -148,7 +148,31 @@ public sealed class TextRequestLogListener : EventListener
                 CultureInfo.InvariantCulture,
                 $"  source -> {Document(payload[0])} {Cost(payload[1])} ms"),
 
+            (DriverEventSource.PointerTargetedEventId, 6) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  {payload[0]} -> ({payload[1]},{payload[2]})" +
+                $"{Rectangle(payload[3], payload[4])} {Cost(payload[5])} ms"),
+
             _ => null,
+        };
+
+    /// <summary>
+    /// The element a point was computed from, when there was one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Absent and empty must not read the same.</b> A command with no element
+    /// shows no size at all; an element UIA could see but could not place shows
+    /// <c>NO RECTANGLE</c>, because its centre is <c>(0,0)</c> and that looks
+    /// like an ordinary coordinate on its own. Printing <c>0x0</c> would be
+    /// accurate and would still let a reader skim past it.
+    /// </remarks>
+    private static string Rectangle(object? width, object? height) =>
+        (width, height) switch
+        {
+            (int w, int h) when w < 0 || h < 0 => string.Empty,
+            (0, 0) => " of NO RECTANGLE",
+            (int w, int h) => string.Create(CultureInfo.InvariantCulture, $" of {w}x{h}"),
+            _ => string.Empty,
         };
 
     private static string Document(object? characters) =>
