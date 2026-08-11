@@ -114,7 +114,7 @@ public sealed class SessionTracksTheAppNotTheBrokerTests
         }
         finally
         {
-            new ApplicationTerminator().Terminate(tracked);
+            new ApplicationTerminator().Terminate(tracked, window: 0);
             AppLifetime.KillAll(CalculatorProcess);
         }
     }

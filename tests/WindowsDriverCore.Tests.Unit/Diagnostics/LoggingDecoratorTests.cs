@@ -195,7 +195,7 @@ public sealed class LoggingDecoratorTests
         RecordingLog log = new();
         LoggingApplicationTerminator terminator = new(new StubTerminator(ended: false), log);
 
-        terminator.Terminate(4321).ShouldBeFalse("the inner result must pass through unaltered");
+        terminator.Terminate(4321, 0).ShouldBeFalse("the inner result must pass through unaltered");
 
         log.Terminations.Count.ShouldBe(1);
         log.Terminations[0].ProcessId.ShouldBe(4321);
@@ -276,6 +276,6 @@ public sealed class LoggingDecoratorTests
 
     private sealed class StubTerminator(bool ended) : IApplicationTerminator
     {
-        public bool Terminate(int processId) => ended;
+        public bool Terminate(int processId, nint window) => ended;
     }
 }

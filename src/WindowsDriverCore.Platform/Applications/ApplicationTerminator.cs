@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using WindowsDriverCore.Platform.Windows;
 
 namespace WindowsDriverCore.Platform.Applications;
 
@@ -22,9 +23,83 @@ public sealed class ApplicationTerminator : IApplicationTerminator
 {
     private static readonly TimeSpan GracePeriod = TimeSpan.FromSeconds(2);
 
-    /// <inheritdoc />
-    public bool Terminate(int processId)
+    /// <summary>The process that owns the desktop shell, or 0 if there is none.</summary>
+    /// <remarks>
+    /// <c>GetShellWindow</c> names the desktop window exactly, so this is an
+    /// identity check rather than a comparison against the string
+    /// "explorer.exe" - which would also match a File Explorer started as a
+    /// separate process, and would refuse to close something it safely could.
+    /// </remarks>
+    /// <summary>Whether a process is the desktop shell, and so must never be ended.</summary>
+    /// <remarks>
+    /// <b>Internal so it can be tested without being executed.</b> The obvious
+    /// test - end the shell and check the desktop survived - destroys the
+    /// machine it runs on when it fails, which makes it unusable as a test.
+    /// Separating the DECISION from the ACTION makes the dangerous half
+    /// assertable at no risk.
+    /// </remarks>
+    internal static bool IsTheDesktopShell(int processId) =>
+        processId > 0 && processId == ShellProcessId();
+
+    private static int ShellProcessId()
     {
+        nint shell = Win32.GetShellWindow();
+        if (shell == 0)
+        {
+            return 0;
+        }
+
+        _ = Win32.GetWindowThreadProcessId(shell, out uint pid);
+        return (int)pid;
+    }
+
+    /// <summary>Waits for a window to disappear, briefly.</summary>
+    private static bool WaitUntilGone(nint window)
+    {
+        // Spins on the observation rather than sleeping a guessed interval: the
+        // window either goes or it does not, and a fixed sleep would be a bet on
+        // how fast the application closes.
+        SpinWait.SpinUntil(() => !Win32.IsWindow(window), GracePeriod);
+
+        return !Win32.IsWindow(window);
+    }
+
+    /// <inheritdoc />
+    public bool Terminate(int processId, nint window)
+    {
+        // THE WINDOW FIRST, AND FOR THE SHELL IT IS THE ONLY THING TOUCHED.
+        //
+        // A File Explorer window belongs to the long-running explorer.exe that
+        // draws the desktop, taskbar and Start menu. The launcher tracks the
+        // window's OWNING process, so a session on Explorer tracks the shell -
+        // and the code below would call CloseMainWindow on it and then Kill it,
+        // taking the desktop down with the session.
+        //
+        // Measured 2026-08-11: the suite opens Explorer windows every run and
+        // six or seven survived, because the only safe thing this could do was
+        // nothing. Closing the window is both safe and correct.
+        bool isTheShell = IsTheDesktopShell(processId);
+
+        if (window != 0 && Win32.IsWindow(window))
+        {
+            Win32.PostMessage(window, Win32.WM_CLOSE, 0, 0);
+
+            // Gone AND owned by the shell is the whole job done: the window was
+            // the session's, the process belongs to the desktop.
+            if (WaitUntilGone(window) && isTheShell)
+            {
+                return true;
+            }
+        }
+
+        if (isTheShell)
+        {
+            // Never, under any circumstances. A session that cannot close its
+            // window is a failed teardown; a dead shell is a dead desktop, and
+            // every later test in the run measures nothing.
+            return false;
+        }
+
         if (processId <= 0)
         {
             return true;

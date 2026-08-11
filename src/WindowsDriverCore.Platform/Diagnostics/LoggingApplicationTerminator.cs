@@ -42,13 +42,13 @@ public sealed class LoggingApplicationTerminator : IApplicationTerminator
     }
 
     /// <inheritdoc />
-    public bool Terminate(int processId)
+    public bool Terminate(int processId, nint window)
     {
         long began = Stopwatch.GetTimestamp();
 
         try
         {
-            bool ended = _inner.Terminate(processId);
+            bool ended = _inner.Terminate(processId, window);
             _log.ApplicationTerminated(
                 processId, ended, Stopwatch.GetElapsedTime(began).TotalMilliseconds);
 

@@ -76,8 +76,26 @@ public interface IApplicationLauncher
 /// </remarks>
 public interface IApplicationTerminator
 {
-    /// <summary>Ends the process, gracefully if it will allow it.</summary>
-    /// <param name="processId">The process to end.</param>
-    /// <returns>True if the process is no longer running.</returns>
-    bool Terminate(int processId);
+    /// <summary>Ends a session's application, gracefully if it will allow it.</summary>
+    /// <param name="processId">The process the session tracked.</param>
+    /// <param name="window">
+    /// The session's window. Closed FIRST, and for some applications it is the
+    /// only thing that may be closed at all.
+    /// </param>
+    /// <returns>True if the application is no longer present.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The window is not a convenience, it is a safety requirement.</b> A
+    /// File Explorer window belongs to the long-running shell — the same
+    /// <c>explorer.exe</c> that draws the desktop, taskbar and Start menu — so
+    /// ending "the process that owns this window" would take the whole desktop
+    /// with it. The window can be closed; the process must not be.
+    /// </para>
+    /// <para>
+    /// The suite reaches this every run: it opens Explorer windows and expects
+    /// <c>DELETE /session</c> to deal with them. Measured 2026-08-11: six or
+    /// seven survived a single run.
+    /// </para>
+    /// </remarks>
+    bool Terminate(int processId, nint window);
 }

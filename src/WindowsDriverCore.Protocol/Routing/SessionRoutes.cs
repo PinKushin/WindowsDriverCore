@@ -128,7 +128,7 @@ public static class SessionRoutes
 
             if (removed.OwnsApplication && !anotherSessionIsUsingIt)
             {
-                terminator.Terminate(removed.ProcessId);
+                terminator.Terminate(removed.ProcessId, removed.WindowHandle);
             }
 
             return Results.Json(JsonWireResponse.ForServerVoid());
