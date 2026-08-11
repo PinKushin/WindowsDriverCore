@@ -1159,6 +1159,48 @@ Kept rather than deleted, because the failure mode is the durable part — a
 measurement taken through a convenience API that silently answers a different
 question. Read the raw payload when the shape of a payload is the finding.
 
+## The mouse rung refuses a zero rectangle, and never tries ClickablePoint
+
+Raised 2026-08-11 by the PokemonBattleJournal agent, whose `ClickElement` carries
+the comment *"Do NOT reach for the bounding rectangle here. These buttons report
+0x0 to Appium."*
+
+**Confirmed here.** `ClickWithTheMouse` refuses when the bounding rectangle is
+degenerate:
+
+```csharp
+if (rect.right <= rect.left || rect.bottom <= rect.top)
+    return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+```
+
+**Two things make this wider than it looks.**
+
+First, it is no longer reachable only by pattern-less elements. Since `c26e4d3` a
+**disabled** element goes straight to the mouse rung, skipping the pattern ladder
+and the ancestor walk, because refusing disabled clicks cost twelve compatibility
+tests. Any disabled control reporting 0x0 now meets this check directly.
+
+Second, `NotInteractable` out of that one rung has **five** distinct causes — no
+pointer or window locator injected, the provider throwing on
+`CurrentBoundingRectangle`, the zero rectangle, `GetBounds` returning null, and
+the computed point falling outside the window. A caller cannot tell which, which
+makes a genuine 0x0 indistinguishable from a wiring mistake. That is a
+diagnosability defect of ours.
+
+**`ClickablePoint` is never used for clicking.** UIA property 30014 is exposed as
+a readable attribute and nothing else; the click point is always the centre of the
+bounding rectangle. `GetClickablePoint` often succeeds on exactly the elements
+whose rectangle is degenerate, so it is the obvious candidate — **not implemented,
+and not measured**.
+
+The experiment that would settle it, before any code: read `/element/{id}/size`
+and `/element/{id}/attribute/ClickablePoint` for such an element through
+WinAppDriver and through this driver. Three outcomes worth telling apart — 0x0
+from UIA itself (the refusal is right and `ClickablePoint` is the fix), 0x0 only
+in WinAppDriver's mapping (the observation does not transfer to us), or
+`ClickablePoint` failing too (the element has no screen presence and refusing is
+correct).
+
 ## Not implemented
 
 | Area | State | Notes |
