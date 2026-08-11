@@ -85,8 +85,39 @@ Get-Process Time, Calculator, notepad, WinAppDriver, WindowsDriverCore -ErrorAct
     Stop-Process -Force
 Start-Sleep -Seconds 4
 
+# THE RESET IS AN INSTRUMENT, NOT JUST A CRUTCH.
+#
+# The suite is supposed to clean up after itself:
+# AlarmClockBase.DeletePreviouslyCreatedAlarmEntry finds each alarm it made,
+# right-clicks it and clicks Delete. If alarms are still here when a run starts,
+# that cleanup FAILED, and it failed against this driver - which is our defect,
+# not a fact about the suite.
+#
+# The mouse half is implemented (/moveto, /click with button 2). The suspected
+# gap is the next line, FindElementByName("Delete"): a context menu opens in its
+# own top-level window and our find is rooted at the session's window, so it
+# would never see it. Suspected, not measured - the request transcript now
+# records every find, so a run says which step actually failed.
+#
+# So the leftover count is REPORTED before the store is cleared. Zero means the
+# suite cleaned up and the reset was a no-op. Non-zero is the defect, visible in
+# every run's log instead of being quietly absorbed by the reset.
+#
+# The reset itself stays, because a CI runner genuinely starts clean and runs
+# have to be independent of each other. What it must never do is hide that we
+# are the reason it is needed.
 `$pkg = "`$env:LOCALAPPDATA\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe"
 `$settings = Join-Path `$pkg 'Settings'
+
+# Reported BEFORE the reset, or the evidence is destroyed by the thing being
+# measured. settings.dat is the alarm store; its size tracks how much the suite
+# left behind.
+`$store = Join-Path `$settings 'settings.dat'
+if (Test-Path `$store) {
+    'alarm store left by the previous run : {0:N0} bytes  (a run that cleaned up leaves the baseline size)' -f (Get-Item `$store).Length
+} else {
+    'alarm store left by the previous run : none'
+}
 if (Test-Path `$settings) {
     try {
         Move-Item -LiteralPath `$settings -Destination "`$settings.reset-`$(Get-Date -Format yyyyMMdd-HHmmss)" -ErrorAction Stop
@@ -97,26 +128,35 @@ Get-ChildItem `$pkg -Directory -Filter 'Settings.reset-*' -ErrorAction SilentlyC
     Sort-Object Name -Descending | Select-Object -Skip 3 |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-# WARM THE APP, and do not skip this because the reset just closed it.
-# Measured: the first run that reset the store cold-started Alarms & Clock, and
-# every ActionsError_* test then failed in TestInit with "Currently selected
-# window has been closed" - beginning with the FIRST test of the run, so nothing
-# killed it mid-run; the session never had a usable window. Runs before that had
-# quietly inherited a warm app left behind by their predecessor, which is why
-# nobody saw it. Waiting for AddAlarmButton to be ENABLED (not merely present)
-# is the check, because present-but-disabled is exactly the cap state above.
-Start-Process 'shell:AppsFolder\Microsoft.WindowsAlarms_8wekyb3d8bbwe!App'
-Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName UIAutomationTypes
-`$AE = [System.Windows.Automation.AutomationElement]
-`$byId = New-Object System.Windows.Automation.PropertyCondition(`$AE::AutomationIdProperty, 'AddAlarmButton')
-`$warm = `$false
-for (`$i = 0; `$i -lt 40; `$i++) {
-    `$b = `$AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants, `$byId)
-    if (`$b -and `$b.Current.IsEnabled) { `$warm = `$true; break }
-    Start-Sleep -Seconds 1
-}
-'app warmed (AddAlarmButton enabled): ' + `$warm
+# NO WARM STEP. A COLD RUN IS THE SCORE.
+#
+# This used to pre-start Alarms & Clock and wait for AddAlarmButton to be
+# enabled. It was added 2026-08-10 because resetting the alarm store closes the
+# app, and every ActionsError_* test then failed in TestInit with "Currently
+# selected window has been closed" - from the FIRST test of the run.
+#
+# THAT READING WAS WRONG, and the git record proves it. WinAppDriver scored
+# 281/290 at 08-10 02:24 (b785879), SEVEN HOURS BEFORE the warm step existed
+# (c62ebde, 09:38) - a cold run - and scored 281 again warm afterwards. It is
+# warm-insensitive.
+#
+# So warming never was environmental control. Only THIS driver gained from it,
+# which means it was compensating for our own cold-start defect and quietly
+# flattering our numbers against a reference that did not need the help. A
+# session created against a cold packaged application getting a window that dies
+# is our defect. CI never warm-boots, so a warm score measures something no CI
+# run will ever reproduce.
+#
+# The store RESET stays. That is contamination control rather than evasion: the
+# suite fills the app to its cap, and a fresh CI runner starts clean anyway.
+#
+# What replaces the warm is its opposite - assert the subject is INSTALLED and
+# NOT RUNNING, so the run is genuinely cold and a missing application fails
+# loudly here rather than as 290 mysterious test failures.
+'alarms installed : ' + (Get-AppxPackage Microsoft.WindowsAlarms).Version
+'calc installed   : ' + (Get-AppxPackage Microsoft.WindowsCalculator).Version
+Get-Process Time, Calculator, CalculatorApp -ErrorAction SilentlyContinue | Stop-Process -Force
+'cold start       : no subject application left running'
 
 Set-Location 'C:\baseline\WindowsDriverCore'
 & git.exe fetch origin 2>&1 | Out-String | Write-Host
