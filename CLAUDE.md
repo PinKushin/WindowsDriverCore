@@ -190,6 +190,17 @@ dotnet test WindowsDriverCore.slnx --filter "TestCategory!=Comparison"
 # Run the server
 dotnet run --project src/WindowsDriverCore.Host
 
+# The request transcript. Console by default, as WinAppDriver's is; set the
+# variable to send it to a file instead. An environment variable rather than a
+# switch, because the argument grammar is a compatibility contract.
+$env:WINDOWSDRIVERCORE_LOG = "C:\temp\driver.log"
+
+# 2026-08-11T14:40:21.761Z GET /definitely-not-a-command -> 404 jwp 9 9.1 ms
+# 2026-08-11T14:40:21.779Z GET /session/nope/orientation -> 404 jwp 101 2.0 ms
+#
+# Both are HTTP 404 and they are different faults. The JSON Wire status is the
+# column that separates them, and it is why the transcript carries both.
+
 # WinAppDriver-compatible argument forms
 WindowsDriverCore.exe                       # 127.0.0.1:4723
 WindowsDriverCore.exe 4727                  # port only

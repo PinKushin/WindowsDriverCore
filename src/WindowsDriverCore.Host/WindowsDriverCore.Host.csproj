@@ -1,5 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <!-- Composition root: CLI parsing, DI wiring, logging, Kestrel. -->
+  <!--
+    Composition root: CLI parsing, DI wiring, the request transcript, Kestrel.
+
+    NO LOGGING PACKAGES, deliberately. Five Serilog references sat here unused
+    from the start and were removed on 2026-08-11 when diagnostics were actually
+    built: the transcript is an in-box EventSource with an EventListener writing
+    to a console or a file. An unused dependency is not free - it is supply-chain
+    surface and an audit obligation for something nothing calls.
+  -->
   <PropertyGroup>
     <!-- Literal, not inherited: Buildalyzer reads this textually. See Directory.Build.props. -->
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -11,12 +19,5 @@
     <ProjectReference Include="..\WindowsDriverCore.Protocol\WindowsDriverCore.Protocol.csproj" />
     <ProjectReference Include="..\WindowsDriverCore.Automation\WindowsDriverCore.Automation.csproj" />
     <ProjectReference Include="..\WindowsDriverCore.Platform\WindowsDriverCore.Platform.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Serilog" />
-    <PackageReference Include="Serilog.Extensions.Hosting" />
-    <PackageReference Include="Serilog.Sinks.Async" />
-    <PackageReference Include="Serilog.Sinks.Console" />
-    <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
 </Project>

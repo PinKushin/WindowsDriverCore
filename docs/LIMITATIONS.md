@@ -1684,6 +1684,48 @@ accumulate silently until the cap disables `AddAlarmButton`. That is a real
 mechanism — it cost nine unrelated tests once already — but it is **not** what is
 failing here: the button was measured enabled and its click returned 200.
 
+## Diagnostics: the request transcript
+
+**Added 2026-08-11, because its absence was measured in wasted days.** Every
+question asked of this driver during the compatibility work — which request
+failed, with what status, at what point in a flow — needed a bespoke probe, since
+the server said nothing about what it had answered. WinAppDriver prints its own
+transcript, and that is the only reason its failures are readable.
+
+One line per request, console by default and to a file when
+`WINDOWSDRIVERCORE_LOG` names one:
+
+```
+2026-08-11T14:40:21.738Z GET /status                    -> 200 jwp -   185.6 ms
+2026-08-11T14:40:21.761Z GET /definitely-not-a-command  -> 404 jwp 9     9.1 ms
+2026-08-11T14:40:21.779Z GET /session/nope/orientation  -> 404 jwp 101   2.0 ms
+```
+
+Four decisions worth keeping:
+
+- **The JSON Wire status is its own column.** It is not derivable from the HTTP
+  code: 404 covers status `7` and status `9`, and 400 covers `10`, `23`, `100`
+  and `105`. The two 404s above are completely different faults.
+- **`jwp -` means no envelope**, not status zero. `GET /status` genuinely has
+  none, and printing `0` would read as a success that never happened.
+- **No payloads, and no parameter that could carry one.** `POST /element/{id}/value`
+  is how a login test sends a password. The choice was between a correct redactor
+  standing between a secret and a log file, and an interface with nothing to
+  redact; the second cannot regress.
+- **Nothing leaves the machine, structurally.** `EventSource` publishes
+  in-process and a consumer attaches; the only destinations that exist are a
+  console and a file. There is no sink, endpoint, or transport anywhere under
+  `WindowsDriverCore.Diagnostics` to misconfigure.
+
+`EventSource` rather than a logging package: in-box, so no dependency and no
+supply-chain surface, and a `WriteEvent` behind an `IsEnabled` guard costs a
+volatile read when nothing is listening. The five Serilog references that had sat
+unused in `WindowsDriverCore.Host.csproj` since the start were removed in the same
+change.
+
+Not yet done: nothing is emitted from the automation layer, so a slow find shows
+up as a slow request without saying which part was slow.
+
 ## Not implemented
 
 | Area | State | Notes |

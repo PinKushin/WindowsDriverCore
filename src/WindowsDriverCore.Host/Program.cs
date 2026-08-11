@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using WindowsDriverCore.Host.CommandLine;
+using WindowsDriverCore.Host.Diagnostics;
 using Interop.UIAutomationClient;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Diagnostics;
@@ -66,6 +67,15 @@ public partial class Program
         builder.Services.AddSingleton<IRequestLog>(
             provider => provider.GetRequiredService<DriverEventSource>());
 
+        // The transcript's destination and the consumer that fills it. Both are
+        // DI singletons so the host disposes them: the listener unsubscribes and
+        // a log file is closed rather than left locked.
+        builder.Services.AddSingleton(
+            _ => RequestLogDestination.Open(Environment.GetEnvironmentVariable));
+        builder.Services.AddSingleton(provider => new TextRequestLogListener(
+            provider.GetRequiredService<RequestLogDestination>().Writer,
+            provider.GetRequiredService<TimeProvider>()));
+
         builder.Services.AddSingleton<IServerStatusProvider, ServerStatusProvider>();
         builder.Services.AddSingleton<ISessionStore, SessionStore>();
         builder.Services.AddSingleton<SessionFactory>();
@@ -97,6 +107,22 @@ public partial class Program
         builder.Services.AddSingleton<IElementRegistry, ElementRegistry>();
 
         WebApplication app = builder.Build();
+
+        // RESOLVED EAGERLY, and it has to be. A DI singleton nobody asks for is
+        // never constructed, and an EventListener that is never constructed never
+        // subscribes — so the events would be published to an empty room and the
+        // whole transcript would be silently missing.
+        _ = app.Services.GetRequiredService<TextRequestLogListener>();
+
+        // Said out loud, because a relative path resolves against the working
+        // directory and that is not always where the person who set the variable
+        // expected. Silence about a file is how a transcript gets written
+        // somewhere nobody looks.
+        string? logPath = app.Services.GetRequiredService<RequestLogDestination>().Path;
+        if (logPath is not null)
+        {
+            Console.WriteLine($"Request transcript: {logPath}");
+        }
 
         // FIRST, so nothing is invisible to it — including the base-path gate's
         // 404, which never reaches routing. A transcript with a hole in it is
