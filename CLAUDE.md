@@ -96,8 +96,8 @@ no warm step**:
 | WinAppDriver 1.2.1 | **280/290** |
 | environmental failures | 9 (3 ModernApp, 5 browser/EdgeBase, 1 `GetLocation`) |
 | **reachable ceiling** | **281** |
-| **this driver** | **196/290** |
-| **the gap** | **84 tests** |
+| **this driver** | **203/290** |
+| **the gap** | **77 tests** |
 
 **Every earlier figure in this file was wrong, including ones measured
 repeatedly.** Two pieces of scaffolding introduced on 2026-08-10 in a single
@@ -262,7 +262,7 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 - **280/290 for WinAppDriver 1.2.1 on the rebuilt guest**, cold, no reset, no
   warm — Windows 10 19045, Alarms & Clock `10.1906.2182.0`, offline, static 4 GB.
   Nine of the ten failures are environmental, so the reachable ceiling is **281**.
-  **This driver scores 196/290 under the same conditions — a gap of 84.** Every
+  **This driver scores 203/290 under the same conditions — a gap of 77.** Every
   earlier figure for either driver was taken through scaffolding that moved the
   result.
 - **The backlog, read from a request transcript rather than a test list:** 80
