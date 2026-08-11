@@ -70,6 +70,12 @@ public sealed class PointerStaleElementTests : IDisposable
         IWindowLocator windows = Substitute.For<IWindowLocator>();
         windows.Exists(Arg.Any<nint>()).Returns(true);
 
+        // The session window owns every point, so the pointer guard permits the
+        // gesture and these tests measure the ROUTE. Left at NSubstitute's
+        // default false, the guard refuses everything and a payload test would
+        // be reporting on the guard instead.
+        windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
+
         // Substituted for the same reason ActionsValidationTests substitutes it:
         // these routes now really inject, and the real one would put contacts on
         // whatever desktop the suite happens to be running on.

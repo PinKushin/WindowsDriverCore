@@ -33,6 +33,7 @@ public sealed class PointerActionRunner
 {
     private readonly ISyntheticPointer _synthetic;
     private readonly IElementInspector _elements;
+    private readonly IWindowLocator _windows;
 
     /// <summary>How many frames a move is broken into.</summary>
     /// <remarks>
@@ -46,19 +47,28 @@ public sealed class PointerActionRunner
     /// <summary>Creates the runner.</summary>
     /// <param name="synthetic">Injects pen and touch.</param>
     /// <param name="elements">Resolves an element origin to a screen point.</param>
+    /// <param name="windows">
+    /// Places the session window, and answers whether a point belongs to it.
+    /// Required rather than optional: an absent guard cannot refuse, so a null
+    /// collaborator would make "refuses a point outside the window" and "has no
+    /// guard at all" predict the same observation.
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <remarks>
     /// No mouse collaborator, deliberately: <see cref="ActionRoutes"/> refuses any
     /// pointer type but pen and touch, with the suite's own message. Accepting one
     /// here would be dead code that looks like a supported path.
     /// </remarks>
-    public PointerActionRunner(ISyntheticPointer synthetic, IElementInspector elements)
+    public PointerActionRunner(
+        ISyntheticPointer synthetic, IElementInspector elements, IWindowLocator windows)
     {
         ArgumentNullException.ThrowIfNull(synthetic);
         ArgumentNullException.ThrowIfNull(elements);
+        ArgumentNullException.ThrowIfNull(windows);
 
         _synthetic = synthetic;
         _elements = elements;
+        _windows = windows;
     }
 
     /// <summary>Performs every pointer source in the payload.</summary>
@@ -149,7 +159,7 @@ public sealed class PointerActionRunner
 
                 case "pointerDown":
                 {
-                    PointerRefusal? pressed = Press(kind, x, y, step);
+                    PointerRefusal? pressed = Press(kind, window, x, y, step);
                     if (pressed is not null)
                     {
                         return pressed;
@@ -270,6 +280,46 @@ public sealed class PointerActionRunner
             : (0, 0, PointerRefusal.Element(bounds.Outcome, elementId));
     }
 
+    /// <summary>Turns a window-relative point into a screen point.</summary>
+    /// <remarks>
+    /// A window that cannot be placed is refused rather than treated as being at
+    /// the desktop origin. Falling back to <c>(0,0)</c> would silently convert a
+    /// missing window into a gesture on whatever occupies the top-left corner of
+    /// the screen, which is the failure this whole path is being corrected for.
+    /// </remarks>
+    private (int X, int Y, PointerRefusal? Failure) WindowOrigin(nint window, int dx, int dy)
+    {
+        WindowBounds? bounds = _windows.GetBounds(window);
+
+        return bounds is null
+            ? (0, 0, PointerRefusal.Reason(
+                "The session window could not be placed, so a viewport coordinate has no meaning"))
+            : (bounds.X + dx, bounds.Y + dy, null);
+    }
+
+    /// <summary>
+    /// Refuses a point the session window does not own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The guard this path never had.</b> <c>UiaElementInteractor</c> has asked
+    /// <see cref="IWindowLocator.OwnsThePointAt"/> before every mouse click since
+    /// the click ladder was written — "an unguarded coordinate click is worse than
+    /// no click" — and the pointer path was dispatching synthesized contacts at
+    /// arbitrary coordinates with no such question asked.
+    /// </para>
+    /// <para>
+    /// <b>Ownership, not containment.</b> A covered window still contains the
+    /// point and is not what a contact there reaches. That distinction is the
+    /// whole reason the locator answers this rather than a rectangle test.
+    /// </para>
+    /// </remarks>
+    private PointerRefusal? Refuse(nint window, int x, int y) =>
+        _windows.OwnsThePointAt(x, y, window)
+            ? null
+            : PointerRefusal.Reason(
+                $"({x},{y}) is outside the application window, so the input was not dispatched");
+
     private static SyntheticContact Plain(int x, int y, SyntheticContactPhase phase) =>
         new(SyntheticPointerKind.Touch, x, y, phase);
 
@@ -280,11 +330,29 @@ public sealed class PointerActionRunner
     /// </remarks>
     private const int HoldFrameMilliseconds = 16;
 
-    private PointerRefusal? Press(SyntheticPointerKind kind, int x, int y, JsonElement step) =>
-        _synthetic.Inject([Contact(kind, x, y, SyntheticContactPhase.Down, step)])
+    /// <summary>Puts a contact down, if the window owns the point.</summary>
+    /// <remarks>
+    /// <b>The guard is on DOWN and not on every frame, deliberately.</b> A move
+    /// while the contact is up injects nothing, and a move while it is down
+    /// follows a press that was already checked — so this is the one place where
+    /// asking changes what reaches the desktop. Checking each interpolated frame
+    /// would also refuse a drag the moment it crossed an edge, turning a partial
+    /// gesture into a failure the caller cannot act on.
+    /// </remarks>
+    private PointerRefusal? Press(
+        SyntheticPointerKind kind, nint window, int x, int y, JsonElement step)
+    {
+        PointerRefusal? outside = Refuse(window, x, y);
+        if (outside is not null)
+        {
+            return outside;
+        }
+
+        return _synthetic.Inject([Contact(kind, x, y, SyntheticContactPhase.Down, step)])
             ? null
             : PointerRefusal.Reason(
                 $"The system refused a {kind.ToString().ToLowerInvariant()} contact");
+    }
 
     private PointerRefusal? Release(SyntheticPointerKind kind, int x, int y, JsonElement step) =>
         _synthetic.Inject([Contact(kind, x, y, SyntheticContactPhase.Up, step)])
@@ -338,9 +406,21 @@ public sealed class PointerActionRunner
                 // Relative to where the pointer already is.
                 "pointer" => (currentX + dx, currentY + dy, null),
 
-                // Viewport coordinates are absolute screen pixels here: a
-                // desktop session's viewport IS the screen.
-                _ => (dx, dy, null),
+                // VIEWPORT IS THE WINDOW, NOT THE SCREEN. This read "a desktop
+                // session's viewport IS the screen" and that was wrong in a way
+                // that escaped the application under test.
+                //
+                // The suite's own comment settles it — Touch_Click_OriginViewport
+                // feeds element.Location straight into a viewport move and calls
+                // it "relative to application window" — and this driver's
+                // /location already answers window-relative, measured against
+                // WinAppDriver and recorded in ElementPropertyRoutes. Treating
+                // the same numbers as screen pixels put every viewport gesture at
+                // that offset from the DESKTOP origin: up and to the left of the
+                // window, onto whatever happens to be there. Injected input that
+                // lands outside the application under test is the worst failure
+                // this driver has, because the damage is somebody else's.
+                _ => WindowOrigin(window, dx, dy),
             };
         }
 
