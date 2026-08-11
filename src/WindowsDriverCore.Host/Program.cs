@@ -126,6 +126,8 @@ public partial class Program
                 provider.GetRequiredService<ApplicationTerminator>(),
                 provider.GetRequiredService<ITerminationLog>()));
         builder.Services.AddSingleton<IPointerInput, SendInputPointer>();
+        builder.Services.AddSingleton<ISyntheticPointer, SyntheticPointer>();
+        builder.Services.AddSingleton<PointerActionRunner>();
         builder.Services.AddSingleton<IKeyboardInput, SendInputKeyboard>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<UiaElementFinder>();
