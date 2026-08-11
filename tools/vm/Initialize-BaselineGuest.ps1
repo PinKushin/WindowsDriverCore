@@ -135,8 +135,11 @@ $report = Invoke-Command -VMName $VMName -Credential $credential -ScriptBlock {
     }
 
     Step "WinAppDriver" { Test-Path "C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe" } {
-        # The baseline being measured. Archived June 2025, so this version is
-        # the last one there will ever be.
+        # The baseline being measured. NOT archived - that claim was measured
+        # false, see docs/FOUNDING-PREMISE.md. It is unmaintained: last commit
+        # April 2025, 1155 open issues, and a v1.2.99 RC exists beyond this
+        # 1.2.1. This version is pinned because it is the one every score in
+        # this repository was taken with.
         $wad = "https://github.com/microsoft/WinAppDriver/releases/download/v1.2.1/WindowsApplicationDriver_1.2.1.msi"
         Invoke-WebRequest -UseBasicParsing -Uri $wad -OutFile "C:\baseline\winappdriver.msi"
         Start-Process msiexec.exe -Wait -ArgumentList "/i", "C:\baseline\winappdriver.msi", "/quiet", "/norestart"
