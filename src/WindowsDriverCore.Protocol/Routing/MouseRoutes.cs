@@ -171,9 +171,16 @@ public static class MouseRoutes
                         $"Button {button} is not one of 0 (left), 1 (middle) or 2 (right).");
                 }
 
-                return act(pointer, (PointerButton)button)
-                    ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                    : Fault(WebDriverFault.UnknownError, "The system rejected the pointer input.");
+                if (!act(pointer, (PointerButton)button))
+                {
+                    return Fault(WebDriverFault.UnknownError, "The system rejected the pointer input.");
+                }
+
+                // Dispatched, not yet consumed. The next read that depends on it
+                // waits; this call does not, so a burst of clicks pays once.
+                session.InputPending = true;
+
+                return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
             })
             .RequiresSession();
     }
