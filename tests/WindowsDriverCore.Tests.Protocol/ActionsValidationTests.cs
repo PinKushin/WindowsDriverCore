@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -40,6 +41,7 @@ public sealed class ActionsValidationTests : IDisposable
 {
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
+    private ISyntheticPointer _injector = null!;
 
     [SetUp]
     public void StartServer()
@@ -51,11 +53,26 @@ public sealed class ActionsValidationTests : IDisposable
         IWindowLocator windows = Substitute.For<IWindowLocator>();
         windows.Exists(Arg.Any<nint>()).Returns(true);
 
+        // THE INJECTOR IS SUBSTITUTED, AND THAT IS NOT OPTIONAL.
+        //
+        // /actions now performs what it validates, and WebApplicationFactory
+        // boots the REAL container - so a protocol test posting a valid payload
+        // synthesises real touch onto whoever's desktop is running the suite.
+        // Measured 2026-08-11, the hard way: a run of these tests clicked the
+        // owner's browser.
+        //
+        // A protocol test is about the wire, not about the desktop. The fake
+        // reports success so the route's own behaviour is what gets asserted.
+        _injector = Substitute.For<ISyntheticPointer>();
+        _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
+        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
+
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
                 services.AddSingleton(launcher);
                 services.AddSingleton(windows);
+                services.AddSingleton(_injector);
             }));
 
         _client = _factory.CreateClient();
@@ -164,19 +181,36 @@ public sealed class ActionsValidationTests : IDisposable
         HttpResponseMessage response = await PostActions(
             Pointer("pen", """{"type":"pointerDown","button":0}"""));
 
-        ((int)response.StatusCode).ShouldBe(501, "a valid payload is refused, not rejected as invalid");
+        ((int)response.StatusCode).ShouldBe(200, "a single pen is valid and is performed");
     }
 
     [Test]
-    public async Task AValidPayload_IsRefused_NotSilentlyAccepted()
+    public async Task AValidPayload_IsPerformed_AndSaysSo()
     {
-        // Accepting a well-formed action sequence and performing nothing would
-        // report success for doing nothing, which is the defect this driver
-        // exists to fix.
+        // This asserted 501 until 2026-08-11, when /actions started performing
+        // what it validates. The old contract was "refuse rather than silently
+        // accept"; the new one is "perform, and report the injector's answer".
+        // Both refuse to report success for doing nothing - which is the rule
+        // that actually matters, and the reason this test still exists.
         HttpResponseMessage response = await PostActions(
             Pointer("touch", """{"type":"pointerDown","button":0,"pressure":0.5}"""));
 
-        ((int)response.StatusCode).ShouldBe(501);
-        (await response.Content.ReadAsStringAsync()).ShouldNotStartWith("{");
+        ((int)response.StatusCode).ShouldBe(200);
+        _injector.Received().Inject(Arg.Any<IReadOnlyList<SyntheticContact>>());
+    }
+
+    [Test]
+    public async Task AnInjectorThatRefuses_IsReportedAsAFailure_NotAsSuccess()
+    {
+        // The control, and the rule the old 501 was protecting. If the system
+        // will not accept the contact, the caller must be told - a driver that
+        // answers status 0 for input that never happened is the defect this
+        // project exists to fix.
+        _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(false);
+
+        HttpResponseMessage response = await PostActions(
+            Pointer("touch", """{"type":"pointerDown","button":0}"""));
+
+        ((int)response.StatusCode).ShouldBe(500, "a refused contact is not a success");
     }
 }

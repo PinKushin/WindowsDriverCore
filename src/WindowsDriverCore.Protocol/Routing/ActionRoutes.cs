@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
+using WindowsDriverCore.Protocol.Sessions;
 
 namespace WindowsDriverCore.Protocol.Routing;
 
@@ -57,7 +58,7 @@ public static class ActionRoutes
     private const string BadTwist = "\"twist\" attribute is not an integer value between 0 and 359";
 
     private const string NotImplemented =
-        "Unimplemented Command: actions are validated but not yet performed";
+        "Unimplemented Command: no pointer injector is registered on this server";
 
     /// <summary>Maps the actions route.</summary>
     /// <param name="app">The route builder.</param>
@@ -67,9 +68,10 @@ public static class ActionRoutes
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapPost("/session/{sessionId}/actions", async (HttpContext context) =>
+        app.MapPost("/session/{sessionId}/actions",
+            async (HttpContext context, PointerActionRunner? runner) =>
         {
-            _ = context.GetSession();
+            DriverSession session = context.GetSession();
 
             using JsonDocument body = await JsonDocument
                 .ParseAsync(context.Request.Body)
@@ -84,9 +86,21 @@ public static class ActionRoutes
                     statusCode: WebDriverFault.InvalidArgument.HttpStatus);
             }
 
-            // Valid, and still refused. See the class remarks: accepting this
-            // and performing nothing is the defect, not the fix.
-            return Results.Text(NotImplemented, statusCode: 501);
+            if (runner is null)
+            {
+                // No injector registered. Refused rather than reported as done,
+                // for the same reason a valid payload used to be refused:
+                // accepting an action and performing nothing is the defect.
+                return Results.Text(NotImplemented, statusCode: 501);
+            }
+
+            string? failure = runner.Perform(body.RootElement, session.WindowHandle);
+
+            return failure is null
+                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                : Results.Json(
+                    JsonWireResponse.ForFault(WebDriverFault.UnknownError, failure),
+                    statusCode: WebDriverFault.UnknownError.HttpStatus);
         }).RequiresSession();
 
         return app;
