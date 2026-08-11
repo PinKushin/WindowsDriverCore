@@ -68,12 +68,34 @@ public sealed class PackagedAppAttachesToTheFrameTests
             nint window = launched.Application.WindowHandle;
             string className = ClassNameOf(window);
 
-            className.ShouldNotBe(
-                CoreWindowClass,
-                "the CoreWindow is destroyed about 300 ms after launch, so a session " +
-                "holding it reports 'currently selected window has been closed' later");
+            // **The invariant, which holds on every Windows this runs on: the
+            // session is anchored INSIDE the application's frame.**
+            //
+            // MEASURED 2026-08-11, and this assertion used to be
+            // `className.ShouldBe(FrameWindowClass)`, which is true on the
+            // Windows 11 host and FALSE on the Windows 10 22H2 guest. Probed
+            // there through the driver's own wire:
+            //
+            //   window_handle = 0x003401B0  class=Windows.UI.Core.CoreWindow
+            //                               root=0x00070A3E(ApplicationFrameWindow)
+            //
+            // The waiter holds a CoreWindow and polls for the frame; on Win11 the
+            // CoreWindow stops being top-level and the frame stage answers, while
+            // on the guest it does not before the deadline and the held CoreWindow
+            // is returned. Asserting the Win11 outcome universally made this test
+            // a claim about one machine.
+            //
+            // The requirement is anchoring, not the exact handle: a CoreWindow
+            // whose root is the frame addresses the same application and the same
+            // tree. What must never happen is a session anchored to a window that
+            // is its OWN root while a frame exists — that is the pre-reparent
+            // handle, the one whose parentage is about to change underneath it.
+            nint root = RootOf(window);
 
-            className.ShouldBe(FrameWindowClass);
+            ClassNameOf(root).ShouldBe(
+                FrameWindowClass,
+                $"a packaged session must be anchored inside its ApplicationFrameWindow; " +
+                $"this one holds a '{className}' whose root is '{ClassNameOf(root)}'");
 
             // The window must still be there once the CoreWindow's lifetime has
             // demonstrably elapsed. Synchronised on the frame being findable
@@ -123,6 +145,11 @@ public sealed class PackagedAppAttachesToTheFrameTests
         }
     }
 
+    /// <summary>The root of a window's parent chain.</summary>
+    private static nint RootOf(nint window) => NativeMethods.GetAncestor(window, GaRoot);
+
+    private const uint GaRoot = 2;
+
     private static string ClassNameOf(nint window)
     {
         char[] buffer = new char[256];
@@ -132,6 +159,9 @@ public sealed class PackagedAppAttachesToTheFrameTests
 
     private static class NativeMethods
     {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        internal static extern nint GetAncestor(nint window, uint flags);
+
         [System.Runtime.InteropServices.DllImport(
             "user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
         internal static extern int GetClassName(
