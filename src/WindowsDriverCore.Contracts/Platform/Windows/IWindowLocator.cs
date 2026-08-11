@@ -76,6 +76,19 @@ public interface IWindowLocator
     /// </remarks>
     bool BringToForeground(nint handle);
 
+    /// <summary>Blocks until the window's thread has processed queued input.</summary>
+    /// <param name="handle">The window whose thread to wait on.</param>
+    /// <returns>False when the window is gone or its thread is not responding.</returns>
+    /// <remarks>
+    /// <b>Typing is asynchronous and the protocol is not.</b> <c>SendInput</c>
+    /// only queues keystrokes; the application consumes them on its own message
+    /// loop. Measured 2026-08-11: a 52-character string answered the client
+    /// immediately, the client read the edit box and saw <c>abc</c>, and the
+    /// remaining 49 characters arrived during the NEXT test — whose assertion
+    /// then failed on text it never typed.
+    /// </remarks>
+    bool WaitForInputProcessed(nint handle);
+
     /// <summary>The process's current top-level window, or zero.</summary>
     /// <param name="processId">The process that owns the application.</param>
     /// <returns>A window handle, or zero when the process has none right now.</returns>
