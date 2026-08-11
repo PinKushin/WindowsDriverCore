@@ -69,7 +69,7 @@ public sealed class PointerActionRunner
     /// reported rather than swallowed: a caller told an action succeeded when
     /// nothing moved is the failure this driver exists to fix.
     /// </returns>
-    public string? Perform(JsonElement payload, nint window)
+    public PointerRefusal? Perform(JsonElement payload, nint window)
     {
         if (!payload.TryGetProperty("actions", out JsonElement sources))
         {
@@ -86,7 +86,7 @@ public sealed class PointerActionRunner
                 continue;
             }
 
-            string? failure = PerformSource(source, window);
+            PointerRefusal? failure = PerformSource(source, window);
             if (failure is not null)
             {
                 return failure;
@@ -96,7 +96,7 @@ public sealed class PointerActionRunner
         return null;
     }
 
-    private string? PerformSource(JsonElement source, nint window)
+    private PointerRefusal? PerformSource(JsonElement source, nint window)
     {
         SyntheticPointerKind kind = PointerKind(source);
 
@@ -106,7 +106,8 @@ public sealed class PointerActionRunner
             // Windows 10 1809 and the floor is 1607, so a supported system can
             // genuinely lack it - and silently substituting touch would report
             // that a pen gesture happened when none did.
-            return $"This system cannot inject {kind.ToString().ToLowerInvariant()} input";
+            return PointerRefusal.Reason(
+                $"This system cannot inject {kind.ToString().ToLowerInvariant()} input");
         }
 
         if (!source.TryGetProperty("actions", out JsonElement steps))
@@ -129,13 +130,13 @@ public sealed class PointerActionRunner
             {
                 case "pointerMove":
                 {
-                    (int toX, int toY, string? failure) = Target(step, window, x, y);
+                    (int toX, int toY, PointerRefusal? failure) = Target(step, window, x, y);
                     if (failure is not null)
                     {
                         return failure;
                     }
 
-                    string? moved = Move(kind, x, y, toX, toY, down);
+                    PointerRefusal? moved = Move(kind, x, y, toX, toY, down);
                     if (moved is not null)
                     {
                         return moved;
@@ -148,7 +149,7 @@ public sealed class PointerActionRunner
 
                 case "pointerDown":
                 {
-                    string? pressed = Press(kind, x, y, step);
+                    PointerRefusal? pressed = Press(kind, x, y, step);
                     if (pressed is not null)
                     {
                         return pressed;
@@ -160,7 +161,7 @@ public sealed class PointerActionRunner
 
                 case "pointerUp":
                 {
-                    string? released = Release(kind, x, y, step);
+                    PointerRefusal? released = Release(kind, x, y, step);
                     if (released is not null)
                     {
                         return released;
@@ -194,16 +195,16 @@ public sealed class PointerActionRunner
     /// distinguishes a tap from a long press by exactly that. Returning early
     /// would perform a different gesture from the one requested.
     /// </remarks>
-    public string? Tap(int x, int y, TimeSpan hold)
+    public PointerRefusal? Tap(int x, int y, TimeSpan hold)
     {
         if (!_synthetic.CanInject(SyntheticPointerKind.Touch))
         {
-            return "This system cannot inject touch input";
+            return PointerRefusal.Reason("This system cannot inject touch input");
         }
 
         if (!_synthetic.Inject([Plain(x, y, SyntheticContactPhase.Down)]))
         {
-            return "The system refused a touch contact";
+            return PointerRefusal.Reason("The system refused a touch contact");
         }
 
         // Updates while held. A contact that is down and silent is not what a
@@ -214,7 +215,7 @@ public sealed class PointerActionRunner
         {
             if (!_synthetic.Inject([Plain(x, y, SyntheticContactPhase.Update)]))
             {
-                return "The system refused a contact update";
+                return PointerRefusal.Reason("The system refused a contact update");
             }
 
             Thread.Sleep(HoldFrameMilliseconds);
@@ -222,7 +223,7 @@ public sealed class PointerActionRunner
 
         return _synthetic.Inject([Plain(x, y, SyntheticContactPhase.Up)])
             ? null
-            : "The system refused to lift a touch contact";
+            : PointerRefusal.Reason("The system refused to lift a touch contact");
     }
 
     /// <summary>Drags from one point to another with the contact down.</summary>
@@ -231,19 +232,19 @@ public sealed class PointerActionRunner
     /// <param name="toX">Screen x to finish at.</param>
     /// <param name="toY">Screen y to finish at.</param>
     /// <returns>Null when performed, or why it could not be.</returns>
-    public string? Drag(int fromX, int fromY, int toX, int toY)
+    public PointerRefusal? Drag(int fromX, int fromY, int toX, int toY)
     {
         if (!_synthetic.CanInject(SyntheticPointerKind.Touch))
         {
-            return "This system cannot inject touch input";
+            return PointerRefusal.Reason("This system cannot inject touch input");
         }
 
         if (!_synthetic.Inject([Plain(fromX, fromY, SyntheticContactPhase.Down)]))
         {
-            return "The system refused a touch contact";
+            return PointerRefusal.Reason("The system refused a touch contact");
         }
 
-        string? moved = Move(SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true);
+        PointerRefusal? moved = Move(SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true);
         if (moved is not null)
         {
             return moved;
@@ -251,14 +252,14 @@ public sealed class PointerActionRunner
 
         return _synthetic.Inject([Plain(toX, toY, SyntheticContactPhase.Up)])
             ? null
-            : "The system refused to lift a touch contact";
+            : PointerRefusal.Reason("The system refused to lift a touch contact");
     }
 
     /// <summary>The centre of an element, in screen pixels.</summary>
     /// <param name="window">The session's window.</param>
     /// <param name="elementId">The element.</param>
     /// <returns>The point, or why it could not be found.</returns>
-    public (int X, int Y, string? Failure) CentreOf(nint window, string elementId)
+    public (int X, int Y, PointerRefusal? Failure) CentreOf(nint window, string elementId)
     {
         ElementRead<ElementBounds> bounds = _elements.ScreenBounds(window, elementId);
 
@@ -266,7 +267,7 @@ public sealed class PointerActionRunner
             ? (bounds.Value.X + (bounds.Value.Width / 2),
                bounds.Value.Y + (bounds.Value.Height / 2),
                null)
-            : (0, 0, $"The element could not be located: {bounds.Outcome}");
+            : (0, 0, PointerRefusal.Element(bounds.Outcome, elementId));
     }
 
     private static SyntheticContact Plain(int x, int y, SyntheticContactPhase phase) =>
@@ -279,17 +280,19 @@ public sealed class PointerActionRunner
     /// </remarks>
     private const int HoldFrameMilliseconds = 16;
 
-    private string? Press(SyntheticPointerKind kind, int x, int y, JsonElement step) =>
+    private PointerRefusal? Press(SyntheticPointerKind kind, int x, int y, JsonElement step) =>
         _synthetic.Inject([Contact(kind, x, y, SyntheticContactPhase.Down, step)])
             ? null
-            : $"The system refused a {kind.ToString().ToLowerInvariant()} contact";
+            : PointerRefusal.Reason(
+                $"The system refused a {kind.ToString().ToLowerInvariant()} contact");
 
-    private string? Release(SyntheticPointerKind kind, int x, int y, JsonElement step) =>
+    private PointerRefusal? Release(SyntheticPointerKind kind, int x, int y, JsonElement step) =>
         _synthetic.Inject([Contact(kind, x, y, SyntheticContactPhase.Up, step)])
             ? null
-            : $"The system refused to lift a {kind.ToString().ToLowerInvariant()} contact";
+            : PointerRefusal.Reason(
+                $"The system refused to lift a {kind.ToString().ToLowerInvariant()} contact");
 
-    private string? Move(SyntheticPointerKind kind, int fromX, int fromY, int toX, int toY, bool down)
+    private PointerRefusal? Move(SyntheticPointerKind kind, int fromX, int fromY, int toX, int toY, bool down)
     {
         if (!down)
         {
@@ -310,14 +313,14 @@ public sealed class PointerActionRunner
             if (!_synthetic.Inject(
                 [new SyntheticContact(kind, stepX, stepY, SyntheticContactPhase.Update)]))
             {
-                return "The system refused a contact update";
+                return PointerRefusal.Reason("The system refused a contact update");
             }
         }
 
         return null;
     }
 
-    private (int X, int Y, string? Failure) Target(
+    private (int X, int Y, PointerRefusal? Failure) Target(
         JsonElement step, nint window, int currentX, int currentY)
     {
         int dx = step.TryGetProperty("x", out JsonElement xValue) && xValue.TryGetInt32(out int x) ? x : 0;
@@ -347,13 +350,14 @@ public sealed class PointerActionRunner
         string? elementId = ElementId(origin);
         if (elementId is null)
         {
-            return (0, 0, "The origin names an element this session does not know");
+            return (0, 0, PointerRefusal.Reason(
+                "The origin names an element this session does not know"));
         }
 
         ElementRead<ElementBounds> bounds = _elements.ScreenBounds(window, elementId);
         if (bounds.Outcome != ElementReadOutcome.Read)
         {
-            return (0, 0, $"The origin element could not be located: {bounds.Outcome}");
+            return (0, 0, PointerRefusal.Element(bounds.Outcome, elementId));
         }
 
         return (

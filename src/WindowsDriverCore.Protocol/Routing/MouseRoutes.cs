@@ -64,7 +64,9 @@ public static class MouseRoutes
             async (
                 HttpContext context,
                 IElementInspector inspector,
-                IPointerInput? pointer) =>
+                IPointerInput? pointer,
+                IElementRegistry registry,
+                IWindowLocator windows) =>
             {
                 MoveToRequest? request = await context.Request
                     .ReadFromJsonAsync<MoveToRequest>(context.RequestAborted)
@@ -100,9 +102,14 @@ public static class MouseRoutes
 
                     if (bounds.Outcome != ElementReadOutcome.Read)
                     {
-                        return Fault(
-                            WebDriverFault.NoSuchElement,
-                            "An element could not be located on the page using the given search parameters.");
+                        // Delegated, not answered here. A stale element and an id
+                        // this server never issued are the same observation to a
+                        // lookup and different answers on the wire, and only the
+                        // registry can tell them apart. The measured
+                        // "unknown element — 404" still holds: an id that was
+                        // never issued takes exactly that branch.
+                        return ElementFault.For(
+                            bounds.Outcome, session, request.Element!, registry, windows);
                     }
 
                     // With offsets, they are measured from the element's
