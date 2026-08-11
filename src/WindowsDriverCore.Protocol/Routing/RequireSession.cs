@@ -96,9 +96,8 @@ public static class RequireSession
     /// </remarks>
     private static void ReResolveTheWindowIfItDied(DriverSession session, HttpContext http)
     {
-        // A desktop session has no process to re-resolve against, and its window
-        // is the desktop, which does not die.
-        if (session.ProcessId == 0)
+        // ISOLATION BUILD: re-resolve disabled. Do not merge.
+        if (session.ProcessId >= 0)
         {
             return;
         }
