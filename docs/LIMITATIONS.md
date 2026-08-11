@@ -1193,13 +1193,34 @@ bounding rectangle. `GetClickablePoint` often succeeds on exactly the elements
 whose rectangle is degenerate, so it is the obvious candidate — **not implemented,
 and not measured**.
 
-The experiment that would settle it, before any code: read `/element/{id}/size`
-and `/element/{id}/attribute/ClickablePoint` for such an element through
-WinAppDriver and through this driver. Three outcomes worth telling apart — 0x0
-from UIA itself (the refusal is right and `ClickablePoint` is the fix), 0x0 only
-in WinAppDriver's mapping (the observation does not transfer to us), or
-`ClickablePoint` failing too (the element has no screen presence and refusing is
-correct).
+**ANSWERED, and the ClickablePoint suggestion above is withdrawn.** Reading the
+PokemonBattleJournal source rather than proposing an experiment: those buttons
+*"report 0x0 to Appium for their whole life **and invoke perfectly through
+FlaUI**"*, and its off-window guard reports "outside the app window" — which is a
+0,0,0,0 rectangle yielding a centre of (0,0). So the geometry really is degenerate
+in UIA and the element is still invokable **by pattern**. `GetClickablePoint`
+generally fails on a zero-area element too, so it would not have helped.
+
+**The real overlap is a defect of ours, and it is not about geometry.** The same
+source records `ApplyConflictsButton` carrying *no pattern at all* for a beat, and
+invoking cleanly 70 ms later — WinAppDriver publishes an element as soon as it is
+realised. Our click is **one shot**:
+
+```csharp
+MapAction(app, "click", static (interactor, window, id) => interactor.Click(window, id));
+```
+
+The implicit wait retries the *find*, never the *action*. So an element that is
+momentarily pattern-less falls through the whole ladder to the mouse rung, meets
+the zero rectangle, and is refused as `NotInteractable` — for an element that
+would have invoked a poll later. That is a race we would lose exactly where PBJ
+lost it, and it is invisible to the compatibility suite, whose subjects are long
+since realised.
+
+Not yet measured: whether retrying the ladder within the implicit wait fixes it
+without making a genuinely unclickable element cost the full wait. That trade is
+the same one the dead-window fail-fast had to solve, and it should be tested by
+CALL COUNT rather than elapsed time.
 
 ## Rooting at the frame: 150 -> 166, and the reason was NOT the one predicted
 
