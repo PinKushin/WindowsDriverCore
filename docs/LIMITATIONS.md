@@ -1514,6 +1514,67 @@ three need an absent UWP package and have nothing to do with Edge. A failure lis
 grouped by fixture hides that, which is how the description drifted from the data
 in the first place.
 
+## The scaffolding was the confound (2026-08-11)
+
+**Every score this project recorded between 2026-08-10 09:38 and 2026-08-11 was
+taken through two pieces of scaffolding that moved the result.** Both were added
+in one commit, `c62ebde`, to stabilise the number:
+
+- an **alarm-store reset** before each run
+- an **app-warm step** that pre-started Alarms & Clock
+
+Measured on the rebuilt offline guest — Windows 10 19045, Alarms & Clock
+`10.1906.2182.0`, static 4 GB, cold, WinAppDriver 1.2.1, same commit throughout:
+
+| condition | score | `ActionsError` failures |
+|---|---|---|
+| reset + warm | 281 | 0 — the warm hid the damage |
+| reset, no warm | 259 / 259 / 260 | **21** |
+| **no reset, no warm** | **280** | **0** |
+
+### Why the reset breaks it
+
+The reset moves the application's entire `Settings` folder away, so the next
+launch is a genuine cold start rather than a re-attach. **A cold activation
+returns an intermediate process id**, and both drivers then search for a window
+owned by a process that does not own it.
+
+Our own request transcript caught it directly:
+
+```
+17:16:49.230  pid  3024   0x30218  !! NO CLASS !!        10241.6 ms   <- failed
+17:16:50.279  pid  4852   0x808EA  ApplicationFrameWindow   790.0 ms   <- 1s later, fine
+   every later session: pid 4852, 25-89 ms
+```
+
+Activation returned **3024**; the application was running as **4852** and visible
+on screen the whole time. WinAppDriver loses the same race — its error names a
+pid too — and fails the session honestly. We returned a handle that was no longer
+a window and reported `200 jwp 0`, which turned one bad session into **105
+failing finds**. Fixed in `044b71c`; the pid handling itself is still open and is
+where tests are actually recovered.
+
+### What this invalidates
+
+`169`, `231`, `163`, `164`, `259` and the "62-test gap" all appear in this
+repository's history. **None of them are comparable to each other or to 280.**
+They differ in app version, in whether the store was reset, and in whether the app
+was warm.
+
+### The lesson worth more than the number
+
+**Three careful runs agreed on 259 and all three were wrong.** Host load varied
+62/40/54%, guest memory went from dynamically squeezed to statically pinned, and
+the failure count did not move — which read as robustness. It was not.
+Reproducibility is not validity when what is being reproduced is the confound.
+
+The owner said the very first run scored 281 and held that position while three
+separate explanations were constructed for why it could not have. The memory was
+right and the measurements were wrong, because the measurements were taken through
+scaffolding that did not exist when that run happened.
+
+Resetting is now opt-in (`-ResetStore`) and costs 21 tests when used.
+
 ## The stale-element cluster: measured to the point where OUR bug starts
 
 Eleven `*Error_StaleElement` tests assert

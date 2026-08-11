@@ -87,16 +87,41 @@ The goal above is the claim. Two footnotes keep it honest:
   has a documented cause, a reproduction, and a measured before/after from a real
   application suite. Prefer it to anything about issue numbers.
 
-**Measured so far:** this driver scores **169/290** and WinAppDriver 1.2.1
-scores **231/290** — same Windows 10 22H2 guest, same suite DLL, alarm store reset
-and app warmed for both, both against Alarms & Clock `11.2606.11.0` (2026-08-11).
-**The gap is 62 tests.**
+**Measured 2026-08-11 on the rebuilt offline guest** — Windows 10 19045, Alarms &
+Clock `10.1906.2182.0`, no network, static 4 GB, cold, **no alarm-store reset and
+no warm step**:
 
-WinAppDriver scored **281** on this guest before Alarms & Clock updated on
-2026-08-10, and 112/290 on Windows 11. Neither is the live ceiling: **231 is**,
-and it is the only WinAppDriver figure comparable to our 169. A suite score is
-only comparable if the alarm store was reset, the app warmed, and **the app
-version recorded** — see `docs/LIMITATIONS.md`.
+| | score |
+|---|---|
+| WinAppDriver 1.2.1 | **280/290** |
+| environmental failures | 9 (3 ModernApp, 5 browser/EdgeBase, 1 `GetLocation`) |
+| **reachable ceiling** | **281** |
+| this driver | being re-measured |
+
+**Every earlier figure in this file was wrong, including ones measured
+repeatedly.** Two pieces of scaffolding introduced on 2026-08-10 in a single
+commit (`c62ebde`) — an alarm-store reset and an app-warm step — turned out to be
+perturbing the instrument:
+
+```
+reset + warm      281      the pair roughly cancelled
+reset, no warm    259/259/260   21 ActionsError failures
+no reset, no warm 280       0 ActionsError failures
+```
+
+The reset moves the app's `Settings` folder away, forcing a genuine cold start,
+and a cold activation returns an intermediate process id — so both drivers hunt
+for a window owned by a process that does not own it. The warm step hid that.
+Removing the warm exposed it; removing the reset fixed it.
+
+**Three careful runs agreed on 259 and all three were wrong**, because they shared
+the confound. Reproducibility is not validity when the thing being reproduced is
+the confound.
+
+Quote a score only with: the Windows build, the **Alarms & Clock version**,
+whether the store was reset, and whether the app was warm. `169`, `231`, `163`
+and `259` all appear in this repository's history and none of them are comparable
+to each other. See `docs/LIMITATIONS.md`.
 
 A find takes roughly 33 ms here against roughly 1070 ms through WinAppDriver,
 under unmatched conditions.
@@ -233,40 +258,40 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 
 ## Ground truth worth memorising
 
-- **169/290 for this driver, 231/290 for WinAppDriver 1.2.1** — matched on
-  Windows 10 22H2, alarm store reset, app warmed, both against Alarms & Clock
-  `11.2606.11.0`. **The backlog is 62 tests.** Reset the store and warm Alarms &
-  Clock before any suite run — `tools/vm/Invoke-CompatibilitySuite.ps1` does
-  both — or the score measures the previous run's residue, not the driver.
-- WinAppDriver scored **281/290 on Windows 10 22H2 before the app update** and
-  112/290 on Windows 11. **Quote the operating system AND the Alarms & Clock
-  version every time, or do not quote the number.** All 9 of
-  its Windows 10 failures are ENVIRONMENTAL, read out of its TRX rather than
-  described: 2 browser navigation, 3 `EdgeBase` fixtures that die in
-  `ClassInitialize`, 3 that need a UWP app which will not install
-  (`CreateSessionWithArguments_ModernApp`, `GetWindowHandles_ModernApp`,
-  `SwitchWindows`), and `GetLocation` — geolocation, which a VM has no provider
-  for. **So 281 was the environmental ceiling of the pre-update guest and
-  WinAppDriver reached it exactly; all nine still fail, as the first nine of
-  today's 59.** Two shorthands written on 2026-08-11 were wrong and are
-  corrected in `docs/LIMITATIONS.md`: "eight need legacy EdgeHTML" (only five are
-  browser-related) and "WinAppDriver passes the three package-blocked tests" (it
-  fails all three — they are *inside* the eight, and the old 279 double-counted
-  them). The old "80/290 = 27.6%" was a fraction of a denominator nobody had
-  checked, and 112 turned out to be a measurement of Windows 11 rather than of
-  WinAppDriver.
-- **The guest's Alarms & Clock UPDATED mid-investigation**, between the 08-10
-  13:53 WinAppDriver baseline and the runs that resumed at 08-10 17:12. Version
-  now 11.2606.11.0. The add-alarm UI became a `ContentDialog`: `AlarmSaveButton`
-  is now `PrimaryButton` (Name still "Save"), and `AlarmNameTextBox` and
-  `CancelButton` are gone. **Measured 2026-08-11 through WinAppDriver itself** —
-  it cannot find `AlarmSaveButton` either, on repeated one-shot finds over 8 s
-  with the store reset and the app warmed. So the 281 baseline was taken against a
-  DIFFERENT application than every score after it. **Re-measured 2026-08-11:
-  WinAppDriver now scores 231/290 on this guest — 50 newly failing, 0 recovered.**
-  The live ceiling is 231 and the backlog against our 169 is 62, not 112.
-  Re-measure the reference driver rather than assuming its old number still holds;
-  a baseline is a measurement of a machine at a time, not a constant.
+- **280/290 for WinAppDriver 1.2.1 on the rebuilt guest**, cold, no reset, no
+  warm — Windows 10 19045, Alarms & Clock `10.1906.2182.0`, offline, static 4 GB.
+  Nine of the ten failures are environmental, so the reachable ceiling is **281**.
+  Our own figure is being re-measured; every previous one was taken through
+  scaffolding that moved the result.
+- **The alarm-store reset costs 21 tests, and the warm step hid that.** Both were
+  added in one commit (`c62ebde`, 2026-08-10) to stabilise the score:
+
+  ```
+  reset + warm       281            the two roughly cancelled
+  reset, no warm     259/259/260    21 ActionsError failures
+  no reset, no warm  280             0 ActionsError failures
+  ```
+
+  The reset moves the app's `Settings` folder away, forcing a real cold start; a
+  cold activation returns an **intermediate process id**, and both drivers then
+  search for a window owned by a process that does not own it. Caught directly in
+  our transcript: activation returned pid 3024 while Alarms ran as **4852**, and a
+  second activation a second later returned 4852 in 790 ms. Resetting is now
+  opt-in (`-ResetStore`).
+- **Three careful runs agreed on 259 and all three were wrong.** Load varied
+  62/40/54%, memory dynamic versus pinned — and every run shared the confound.
+  Reproducibility is not validity when what is being reproduced is the confound.
+- **A wait that spends its whole budget never detected the thing.** Nothing this
+  suite drives legitimately takes ten seconds, so a launch reporting ~10,000 ms is
+  a search looking for the wrong process — never a slow application. The
+  transcript now prints `TIMED OUT` rather than a number a reader must recognise.
+- **`settings.dat` size is not an alarm count.** It is a registry hive: it
+  allocates in blocks and never shrinks. Reported as a leftover-work metric for
+  half a day before the owner looked in the app and found the alarms gone —
+  meaning the suite's cleanup, including the right-click and the context-menu
+  find, works against this driver.
+- WinAppDriver scored **112/290 on Windows 11**, which is app drift and must never
+  be quoted as a capability number.
 - A find takes roughly **33 ms** here against roughly **1070 ms** through
   WinAppDriver — unmatched conditions, but a 30x gap.
 - Compatibility floor is **Windows 10 1607 / Server 2016**, the same as
