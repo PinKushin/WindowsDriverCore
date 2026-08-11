@@ -311,6 +311,36 @@ Two API facts found the hard way while measuring:
   cached, and every `GetCachedPropertyValue` throws `E_INVALIDARG` — which reads
   exactly like "that property is not cacheable" and is not.
 
+> ## RETRACTED 2026-08-11 — the CoreWindow is NOT destroyed, on either OS
+>
+> Everything below that rests on "Windows 10 destroys the CoreWindow while
+> Windows 11 reparents it" is **refuted**. Same commit, same test, sampled every
+> 25 ms from launch:
+>
+> ```
+> Windows 11 host             Windows 10 22H2 guest
+> t=  0 ms  handed CoreWindow  t=  0 ms  handed CoreWindow
+> t=159 ms  REPARENTED         t=154 ms  REPARENTED
+> t=190 ms  frame appeared     t=154 ms  frame appeared
+> t=6030 ms IsWindow=True      t=6025 ms IsWindow=True
+> ```
+>
+> **Both reparent. Neither destroys. The timings are within 5 ms of each other,
+> so there is no cold-start OS difference in window lifetime at all.**
+>
+> The original reading came from `EnumWindows` returning nothing owned by the
+> application, and `EnumWindows` enumerates *top-level* windows only — it cannot
+> tell "destroyed" from "reparented". Those are opposite problems: destruction
+> means a session's handle must be replaced; reparenting means the handle is fine
+> and only the way it was *found* has stopped working.
+>
+> **Scope of the retraction.** What is measured is the launch-and-settle path,
+> for six seconds, on both systems. Suspend/resume and close-and-relaunch have
+> **not** been measured and may behave differently — but no measurement has ever
+> demonstrated destruction, so nothing should be built on it.
+>
+> `PackagedWindowLifetimeTests` is the measurement and runs on both.
+
 ## Why attaching to the frame keeps failing — the loose fallback grabs an EMPTY frame
 
 > **CONFIRMED 2026-08-11 — the guess below is now MEASURED, on the wire.** A real

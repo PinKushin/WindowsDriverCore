@@ -145,9 +145,11 @@ public sealed class MainWindowWaiter
     // Measured: a packaged application's real top-level window is its
     // ApplicationFrameWindow, but the Windows.UI.Core.CoreWindow inside it is
     // briefly top-level and owned by the application, so the ownership search
-    // returns the CoreWindow. That window is later reparented and destroyed, which
-    // surfaces much later as "Currently selected window has been closed" — in the
-    // guest it killed every ActionsError_* test at TestInit.
+    // returns the CoreWindow. That window is later reparented INTO the frame — it
+    // is not destroyed, measured on both systems — so it stops being top-level
+    // while remaining a perfectly valid handle. What the CoreWindow root costs is
+    // REACH, not lifetime: the frame's subtree carries the title-bar chrome and a
+    // CoreWindow root cannot see it, 53 elements against 45.
     //
     // THREE fixes were tried and all three regressed this desktop the same way,
     // with element finds coming back empty:
@@ -170,10 +172,18 @@ public sealed class MainWindowWaiter
     // window 0 — which is why the regression looked like empty finds and why one
     // test took thirty seconds. Nothing was wrong with the frame as a search root.
     //
-    // The frame appears LATER, when the application is rehosted, and in the
-    // Windows 10 guest the original CoreWindow is destroyed rather than reparented
-    // — that destruction is the "Currently selected window has been closed" seen
-    // much later, at the first test of a run.
+    // The frame appears LATER, when the application is rehosted.
+    //
+    // CORRECTED 2026-08-11. This said the Windows 10 guest DESTROYS the original
+    // CoreWindow while Windows 11 reparents it. Measured on both, sampled every
+    // 25 ms from launch, and it is false: Win11 reparents at 159 ms, Win10 at
+    // 154 ms, and the handle is still IsWindow six seconds later on each. There
+    // is no cold-start difference between the two systems.
+    //
+    // The wrong reading came from EnumWindows returning nothing owned by the
+    // application — and EnumWindows enumerates TOP-LEVEL windows only, so it
+    // cannot distinguish destroyed from reparented. See
+    // PackagedWindowLifetimeTests, which measures it and runs on both.
     //
     // A session-level RE-RESOLVE was tried as a way round this and has since been
     // REMOVED. Measured 2026-08-11: enabling and disabling it produced the same
