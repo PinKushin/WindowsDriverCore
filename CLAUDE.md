@@ -210,9 +210,13 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
   Clock before any suite run — `tools/vm/Invoke-CompatibilitySuite.ps1` does
   both — or the score measures the previous run's residue, not the driver.
 - WinAppDriver scores **281/290 on Windows 10 22H2** and 112/290 on Windows 11.
-  **Quote the operating system every time or do not quote the number.** Of the 9
-  Windows 10 failures, 3 are a missing UWP package (`0x80073CF1`) and 2 need an
-  absent browser, so its true capability figure is higher still. The old
+  **Quote the operating system every time or do not quote the number.** All 9 of
+  its Windows 10 failures are ENVIRONMENTAL, measured 2026-08-11: eight need
+  legacy EdgeHTML, which 22H2 replaced and which is not installed, and the ninth
+  is `GetLocation` — the geolocation endpoint, which a VM has no provider for.
+  The earlier "3 need a missing UWP package" was stale; WinAppDriver passes those.
+  **So 281 is the environmental ceiling of this guest and WinAppDriver reaches it
+  exactly** — it leaves no capability on the table, and 281 is the target. The old
   "80/290 = 27.6%" was a fraction of a denominator nobody had checked, and 112
   turned out to be a measurement of Windows 11 rather than of WinAppDriver.
 - A find takes roughly **33 ms** here against roughly **1070 ms** through

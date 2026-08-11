@@ -1449,10 +1449,27 @@ This matches WinAppDriver's own ceiling — its 281/290 on this guest includes
 failures for an absent browser, so the comparison remains fair; both drivers lose
 the same tests for the same environmental reason.
 
-**Consequence for the target.** Of 290, eight are unreachable here and three more
-need a UWP package that will not install (`0x80073CF1`). Chasing the last few
-points of the score means chasing tests that cannot pass, so the honest ceiling on
-this guest is **279**, not 290.
+**Consequence for the target — and the ceiling is 281, not 279.**
+
+Corrected 2026-08-11. This first said 279, subtracting eight Edge tests and three
+more said to need a UWP package that will not install. **WinAppDriver's own run
+refutes the second subtraction:** it scores 281/290 on this guest and fails exactly
+nine, of which eight are Edge and the ninth is `GetLocation`. If three tests needed
+an uninstallable package, WinAppDriver would fail those too. It does not, so that
+figure was stale.
+
+`GetLocation` is the JSON Wire **geolocation** endpoint, `GET /session/:id/location`
+— not an element's position. A virtual machine has no location provider, so it
+fails environmentally like Edge does and would likely pass on real hardware.
+
+**So every one of WinAppDriver's nine failures here is environmental, and none is
+a capability limit.** The environmental ceiling on this guest is **281**, and
+WinAppDriver hits it exactly. That makes 281 the right target: the reference
+driver is not leaving capability on the table, it is scoring everything the machine
+allows.
+
+Against 169, the gap is **112 tests, all of them capability** — ours to close, with
+no environmental excuses left in the difference.
 
 ## The stale-element cluster: measured to the point where OUR bug starts
 
