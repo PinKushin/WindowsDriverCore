@@ -65,20 +65,28 @@ param(
     [string] $Root = "F:\Hyper-V",
     [int] $TimeoutMinutes = 30,
 
-    # THE CONTROL FOR THE RESET ITSELF.
+    # OPT IN TO RESETTING. IT IS NOT THE DEFAULT, BECAUSE IT COSTS 21 TESTS.
     #
-    # The reset moves the app's entire Settings folder away, which is where a
-    # packaged application's first-run state lives - so every run since it was
-    # introduced has forced Alarms & Clock down a first-launch path.
+    # MEASURED 2026-08-11, WinAppDriver 1.2.1, same guest, same commit, cold:
     #
-    # HYPOTHESIS: that is what loses WinAppDriver's window race, and the 21
-    # ActionsError failures attributed to "cold" are actually caused by the
-    # reset. The reset and the warm step were added in the SAME commit (c62ebde),
-    # so the 02:24 run that scored 281 had neither, and every run after it had
-    # both until the warm was removed today.
+    #   with the reset     259 / 259 / 260     21 ActionsError failures
+    #   without it         280                  0 ActionsError failures
     #
-    # This switch is how that gets tested rather than argued about.
-    [switch] $SkipStoreReset
+    # The reset moves the app's whole Settings folder away, so the next launch is
+    # a genuine cold start - and a cold activation is where an intermediate or
+    # short-lived process id comes back instead of the final one. Both drivers
+    # then hunt for a window owned by a process that does not own it. Without the
+    # reset the suite re-attaches to a running application whose pid is stable,
+    # and the failure never happens.
+    #
+    # The reset and the warm step were added in the SAME commit (c62ebde). The
+    # warm masked the damage the reset did, the two roughly cancelled, and the
+    # pair survived a day of scrutiny because the net score looked fine. Removing
+    # the warm exposed it; removing the reset fixes it.
+    #
+    # Keep the switch for a run that deliberately wants a pristine store, and
+    # expect to lose those 21 tests when you use it.
+    [switch] $ResetStore
 )
 
 $ErrorActionPreference = "Stop"
@@ -152,8 +160,8 @@ Start-Sleep -Seconds 4
 # The reset itself stays, because a CI runner genuinely starts clean and runs
 # have to be independent of each other. What it must never do is hide that we
 # are the reason it is needed.
-if ('$SkipStoreReset' -eq 'True') {
-    'alarm store    : NOT RESET - control run, testing whether the reset is what breaks the cold attach'
+if ('$ResetStore' -ne 'True') {
+    'alarm store    : NOT reset (the default - resetting costs 21 tests, see the comment above)'
 } else {
     `$pkg = "`$env:LOCALAPPDATA\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe"
     `$settings = Join-Path `$pkg 'Settings'
