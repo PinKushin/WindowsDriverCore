@@ -211,14 +211,29 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
   both — or the score measures the previous run's residue, not the driver.
 - WinAppDriver scores **281/290 on Windows 10 22H2** and 112/290 on Windows 11.
   **Quote the operating system every time or do not quote the number.** All 9 of
-  its Windows 10 failures are ENVIRONMENTAL, measured 2026-08-11: eight need
-  legacy EdgeHTML, which 22H2 replaced and which is not installed, and the ninth
-  is `GetLocation` — the geolocation endpoint, which a VM has no provider for.
-  The earlier "3 need a missing UWP package" was stale; WinAppDriver passes those.
-  **So 281 is the environmental ceiling of this guest and WinAppDriver reaches it
-  exactly** — it leaves no capability on the table, and 281 is the target. The old
-  "80/290 = 27.6%" was a fraction of a denominator nobody had checked, and 112
-  turned out to be a measurement of Windows 11 rather than of WinAppDriver.
+  its Windows 10 failures are ENVIRONMENTAL, read out of its TRX rather than
+  described: 2 browser navigation, 3 `EdgeBase` fixtures that die in
+  `ClassInitialize`, 3 that need a UWP app which will not install
+  (`CreateSessionWithArguments_ModernApp`, `GetWindowHandles_ModernApp`,
+  `SwitchWindows`), and `GetLocation` — geolocation, which a VM has no provider
+  for. **So 281 is the environmental ceiling of this guest and WinAppDriver
+  reaches it exactly.** Two shorthands written on 2026-08-11 were wrong and are
+  corrected in `docs/LIMITATIONS.md`: "eight need legacy EdgeHTML" (only five are
+  browser-related) and "WinAppDriver passes the three package-blocked tests" (it
+  fails all three — they are *inside* the eight, and the old 279 double-counted
+  them). The old "80/290 = 27.6%" was a fraction of a denominator nobody had
+  checked, and 112 turned out to be a measurement of Windows 11 rather than of
+  WinAppDriver.
+- **The guest's Alarms & Clock UPDATED mid-investigation**, between the 08-10
+  13:53 WinAppDriver baseline and the runs that resumed at 08-10 17:12. Version
+  now 11.2606.11.0. The add-alarm UI became a `ContentDialog`: `AlarmSaveButton`
+  is now `PrimaryButton` (Name still "Save"), and `AlarmNameTextBox` and
+  `CancelButton` are gone. **Measured 2026-08-11 through WinAppDriver itself** —
+  it cannot find `AlarmSaveButton` either, on repeated one-shot finds over 8 s
+  with the store reset and the app warmed. So the 281 baseline was taken against a
+  DIFFERENT application than every score after it, and any comparison across that
+  boundary is invalid. Re-measure the reference driver rather than assuming its
+  old number still holds.
 - A find takes roughly **33 ms** here against roughly **1070 ms** through
   WinAppDriver — unmatched conditions, but a 30x gap.
 - Compatibility floor is **Windows 10 1607 / Server 2016**, the same as

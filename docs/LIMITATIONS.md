@@ -1449,27 +1449,44 @@ This matches WinAppDriver's own ceiling — its 281/290 on this guest includes
 failures for an absent browser, so the comparison remains fair; both drivers lose
 the same tests for the same environmental reason.
 
-**Consequence for the target — and the ceiling is 281, not 279.**
+**Consequence for the target — the ceiling is 281, and here is the failure list
+rather than a description of it.**
 
-Corrected 2026-08-11. This first said 279, subtracting eight Edge tests and three
-more said to need a UWP package that will not install. **WinAppDriver's own run
-refutes the second subtraction:** it scores 281/290 on this guest and fails exactly
-nine, of which eight are Edge and the ninth is `GetLocation`. If three tests needed
-an uninstallable package, WinAppDriver would fail those too. It does not, so that
-figure was stale.
+Read straight out of `run-winappdriver121-matched-134208.trx`, WinAppDriver 1.2.1
+on this guest, 290 run / 281 passed / 9 failed:
 
-`GetLocation` is the JSON Wire **geolocation** endpoint, `GET /session/:id/location`
-— not an element's position. A virtual machine has no location provider, so it
-fails environmentally like Edge does and would likely pass on real hardware.
+```
+NavigateBack_Browser                  browser navigation, no Edge
+NavigateForward_Browser               browser navigation, no Edge
+TouchSingleTap                        EdgeBase, dies in ClassInitialize
+TouchSingleTapError_StaleElement      EdgeBase, dies in ClassInitialize
+TouchFlick_Arbitrary                  EdgeBase, dies in ClassInitialize
+CreateSessionWithArguments_ModernApp  needs a UWP app that will not install
+GetWindowHandles_ModernApp            needs a UWP app that will not install
+SwitchWindows                         needs a UWP app that will not install
+GetLocation                           geolocation; a VM has no provider
+```
 
-**So every one of WinAppDriver's nine failures here is environmental, and none is
-a capability limit.** The environmental ceiling on this guest is **281**, and
-WinAppDriver hits it exactly. That makes 281 the right target: the reference
-driver is not leaving capability on the table, it is scoring everything the machine
-allows.
+That is **exactly** the eight in the table above, plus `GetLocation`. Every one is
+environmental, so the ceiling on this guest is **281** and WinAppDriver reaches it
+precisely — it leaves no capability on the table.
 
-Against 169, the gap is **112 tests, all of them capability** — ours to close, with
-no environmental excuses left in the difference.
+**Two corrections, both to text written on 2026-08-11.**
+
+*The 279 figure was wrong, but not for the reason given when it was fixed.* It
+subtracted "eight Edge tests and three more needing an uninstallable UWP package",
+and the fix claimed WinAppDriver refutes the second subtraction by passing those
+three. **It does not pass them** — `CreateSessionWithArguments_ModernApp`,
+`GetWindowHandles_ModernApp` and `SwitchWindows` are right there in its failure
+list. The actual error was double counting: those three are *inside* the eight,
+not additional to them. 281 was the right number reached by wrong arithmetic, and
+a right answer from wrong reasoning is worth less than it looks.
+
+*"Eight need legacy EdgeHTML" is loose.* Five are browser-related — two navigation
+tests and three that derive from `EdgeBase` and die in `ClassInitialize`. The other
+three need an absent UWP package and have nothing to do with Edge. A failure list
+grouped by fixture hides that, which is how the description drifted from the data
+in the first place.
 
 ## The stale-element cluster: measured to the point where OUR bug starts
 
@@ -1570,18 +1587,61 @@ emits 73 and would double what `//Text` matches — a silent divergence dressed 
 a capability win. The test keeps the lever measured and deliberately unused.
 
 **The cause is refuted by the same measurement.** WinAppDriver shares the
-limitation and still finds `AlarmSaveButton` on the guest, so the view is not what
-stops us. This is the third time in this repository a confirmed mechanism was
-about to be credited with a failure it did not cause; the check that costs ten
-minutes is asking the reference driver whether it has the same constraint.
+limitation, so the view cannot be what separates us from it. This is the third
+time in this repository a confirmed mechanism was about to be credited with a
+failure it did not cause; the check that costs ten minutes is asking the reference
+driver whether it has the same constraint.
 
-**What is still open: where that button lives.** The next probe runs on the guest,
-through WinAppDriver, doing exactly what `GetStaleElement` does — click
-`AddAlarmButton`, then dump *WinAppDriver's own* `/source` — and diffs it against
-ours at the same point in the same flow. If its source names `AlarmSaveButton` and
-ours does not, the difference is in us and the source diff names it. If neither
-does, then the claim that WinAppDriver passes 21 of the 22 `*StaleElement` tests
-is what needs re-measuring, and that claim rests on a single run's failure list.
+### And the button is gone: THE APP UPDATED MID-INVESTIGATION
+
+Probed on the guest, through WinAppDriver itself, store reset and app warmed:
+
+```
+click AddAlarmButton at t=480 ms: ok
+polling one-shot finds (implicit_wait=0) for 8 s:
+    t= 3172 ms  PrimaryButton APPEARED
+first seen (ms after the click, -1 = never within 8 s):
+  AlarmSaveButton    -1
+  AlarmNameTextBox   -1
+  CancelButton       -1
+  PrimaryButton      3172
+GET /source (37413 chars) contains AlarmSaveButton = False
+```
+
+`AutomationId="PrimaryButton" ClassName="Button" Name="Save"
+IsControlElement="True"`. The element the suite asks for does not exist, it is not
+hiding in a view we do not walk, and no implicit wait reaches it.
+
+**Alarms & Clock updated to `11.2606.11.0` on 2026-08-10**, in the gap between the
+WinAppDriver baseline TRX (written 13:53) and the runs that resumed at 17:12; the
+package folder was created at 16:38. `docs/memory/016` catalogued this exact set of
+renames on 2026-08-08 — `AlarmSaveButton` → `PrimaryButton`, `CancelButton` →
+`CloseButton`, `AlarmNameTextBox` → no automation id — **as Windows 11 drift**. The
+guest's Store app has caught up to the host's, so 016 is no longer a Win11
+document.
+
+`AlarmClockBase.GetStaleElement()` has no version fallback, unlike
+`FindAlarmTabElement()` which handles two Alarms generations. So eleven
+`*Error_StaleElement` tests plus everything routed through `AddAlarmEntry` are now
+unreachable **by any driver on this guest**, WinAppDriver included.
+
+### What that costs the ground truth
+
+The 281 baseline was measured against a **different application** than every score
+taken after 2026-08-10 16:38 — which is all of them from `05768de` onward,
+including 169. Comparing across that boundary is invalid in both directions, and
+"the gap is 112 tests, all capability" was computed across it.
+
+Three consequences:
+
+1. **The reference driver has to be re-measured**, not reused. A baseline is a
+   measurement of a machine at a time, not a constant.
+2. **The guest was chosen because the suite was readable there** — 281 against 112
+   on Windows 11. Whatever part of that advantage came from an older Alarms build
+   is gone.
+3. **An instrument that updates itself is not an instrument.** Record the app
+   version beside any score, and stopping Store auto-update on the guest is now
+   worth doing.
 
 ### The suite's own blindfold, still worth knowing
 
