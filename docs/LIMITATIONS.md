@@ -1256,6 +1256,43 @@ the wrong mechanism, after "the CoreWindow is destroyed" (retracted, it is
 reparented) and "the empty frame must be refused" (retracted, it cost 20 tests).
 The change stands on the measurement, not on the story attached to it.
 
+## The coordinate click is guarded by the wrong question
+
+`BringToForeground` returns `bool`. Both call sites discard it:
+
+```csharp
+_windows?.BringToForeground(window);
+```
+
+`SetForegroundWindow` refuses when the calling process does not hold foreground
+rights — a documented Windows restriction, and one this repository has already
+measured in another form (UIA refuses `SetFocus` against a background window). So
+the driver can fail to raise the target and dispatch a coordinate click anyway,
+into whatever is actually in front. That is the **unguarded coordinate click**
+this project exists to fix, arriving through a different door.
+
+It also violates a standing rule: a return-value error signal must be checked
+before reading dependent state.
+
+**The guard that exists is the wrong question.** `ClickWithTheMouse` asks *is this
+point inside the target window's rectangle*. What matters is *is the target window
+the one at this point*, and `WindowFromPoint` answers exactly that — a window
+that is covered fails the second test and passes the first.
+
+Newly relevant, because the WOW64 fix made the compatibility suite able to open
+**File Explorer** sessions for the first time. Those windows stay on screen after
+their session ends, so the suite now runs later tests against a desktop with
+windows over the target that were never there before. `MouseDoubleClick` and
+`MouseDownMoveUp` went from failing to passing to failing across three commits and
+both failures are "the effect did not happen" — consistent with this, and **not
+attributed to it**, because one run cannot tell that from flake. A repeat of the
+same commit is the measurement.
+
+Not fixed yet, deliberately: verifying it needs a window deliberately covering
+another, and the last fixture that synthesised windows for a click test wedged the
+development desktop. It belongs on the guest, in the `SynthesisesRealInput`
+category.
+
 ## Not implemented
 
 | Area | State | Notes |
