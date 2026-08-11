@@ -37,6 +37,9 @@ param(
 
     [int] $ProcessorCount = 4,
     [int64] $StartupMemory = 4GB,
+
+    # Retained for callers that pass it; unused now that memory is static. See
+    # the Set-VMMemory call below for why.
     [int64] $MaximumMemory = 8GB,
     [int64] $DiskSize = 80GB,
 
@@ -206,8 +209,23 @@ if ($SwitchName) {
 }
 
 Set-VM -VM $vm -ProcessorCount $ProcessorCount -AutomaticCheckpointsEnabled $false
-Set-VMMemory -VM $vm -DynamicMemoryEnabled $true `
-    -MinimumBytes 2GB -StartupBytes $StartupMemory -MaximumBytes $MaximumMemory
+
+# STATIC MEMORY, NOT DYNAMIC, AND THAT IS A MEASUREMENT DECISION.
+#
+# Dynamic memory makes the guest's performance a function of what else is running
+# on the HOST. Measured 2026-08-11: with a browser, two agent sessions and a
+# runaway search competing for RAM, the balloon squeezed this guest to 2,334 MB
+# against 1,727 MB demand - near its 2 GB floor. A cold packaged-application
+# launch in a starved guest is exactly where WinAppDriver's window-wait times
+# out, and a run in that state failed 21 tests to a single ClassInitialize.
+#
+# That is the same defect as the Store update in a different costume: the score
+# moves for a reason that has nothing to do with the driver. An instrument must
+# not be a function of the weather.
+#
+# Fixed at $StartupMemory. It costs the host that much for as long as the guest
+# runs, which is the price of a number that means the same thing on a busy day.
+Set-VMMemory -VM $vm -DynamicMemoryEnabled $false -StartupBytes $StartupMemory
 
 # SECURE BOOT OFF, and it has to be. Measured 2026-08-10: with the
 # MicrosoftWindows template the firmware reported
