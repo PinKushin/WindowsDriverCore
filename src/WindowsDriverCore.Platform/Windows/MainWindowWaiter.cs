@@ -328,7 +328,8 @@ public sealed class MainWindowWaiter
         {
             if (!before.Contains(handle) &&
                 Win32.IsWindowVisible(handle) &&
-                Win32.GetWindow(handle, Win32.GW_OWNER) == 0)
+                Win32.GetWindow(handle, Win32.GW_OWNER) == 0 &&
+                !IsAnEmptyApplicationFrame(handle))
             {
                 appeared.Add(handle);
             }
@@ -337,6 +338,61 @@ public sealed class MainWindowWaiter
         }, 0);
 
         return PreferTitled(appeared);
+    }
+
+    /// <summary>
+    /// An <c>ApplicationFrameWindow</c> with no application inside it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured 2026-08-11.</b> A frame outlives what it hosted: one was found
+    /// alive on the development desktop — visible, three children, no
+    /// <c>Windows.UI.Core.CoreWindow</c> — and the Windows 10 guest carried one
+    /// from 04:10 through every compatibility run of that day. Two runs of the
+    /// same commit in that hour scored 147 and 153, and the difference was the
+    /// leftover rather than the code.
+    /// </para>
+    /// <para>
+    /// A frame with no CoreWindow child hosts nothing, so adopting it gives every
+    /// later find an empty tree. The session then reports "no such element" for
+    /// everything, which says nothing about the actual mistake — attaching to the
+    /// wrong window.
+    /// </para>
+    /// <para>
+    /// Only the loose fallback needs this. <see cref="FindFrameWindowHosting"/>
+    /// matches a frame <i>through</i> a CoreWindow child owned by the target
+    /// process, so it cannot return an empty one; and a frame is owned by
+    /// ApplicationFrameHost rather than by the launched application, so the
+    /// ownership stages never see one either. The fallback takes any visible
+    /// unowned window that was not there a moment ago, and a frame created before
+    /// its CoreWindow attaches is precisely that.
+    /// </para>
+    /// <para>
+    /// Narrowing, not a new search: a frame that <i>does</i> host the target has
+    /// already been returned by the precise stage before this runs.
+    /// </para>
+    /// </remarks>
+    private static bool IsAnEmptyApplicationFrame(nint window)
+    {
+        if (ClassNameOf(window) != FrameWindowClass)
+        {
+            return false;
+        }
+
+        bool hosts = false;
+
+        Win32.EnumChildWindows(window, (child, _) =>
+        {
+            if (ClassNameOf(child) != CoreWindowClass)
+            {
+                return true;
+            }
+
+            hosts = true;
+            return false;
+        }, 0);
+
+        return !hosts;
     }
 
     /// <summary>
