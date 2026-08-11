@@ -78,7 +78,11 @@ public static class KeyboardRoutes
                     statusCode: WebDriverFault.InvalidArgument.HttpStatus);
             }
 
-            if (!keyboard.Type(keys))
+            // CARRIED, not released. A modifier left open by this call stays
+            // physically down for the next one, which is what the protocol
+            // describes and what SendKeys_ModifierExplicitRelease asserts.
+            // DELETE /session lifts whatever survives.
+            if (!keyboard.Type(keys, session.Modifiers))
             {
                 return Results.Json(
                     JsonWireResponse.ForFault(

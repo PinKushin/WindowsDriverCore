@@ -56,6 +56,12 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
         keyboard.Type(Arg.Any<string>()).Returns(true);
 
+        // The carrying overload too, because /keys uses it: a session persists
+        // modifiers between calls. Stubbing only the other one leaves this
+        // returning false, the route reports the keystrokes were refused, and
+        // the drain these tests measure never happens.
+        keyboard.Type(Arg.Any<string>(), Arg.Any<HeldModifiers>()).Returns(true);
+
         // A click that actually happened. Without this the substitute returns a
         // default outcome, the route correctly declines to flag input that was
         // never dispatched, and the test would be measuring the stub.

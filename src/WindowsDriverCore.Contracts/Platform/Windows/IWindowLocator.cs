@@ -269,5 +269,77 @@ public interface IKeyboardInput
     /// U+E009 for control.
     /// </param>
     /// <returns>True if every keystroke was accepted by the system.</returns>
+    /// <remarks>
+    /// Anything still held at the end of the sequence is released. That is the
+    /// ELEMENT contract, stated by the suite itself: <c>SendKeys implicitly
+    /// depress all modifier at the end of the sequence (every API call)</c>.
+    /// </remarks>
     bool Type(string keys);
+
+    /// <summary>Types a sequence, carrying modifiers in and out.</summary>
+    /// <param name="keys">The key sequence.</param>
+    /// <param name="held">
+    /// What the session is already holding, updated to what it holds afterwards.
+    /// </param>
+    /// <returns>True if every keystroke was accepted by the system.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The SESSION contract, and it is the opposite of the element one.</b>
+    /// <c>SendKeys_ModifierExplicitRelease</c> says so outright — <c>Keys persist
+    /// all modifier between API call and requires explicit modifier release</c> —
+    /// and asserts three calls produce
+    /// <c>ABCWXYZ!@#&amp;*()ABCWXYZ!@#&amp;*()abcwxyz1237890</c>: shift survives
+    /// the first call and shifts the second.
+    /// </para>
+    /// <para>
+    /// Modifiers carried in are NOT pressed again. They are already physically
+    /// down, because the previous call deliberately did not lift them.
+    /// </para>
+    /// </remarks>
+    bool Type(string keys, HeldModifiers held);
+
+    /// <summary>Lifts everything a session is still holding.</summary>
+    /// <param name="held">The session's modifiers, emptied.</param>
+    /// <returns>True if every release was accepted by the system.</returns>
+    /// <remarks>
+    /// <b>Required by the same rule that makes persistence correct.</b> A session
+    /// that ends with shift down leaves it down for the desktop — the driver's
+    /// state outliving the driver, which is the failure mode the element
+    /// contract's implicit release exists to avoid.
+    /// </remarks>
+    bool ReleaseHeld(HeldModifiers held);
+}
+
+/// <summary>
+/// The modifier keys a session is holding between calls.
+/// </summary>
+/// <remarks>
+/// <b>Characters, not virtual keys.</b> What persists is a protocol-level fact —
+/// the client sent <c>U+E008</c> an odd number of times — and the mapping to a
+/// virtual key belongs to the layer that talks to Win32. Keeping this in the
+/// protocol's own alphabet is also what lets a session own it without the
+/// session knowing anything about Win32.
+/// </remarks>
+public sealed class HeldModifiers
+{
+    private readonly HashSet<char> _keys = [];
+
+    /// <summary>Whether a modifier is currently down.</summary>
+    /// <param name="modifier">The WebDriver modifier character.</param>
+    /// <returns>True when it is held.</returns>
+    public bool Contains(char modifier) => _keys.Contains(modifier);
+
+    /// <summary>Records a modifier as held.</summary>
+    /// <param name="modifier">The WebDriver modifier character.</param>
+    public void Hold(char modifier) => _keys.Add(modifier);
+
+    /// <summary>Records a modifier as no longer held.</summary>
+    /// <param name="modifier">The WebDriver modifier character.</param>
+    public void Release(char modifier) => _keys.Remove(modifier);
+
+    /// <summary>Everything currently held.</summary>
+    public IReadOnlyCollection<char> All => _keys;
+
+    /// <summary>Forgets everything, without sending any input.</summary>
+    public void Clear() => _keys.Clear();
 }

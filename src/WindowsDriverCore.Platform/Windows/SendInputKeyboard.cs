@@ -84,11 +84,37 @@ public sealed class SendInputKeyboard : IKeyboardInput
     };
 
     /// <inheritdoc />
-    public bool Type(string keys)
-    {
-        ArgumentNullException.ThrowIfNull(keys);
+    public bool Type(string keys) => Send(BuildBatch(keys, null));
 
-        Win32.Input[] inputs = BuildBatch(keys);
+    /// <inheritdoc />
+    public bool Type(string keys, HeldModifiers held)
+    {
+        ArgumentNullException.ThrowIfNull(held);
+
+        return Send(BuildBatch(keys, held));
+    }
+
+    /// <inheritdoc />
+    public bool ReleaseHeld(HeldModifiers held)
+    {
+        ArgumentNullException.ThrowIfNull(held);
+
+        List<Win32.Input> batch = [];
+
+        foreach (char modifier in held.All)
+        {
+            if (Modifiers.TryGetValue(modifier, out ushort code))
+            {
+                batch.Add(VirtualKey(code, down: false));
+            }
+        }
+
+        held.Clear();
+        return Send([.. batch]);
+    }
+
+    private static bool Send(Win32.Input[] inputs)
+    {
 
         if (inputs.Length == 0)
         {
@@ -110,22 +136,29 @@ public sealed class SendInputKeyboard : IKeyboardInput
     /// machine running the tests, including the developer's editor — so the
     /// decisions live here and the dispatch stays trivial.
     /// </remarks>
-    private static Win32.Input[] BuildBatch(string keys)
+    private static Win32.Input[] BuildBatch(string keys, HeldModifiers? carried)
     {
+        ArgumentNullException.ThrowIfNull(keys);
+
         List<Win32.Input> batch = [];
-        HashSet<ushort> held = [];
+
+        // SEEDED FROM THE SESSION, and not pressed again. A modifier carried in
+        // is already physically down because the previous call deliberately did
+        // not lift it; re-pressing it would send a second key-down that the
+        // application sees as a repeat.
+        HashSet<char> held = carried is null ? [] : [.. carried.All];
 
         foreach (char key in keys)
         {
             if (Modifiers.TryGetValue(key, out ushort modifier))
             {
-                if (held.Add(modifier))
+                if (held.Add(key))
                 {
                     batch.Add(VirtualKey(modifier, down: true));
                 }
                 else
                 {
-                    held.Remove(modifier);
+                    held.Remove(key);
                     batch.Add(VirtualKey(modifier, down: false));
                 }
 
@@ -174,12 +207,28 @@ public sealed class SendInputKeyboard : IKeyboardInput
             batch.Add(UnicodeKey(key, down: false));
         }
 
-        // Release anything the sequence left held. Leaving control down would
-        // corrupt every later keystroke in the session, and that shows up in a
-        // different test than the one that caused it.
-        foreach (ushort modifier in held)
+        if (carried is null)
         {
-            batch.Add(VirtualKey(modifier, down: false));
+            // THE ELEMENT CONTRACT. Release anything the sequence left held:
+            // leaving control down would corrupt every later keystroke, and that
+            // shows up in a different test than the one that caused it. The suite
+            // states it — "SendKeys implicitly depress all modifier at the end of
+            // the sequence (every API call)".
+            foreach (char modifier in held)
+            {
+                batch.Add(VirtualKey(Modifiers[modifier], down: false));
+            }
+
+            return [.. batch];
+        }
+
+        // THE SESSION CONTRACT. Nothing is lifted; what is still down is handed
+        // back so the next call knows not to press it again. DELETE /session
+        // lifts whatever survives, so the desktop never inherits a stuck key.
+        carried.Clear();
+        foreach (char modifier in held)
+        {
+            carried.Hold(modifier);
         }
 
         return [.. batch];

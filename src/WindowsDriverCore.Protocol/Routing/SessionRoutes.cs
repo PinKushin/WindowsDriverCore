@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Platform.Applications;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -83,7 +84,8 @@ public static class SessionRoutes
              ISessionStore sessions,
              IElementRegistry elements,
              IElementHandleCache handles,
-             IApplicationTerminator terminator) =>
+             IApplicationTerminator terminator,
+             IKeyboardInput? keyboard) =>
         {
             // Remove returns the session so teardown does not need a second
             // lookup, which could race another request deleting the same id.
@@ -123,6 +125,15 @@ public static class SessionRoutes
             // exactly what the suite does.
             //
             // The last session out closes it, so nothing leaks either.
+            // LIFT ANYTHING STILL HELD, and do it before the application goes.
+            //
+            // /keys persists modifiers between calls by design, so a session can
+            // legitimately end with shift down. Nobody sends the key-up after
+            // that: the client has gone, and the key stays down for the DESKTOP -
+            // the driver's state outliving the driver, which is the exact failure
+            // the element route's implicit release exists to prevent.
+            keyboard?.ReleaseHeld(removed.Modifiers);
+
             bool anotherSessionIsUsingIt = sessions.All()
                 .Any(other => other.ProcessId == removed.ProcessId);
 
