@@ -66,6 +66,91 @@ public sealed class TextRequestLogTests
     }
 
     [Test]
+    public void AFind_IsWrittenIndentedUnderTheRequestThatCausedIt()
+    {
+        // Indented, because a find happens INSIDE a request and a flat list of
+        // lines loses that. The transcript is read top to bottom by a person
+        // trying to see which step of a command failed.
+        StringWriter written = new();
+
+        using (TextRequestLogListener listener = new(written, new FixedClock(Noon)))
+        using (DriverEventSource source = new())
+        {
+            ((IFindLog)source).FindCompleted("AutomationId", "num5Button", 1, string.Empty, 12.04);
+        }
+
+        written.ToString().ShouldBe(
+            "2026-08-11T09:15:04.250Z   find AutomationId='num5Button' -> 1 match(es) 12.0 ms" +
+            Environment.NewLine);
+    }
+
+    [Test]
+    public void AFindThatCouldNotRun_SaysSo_WhereZeroMatchesDoesNot()
+    {
+        // The two produce the same match count and mean opposite things. If the
+        // transcript rendered them alike, every "element could not be located"
+        // investigation would start in the wrong place.
+        StringWriter written = new();
+
+        using (TextRequestLogListener listener = new(written, new FixedClock(Noon)))
+        using (DriverEventSource source = new())
+        {
+            ((IFindLog)source).FindCompleted("Name", "absent", 0, string.Empty, 8.0);
+            ((IFindLog)source).FindCompleted("Name", "absent", 0, "NoSuchWindow", 0.2);
+        }
+
+        written.ToString().ShouldBe(
+            "2026-08-11T09:15:04.250Z   find Name='absent' -> 0 match(es) 8.0 ms" +
+            Environment.NewLine +
+            "2026-08-11T09:15:04.250Z   find Name='absent' -> 0 match(es) FAILED: NoSuchWindow 0.2 ms" +
+            Environment.NewLine);
+    }
+
+    [Test]
+    public void AnElementAction_NamesTheRungThatActed()
+    {
+        StringWriter written = new();
+
+        using (TextRequestLogListener listener = new(written, new FixedClock(Noon)))
+        using (DriverEventSource source = new())
+        {
+            ((IInteractionLog)source).ElementActionCompleted(
+                "Click", "Performed", "ancestor:1/Toggle", 4.0);
+
+            // A failure has no rung, and the line must not read "via " with
+            // nothing after it.
+            ((IInteractionLog)source).ElementActionCompleted(
+                "Click", "NotInteractable", string.Empty, 0.5);
+        }
+
+        written.ToString().ShouldBe(
+            "2026-08-11T09:15:04.250Z   Click -> Performed via ancestor:1/Toggle 4.0 ms" +
+            Environment.NewLine +
+            "2026-08-11T09:15:04.250Z   Click -> NotInteractable 0.5 ms" +
+            Environment.NewLine);
+    }
+
+    [Test]
+    public void ALaunch_CarriesItsProcessWindowAndCost()
+    {
+        // The cost is the informative part: the window search times out at ten
+        // seconds, so a launch that took 9,600 ms and one that took 40 ms both
+        // return a handle and mean entirely different things.
+        StringWriter written = new();
+
+        using (TextRequestLogListener listener = new(written, new FixedClock(Noon)))
+        using (DriverEventSource source = new())
+        {
+            ((ILaunchLog)source).ApplicationLaunched(
+                "Calculator", 1234, 0x00A1B2C3, string.Empty, 9600.0);
+        }
+
+        written.ToString().ShouldBe(
+            "2026-08-11T09:15:04.250Z   launch 'Calculator' -> pid 1234 window 0xA1B2C3 9600.0 ms" +
+            Environment.NewLine);
+    }
+
+    [Test]
     public void AnUnrelatedEventSource_IsNotSubscribedTo()
     {
         // THE CONTROL, and it measures SUBSCRIPTION rather than output. An

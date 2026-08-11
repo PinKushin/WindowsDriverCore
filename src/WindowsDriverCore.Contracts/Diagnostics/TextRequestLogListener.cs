@@ -79,18 +79,20 @@ public sealed class TextRequestLogListener : EventListener
     {
         ArgumentNullException.ThrowIfNull(eventData);
 
-        if (_writer is null ||
-            eventData.EventId != DriverEventSource.RequestCompletedEventId ||
-            eventData.Payload is not { Count: 5 } payload)
+        if (_writer is null || eventData.Payload is not { } payload)
+        {
+            return;
+        }
+
+        string? body = Describe(eventData.EventId, payload);
+        if (body is null)
         {
             return;
         }
 
         string line = string.Create(
             CultureInfo.InvariantCulture,
-            $"{_clock.GetUtcNow():yyyy-MM-ddTHH:mm:ss.fffZ} " +
-            $"{payload[0]} {payload[1]} -> {payload[2]} " +
-            $"jwp {Envelope(payload[3])} {Cost(payload[4])} ms");
+            $"{_clock.GetUtcNow():yyyy-MM-ddTHH:mm:ss.fffZ} {body}");
 
         // Locked because EventListener delivers on whichever thread wrote the
         // event, and Kestrel serves requests on many. A TextWriter is not
@@ -101,6 +103,51 @@ public sealed class TextRequestLogListener : EventListener
             _writer.WriteLine(line);
         }
     }
+
+    /// <summary>
+    /// Renders one event, or null when it is not one this transcript carries.
+    /// </summary>
+    /// <remarks>
+    /// <b>The payload count is checked per event id, not once.</b> Reading
+    /// positionally from a payload whose shape has changed would render garbage
+    /// rather than fail, and a transcript that lies is worse than one with a gap:
+    /// the gap is visible.
+    /// </remarks>
+    private static string? Describe(int eventId, System.Collections.ObjectModel.ReadOnlyCollection<object?> payload) =>
+        (eventId, payload.Count) switch
+        {
+            (DriverEventSource.RequestCompletedEventId, 5) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"{payload[0]} {payload[1]} -> {payload[2]} " +
+                $"jwp {Envelope(payload[3])} {Cost(payload[4])} ms"),
+
+            (DriverEventSource.FindCompletedEventId, 5) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  find {payload[0]}='{payload[1]}' -> {payload[2]} match(es)" +
+                $"{Because(payload[3])} {Cost(payload[4])} ms"),
+
+            (DriverEventSource.ElementActionCompletedEventId, 4) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  {payload[0]} -> {payload[1]}{Via(payload[2])} {Cost(payload[3])} ms"),
+
+            (DriverEventSource.ApplicationLaunchedEventId, 5) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  launch '{payload[0]}' -> pid {payload[1]} window 0x{Handle(payload[2])}" +
+                $"{Because(payload[3])} {Cost(payload[4])} ms"),
+
+            _ => null,
+        };
+
+    private static string Because(object? failure) =>
+        failure is string reason && reason.Length > 0 ? $" FAILED: {reason}" : string.Empty;
+
+    private static string Via(object? path) =>
+        path is string rung && rung.Length > 0 ? $" via {rung}" : string.Empty;
+
+    private static string Handle(object? window) =>
+        window is long value
+            ? value.ToString("X", CultureInfo.InvariantCulture)
+            : "?";
 
     private static string Envelope(object? status) =>
         status is int value && value != IRequestLog.NoJsonWireStatus

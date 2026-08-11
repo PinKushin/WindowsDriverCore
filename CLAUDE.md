@@ -195,11 +195,23 @@ dotnet run --project src/WindowsDriverCore.Host
 # switch, because the argument grammar is a compatibility contract.
 $env:WINDOWSDRIVERCORE_LOG = "C:\temp\driver.log"
 
-# 2026-08-11T14:40:21.761Z GET /definitely-not-a-command -> 404 jwp 9 9.1 ms
-# 2026-08-11T14:40:21.779Z GET /session/nope/orientation -> 404 jwp 101 2.0 ms
+# Requests at the margin, the work they caused indented under them:
 #
-# Both are HTTP 404 and they are different faults. The JSON Wire status is the
-# column that separates them, and it is why the transcript carries both.
+#   ...36.030Z   launch 'Microsoft.WindowsCalculator...' -> pid 34112 window 0x2A204C6 760.7 ms
+#   ...36.038Z POST /session -> 200 jwp 0 776.9 ms
+#   ...36.121Z   find AutomationId='num5Button' -> 1 match(es) 55.4 ms
+#   ...36.123Z POST /session/{id}/element -> 200 jwp 0 79.0 ms
+#   ...36.183Z   Click -> Performed via Invoke 49.2 ms
+#   ...36.226Z   find AutomationId='NormalOutput' -> 0 match(es) 35.5 ms
+#   ...36.234Z POST /session/{id}/element -> 404 jwp 7 44.2 ms
+#
+# Read three things off that: the find cost 55.4 of the request's 79.0 ms, so
+# 23.6 ms is our own overhead; the click went via Invoke rather than an ancestor
+# climb or the mouse; and NormalOutput RAN and matched nothing, which is a fact
+# about the application, where a search that could not run reads "FAILED: ...".
+#
+# Locators are logged. SetValue and SendKeys arguments never are — that is where
+# a password appears, and IInteractionLog has no parameter that could take one.
 
 # WinAppDriver-compatible argument forms
 WindowsDriverCore.exe                       # 127.0.0.1:4723

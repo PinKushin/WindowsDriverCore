@@ -1,0 +1,110 @@
+namespace WindowsDriverCore.Diagnostics;
+
+/// <summary>
+/// Records what a search was asked for and what it returned.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>The gap a request-only transcript leaves.</b> A slow or empty
+/// <c>POST /element</c> says a find failed and nothing about which locator,
+/// against what, or how long the tree walk took — which is exactly the question
+/// every "element could not be located" failure in the compatibility suite
+/// raises.
+/// </para>
+/// <para>
+/// <b>Where the payload line is drawn, stated rather than implied.</b> A locator
+/// IS recorded, including its value. That is not a retreat from
+/// <see cref="IRequestLog"/>'s rule: a locator is a query the test author wrote,
+/// not data the driver typed into an application. What stays unlogged is
+/// everything this driver <i>transmits into</i> the application under test —
+/// <c>SetValue</c> and <c>SendKeys</c> payloads — because that is where a
+/// password appears. <see cref="IInteractionLog"/> holds that line by having no
+/// parameter for it.
+/// </para>
+/// </remarks>
+public interface IFindLog
+{
+    /// <summary>Records a finished search.</summary>
+    /// <param name="locatorKind">The locator strategy, e.g. <c>AutomationId</c>.</param>
+    /// <param name="locatorValue">What was searched for.</param>
+    /// <param name="matches">How many elements matched.</param>
+    /// <param name="failure">
+    /// Why the search could not run, or empty when it ran. Distinct from zero
+    /// matches: a search that ran and matched nothing is a fact about the
+    /// application, and a search that could not run is a fact about the driver.
+    /// </param>
+    /// <param name="elapsedMilliseconds">Wall-clock cost of the search.</param>
+    void FindCompleted(
+        string locatorKind,
+        string locatorValue,
+        int matches,
+        string failure,
+        double elapsedMilliseconds);
+}
+
+/// <summary>
+/// Records which rung of the click ladder acted, and what came of it.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Written because the rung was invisible and that cost twelve tests.</b> A
+/// click that reaches its target through a pattern, through an ancestor, and
+/// through real mouse input are three different events which the wire reports
+/// identically as status 0. When the ancestor climb toggled an app bar instead
+/// of pressing "Add new alarm", nothing downstream could tell — see
+/// <c>docs/CLICK-SEMANTICS.md</c>.
+/// </para>
+/// <para>
+/// <b>No parameter carries a payload.</b> The action's NAME is recorded and its
+/// value is not, so <c>SetValue</c> appears in the transcript and the string it
+/// set never does. That is the same structural guarantee as
+/// <see cref="IRequestLog"/>: not a redactor that must stay correct, but a shape
+/// with nothing to redact.
+/// </para>
+/// </remarks>
+public interface IInteractionLog
+{
+    /// <summary>Records a finished element action.</summary>
+    /// <param name="action">The command, e.g. <c>Click</c> or <c>SetValue</c>.</param>
+    /// <param name="outcome">The outcome, e.g. <c>Performed</c>.</param>
+    /// <param name="path">
+    /// Which rung acted — <c>Invoke</c>, <c>ancestor:1/Toggle</c>, <c>mouse</c>.
+    /// Empty when nothing acted.
+    /// </param>
+    /// <param name="elapsedMilliseconds">Wall-clock cost.</param>
+    void ElementActionCompleted(
+        string action,
+        string outcome,
+        string path,
+        double elapsedMilliseconds);
+}
+
+/// <summary>
+/// Records how an application was reached and how long it took.
+/// </summary>
+/// <remarks>
+/// <b>Three separate claims about the window search were credited to the wrong
+/// mechanism</b> because the only observable was the handle — see
+/// <c>WhichStageAnswersTests</c>. That fixture exists to answer at test time what
+/// this answers at run time, which is the difference between reproducing a
+/// launch problem and reading what happened on the machine where it occurred.
+/// </remarks>
+public interface ILaunchLog
+{
+    /// <summary>Records a finished launch attempt.</summary>
+    /// <param name="app">What was asked for — a path or an application id.</param>
+    /// <param name="processId">The tracked process, or <c>0</c> on failure.</param>
+    /// <param name="window">The window handle, or <c>0</c> on failure.</param>
+    /// <param name="failure">Why it failed, or empty on success.</param>
+    /// <param name="elapsedMilliseconds">
+    /// Wall-clock cost. A launch at or near the ten-second timeout ran out rather
+    /// than succeeded, and that is invisible in a result that carries only a
+    /// handle.
+    /// </param>
+    void ApplicationLaunched(
+        string app,
+        int processId,
+        long window,
+        string failure,
+        double elapsedMilliseconds);
+}
