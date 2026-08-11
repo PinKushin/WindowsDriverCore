@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-
 namespace WindowsDriverCore.Platform.Windows;
 
 /// <summary>
@@ -99,40 +97,45 @@ public sealed class WindowLocator : IWindowLocator
             return false;
         }
 
-        // SYNCHRONISE ON THE WINDOW WITH FOCUS, not on the session's window.
+        // WaitForInputIdle, because the alternatives do not work. Measured
+        // 2026-08-11 against 52 typed characters:
         //
-        // Measured 2026-08-11: waiting on the session window changed nothing at
-        // all - a 52-character string still read back as "ab". For a packaged
-        // application the session window is the ApplicationFrameWindow, which
-        // belongs to ApplicationFrameHost.exe, a DIFFERENT process and thread
-        // from the application. A WM_NULL there is answered by a queue that never
-        // saw the keystrokes, so it returns at once and waits for nothing.
+        //   no wait                          read back 1 of 52
+        //   WM_NULL via SendMessageTimeout   read back 1 of 52  (sent messages
+        //                                    are delivered AHEAD of queued input)
+        //   AttachThreadInput+GetQueueStatus read back 2 of 52  (reported zero
+        //                                    pending while 51 were queued)
+        //   WaitForInputIdle                 read back 52 of 52, five for five
         //
-        // The keystrokes go to whatever has keyboard focus, so that is the queue
-        // that has to drain.
-        nint target = FocusedWindow();
-        if (target == 0)
+        // It is process-grained rather than input-grained - it answers "is this
+        // process idle", not "has my input been consumed" - so an application
+        // busy for its own reasons makes this wait longer than strictly needed.
+        // That is a known imprecision, not a proxy for something unobservable.
+        uint owner = Win32.GetWindowThreadProcessId(handle, out uint processId);
+        if (owner == 0 || processId == 0)
         {
-            target = handle;
+            return false;
         }
 
-        // A message queue is ordered, so a synchronous WM_NULL cannot be handled
-        // until everything queued before it has been. No sleep and no guess.
-        // ABORTIFHUNG and a bounded timeout so a wedged application fails the
-        // command rather than hanging the driver.
-        return Win32.SendMessageTimeout(
-            target, Win32.WM_NULL, 0, 0, Win32.SMTO_ABORTIFHUNG, InputDrainTimeoutMs, out _) != 0;
-    }
+        nint process = Win32.OpenProcess(
+            Win32.PROCESS_QUERY_INFORMATION | Win32.SYNCHRONIZE, false, processId);
 
-    /// <summary>The window with keyboard focus, or zero.</summary>
-    /// <returns>The focused window on the foreground thread.</returns>
-    private static nint FocusedWindow()
-    {
-        Win32.GuiThreadInfo info = default;
-        info.Size = Marshal.SizeOf<Win32.GuiThreadInfo>();
+        if (process == 0)
+        {
+            // An elevated or protected target this driver may not open. The
+            // caller carries on rather than failing the command: a missing wait
+            // is a race, and refusing the read outright is a certainty.
+            return false;
+        }
 
-        // Thread 0 means the foreground thread, which is where typed input goes.
-        return Win32.GetGUIThreadInfo(0, ref info) ? info.Focus : 0;
+        try
+        {
+            return Win32.WaitForInputIdle(process, InputDrainTimeoutMs) == 0;
+        }
+        finally
+        {
+            Win32.CloseHandle(process);
+        }
     }
 
     /// <summary>How long to wait for an application to consume queued input.</summary>

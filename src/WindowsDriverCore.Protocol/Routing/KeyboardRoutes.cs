@@ -87,11 +87,11 @@ public static class KeyboardRoutes
                     statusCode: WebDriverFault.UnknownError.HttpStatus);
             }
 
-            // Do not answer until the application has actually consumed them.
-            // SendInput queues; the client reads. Measured: 52 characters
-            // answered immediately, the client saw "abc", and the other 49 landed
-            // during the next test.
-            windows.WaitForInputProcessed(session.WindowHandle);
+            // Record that input is in flight rather than waiting for it here.
+            // Waiting would cost ~100 ms on EVERY /keys, including the three-call
+            // clear sequence the suite runs before each test. The read that
+            // actually depends on the keystrokes pays instead - once.
+            session.InputPending = true;
 
             return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
         }).RequiresSession();
