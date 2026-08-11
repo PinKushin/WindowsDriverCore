@@ -1369,6 +1369,46 @@ process, and the failures land somewhere else entirely.
   answer cleanly" is the first thing to settle, and it is a question for the
   consumer rather than for the driver.
 
+## The guest DOES root at the frame — a retraction of a retraction
+
+**MEASURED at `cc5b271`, Windows 10 22H2 guest**, with the application genuinely
+killed first:
+
+```
+COLD launch : 838 ms, class=ApplicationFrameWindow
+re-attach   : source=HostedFrame, 4 ms
+Windows 11  : cold 733 ms ApplicationFrameWindow, re-attach HostedFrame 11 ms
+```
+
+Frame rooting works on both systems, cold and warm. **Three claims made earlier
+today are withdrawn:**
+
+- that the guest never gets a frame-rooted session
+- that the +16 at `c26e4d3` was therefore won by something other than frame rooting
+- that a cold packaged launch pays the full ten-second timeout
+
+None of those happen. The original attribution of the +16 stands.
+
+**Two bad instruments produced them, both mine.**
+
+The first was a probe that started the driver from the guest's `bin\Debug` without
+rebuilding. That build was from `9d117ce` — *before* frame rooting existed — so it
+faithfully reported a `CoreWindow` for a driver two commits old, and the reading was
+attributed to current code. This is the `--no-build` hazard in a different costume:
+the flag was not used, but a binary was still run without being rebuilt from the
+commit under discussion.
+
+The second was the replacement measurement, which called
+`AppLifetime.KillAll("CalculatorApp")` before its "cold" launch. That matches on
+substring and Windows 10 names the process `Calculator`, so it killed nothing and
+measured a re-attach while claiming to measure a cold start. It reported 616 ms and
+a frame, which looked like a clean refutation and was not a cold launch at all.
+
+**What made it recoverable was the contradiction, not the assertions.** Two
+measurements of one thing disagreed. Every assertion in both passed. The rule that
+worked: when two measurements disagree, suspect the instruments before believing
+either — and check what commit the binary under test was actually built from.
+
 ## Not implemented
 
 | Area | State | Notes |
