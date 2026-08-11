@@ -178,13 +178,33 @@ public sealed class MainWindowWaiter
 
             await Task.Delay(pollInterval, _time, cancellationToken).ConfigureAwait(false);
         }
+        // WHAT IS HELD IS ONLY WORTH RETURNING IF IT IS STILL A WINDOW.
+        //
+        // This used to say "the worst case is the old answer given late - never
+        // nothing where the old code gave something". MEASURED 2026-08-11, that is
+        // false, and the real worst case is far worse: a handle to a window that
+        // has since been destroyed.
+        //
+        // From a compatibility run's transcript, one session:
+        //
+        //   launch Alarms -> pid 3024 window 0x30218          10241.6 ms
+        //   POST /session                     -> 200 jwp 0    10258.2 ms
+        //   POST /session/{id}/element        -> 400 jwp 23      17.8 ms   x105
+        //
+        // The search ran its full ten seconds, returned a dead handle, and the
+        // session reported SUCCESS. Every later command answered "no such window"
+        // - 105 of the run's 126 failures came from that one lie. WinAppDriver
+        // fails the session outright in the same situation, which is why its
+        // failures are one honest ClassInitialize rather than a hundred confusing
+        // ones.
+        //
+        // Nothing is strictly better than something dead: a caller can handle a
+        // failed launch, and cannot handle a handle that lies.
+        bool stillAlive = hostedButNotYetFramed != 0 && Win32.IsWindow(hostedButNotYetFramed);
 
-        // The CoreWindow, if that is all there ever was. It is what this returned
-        // immediately before the wait existed, so the worst case is the old answer
-        // given late — never nothing where the old code gave something.
         return new WindowSearchResult(
-            hostedButNotYetFramed,
-            hostedButNotYetFramed == 0 ? WindowSource.None : WindowSource.HeldCoreWindow,
+            stillAlive ? hostedButNotYetFramed : 0,
+            stillAlive ? WindowSource.HeldCoreWindow : WindowSource.None,
             Elapsed(began));
     }
 
