@@ -56,14 +56,31 @@ public static class KeyboardRoutes
             //
             // The keyboard itself is not the problem and was proven so: typing
             // "Wx9!" through this driver into Notepad returned "Wx9!" exactly.
-            if (!windows.BringToForeground(session.WindowHandle))
-            {
-                return Results.Json(
-                    JsonWireResponse.ForFault(
-                        WebDriverFault.UnknownError,
-                        "The session's window could not be brought to the foreground"),
-                    statusCode: WebDriverFault.UnknownError.HttpStatus);
-            }
+            // ATTEMPTED, NOT REQUIRED — and refusing here was a DEADLOCK.
+            //
+            // Windows will not let an ordinary process take the foreground from
+            // the shell's own surfaces. SendKeys_ModifierWindowsKey opens the
+            // Action Center with Win+A and dismisses it by typing Escape; while
+            // that pane is up this driver could not foreground anything, so it
+            // refused to type, so the pane was never dismissed, so every later
+            // /keys in that class refused too. Measured on the guest: with the
+            // pane in front, EVERY /keys answered HTTP 500 - including the one
+            // that would have closed it.
+            //
+            // The keys are sent regardless. They go where focus is, which for the
+            // caller trying to dismiss a pane is exactly the pane. That is also
+            // what the reference does: WinAppDriver does not gate typing on the
+            // foreground at all, which is why its ModifierWindowsKey closes the
+            // pane and ours left it open.
+            //
+            // Zeroing SPI_SETFOREGROUNDLOCKTIMEOUT was tried for this and does
+            // NOT help - measured twice, once through the whole suite and once
+            // through a probe with the patched binary in place.
+            // The result is deliberately discarded. There is nothing useful to do
+            // with it: refusing is the deadlock above, and the transcript already
+            // carries the request. A dedicated log event would be worth adding
+            // when something needs to distinguish the two cases.
+            _ = windows.BringToForeground(session.WindowHandle);
 
             using JsonDocument body = await JsonDocument
                 .ParseAsync(context.Request.Body).ConfigureAwait(false);
