@@ -106,7 +106,14 @@ public sealed class WindowLocator : IWindowLocator
         return hosted != 0 ? hosted : owner;
     }
 
-    private static string ClassNameOf(nint window)
+    /// <summary>The window class, or empty when the handle names nothing.</summary>
+    /// <remarks>
+    /// Internal rather than private because the launch transcript reports it:
+    /// "ApplicationFrameWindow" against "Windows.UI.Core.CoreWindow" is the exact
+    /// discriminator behind three claims about the window search that were
+    /// credited to the wrong mechanism, and the handle alone cannot show it.
+    /// </remarks>
+    internal static string ClassNameOf(nint window)
     {
         char[] buffer = new char[256];
         int length = Win32.GetClassName(window, buffer, buffer.Length);

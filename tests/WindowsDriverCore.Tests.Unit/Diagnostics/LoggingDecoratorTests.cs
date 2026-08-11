@@ -184,6 +184,24 @@ public sealed class LoggingDecoratorTests
         log.Launches[0].Failure.ShouldBeEmpty();
     }
 
+    [Test]
+    public void ATerminationThatLeftTheProcessRunning_IsRecordedAsSuch()
+    {
+        // The false is the interesting case, and it is silent everywhere else. A
+        // session that ends while its application keeps running is how the next
+        // run inherits a warm application it did not ask for and measures a
+        // re-attach as a cold launch - which has already been misread as a code
+        // change twice in this project.
+        RecordingLog log = new();
+        LoggingApplicationTerminator terminator = new(new StubTerminator(ended: false), log);
+
+        terminator.Terminate(4321).ShouldBeFalse("the inner result must pass through unaltered");
+
+        log.Terminations.Count.ShouldBe(1);
+        log.Terminations[0].ProcessId.ShouldBe(4321);
+        log.Terminations[0].Ended.ShouldBeFalse();
+    }
+
     private sealed record LoggedFind(
         string LocatorKind, string LocatorValue, int Matches, string Failure, double Elapsed);
 
@@ -191,15 +209,19 @@ public sealed class LoggingDecoratorTests
         string Action, string Outcome, string Path, double Elapsed);
 
     private sealed record LoggedLaunch(
-        string App, int ProcessId, long Window, string Failure, double Elapsed);
+        string App, int ProcessId, long Window, string WindowClass, string Failure, double Elapsed);
 
-    private sealed class RecordingLog : IFindLog, IInteractionLog, ILaunchLog
+    private sealed record LoggedTermination(int ProcessId, bool Ended, double Elapsed);
+
+    private sealed class RecordingLog : IFindLog, IInteractionLog, ILaunchLog, ITerminationLog
     {
         internal List<LoggedFind> Finds { get; } = [];
 
         internal List<LoggedAction> Actions { get; } = [];
 
         internal List<LoggedLaunch> Launches { get; } = [];
+
+        internal List<LoggedTermination> Terminations { get; } = [];
 
         public void FindCompleted(
             string locatorKind,
@@ -218,10 +240,15 @@ public sealed class LoggingDecoratorTests
             string app,
             int processId,
             long window,
+            string windowClass,
             string failure,
             double elapsedMilliseconds) =>
             Launches.Add(new LoggedLaunch(
-                app, processId, window, failure, elapsedMilliseconds));
+                app, processId, window, windowClass, failure, elapsedMilliseconds));
+
+        public void ApplicationTerminated(
+            int processId, bool ended, double elapsedMilliseconds) =>
+            Terminations.Add(new LoggedTermination(processId, ended, elapsedMilliseconds));
     }
 
     private sealed class StubFinder(FindResult result) : IElementFinder
@@ -245,5 +272,10 @@ public sealed class LoggingDecoratorTests
     private sealed class StubLauncher(LaunchResult result) : IApplicationLauncher
     {
         public LaunchResult Launch(ApplicationTarget target) => result;
+    }
+
+    private sealed class StubTerminator(bool ended) : IApplicationTerminator
+    {
+        public bool Terminate(int processId) => ended;
     }
 }

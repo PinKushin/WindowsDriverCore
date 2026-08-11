@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using WindowsDriverCore.Diagnostics;
 using WindowsDriverCore.Platform.Applications;
+using WindowsDriverCore.Platform.Windows;
 
 namespace WindowsDriverCore.Platform.Diagnostics;
 
@@ -58,6 +59,7 @@ public sealed class LoggingApplicationLauncher : IApplicationLauncher
                 target.App,
                 processId: 0,
                 window: 0,
+                windowClass: string.Empty,
                 exception.GetType().Name,
                 Stopwatch.GetElapsedTime(began).TotalMilliseconds);
 
@@ -68,10 +70,19 @@ public sealed class LoggingApplicationLauncher : IApplicationLauncher
         // caller-supplied text that can carry credentials — plenty of test
         // harnesses pass them that way — and it is not needed to diagnose a
         // launch that could not find its window.
+        //
+        // The window CLASS is, though. ApplicationFrameWindow against
+        // Windows.UI.Core.CoreWindow is what separates "the frame answered" from
+        // "a CoreWindow was held to the deadline and returned", and the handle
+        // alone cannot show it — which is how three claims about the window
+        // search were each credited to the wrong mechanism.
+        nint window = result.Application?.WindowHandle ?? 0;
+
         _log.ApplicationLaunched(
             target.App,
             result.Application?.ProcessId ?? 0,
-            result.Application?.WindowHandle ?? 0,
+            window,
+            window == 0 ? string.Empty : WindowLocator.ClassNameOf(window),
             result.FailureMessage ?? string.Empty,
             Stopwatch.GetElapsedTime(began).TotalMilliseconds);
 

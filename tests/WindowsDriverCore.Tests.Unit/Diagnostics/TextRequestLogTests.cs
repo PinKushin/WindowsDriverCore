@@ -142,11 +142,33 @@ public sealed class TextRequestLogTests
         using (DriverEventSource source = new())
         {
             ((ILaunchLog)source).ApplicationLaunched(
-                "Calculator", 1234, 0x00A1B2C3, string.Empty, 9600.0);
+                "Calculator", 1234, 0x00A1B2C3, "ApplicationFrameWindow", string.Empty, 9600.0);
         }
 
         written.ToString().ShouldBe(
-            "2026-08-11T09:15:04.250Z   launch 'Calculator' -> pid 1234 window 0xA1B2C3 9600.0 ms" +
+            "2026-08-11T09:15:04.250Z   launch 'Calculator' -> pid 1234 window 0xA1B2C3 " +
+            "(ApplicationFrameWindow) 9600.0 ms" + Environment.NewLine);
+    }
+
+    [Test]
+    public void ATerminationSaysLoudlyWhenTheProcessSurvived()
+    {
+        // "ended" and "STILL RUNNING" rather than True/False. The false case is
+        // the one that matters and it should not need decoding: a session that
+        // ends while its application keeps running hands the next run a warm
+        // application, which turns a cold-launch measurement into a re-attach.
+        StringWriter written = new();
+
+        using (TextRequestLogListener listener = new(written, new FixedClock(Noon)))
+        using (DriverEventSource source = new())
+        {
+            ((ITerminationLog)source).ApplicationTerminated(1234, ended: true, 12.0);
+            ((ITerminationLog)source).ApplicationTerminated(4321, ended: false, 5000.0);
+        }
+
+        written.ToString().ShouldBe(
+            "2026-08-11T09:15:04.250Z   terminate pid 1234 -> ended 12.0 ms" + Environment.NewLine +
+            "2026-08-11T09:15:04.250Z   terminate pid 4321 -> STILL RUNNING 5000.0 ms" +
             Environment.NewLine);
     }
 

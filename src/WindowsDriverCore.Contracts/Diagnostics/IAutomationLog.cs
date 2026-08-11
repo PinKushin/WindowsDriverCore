@@ -95,6 +95,12 @@ public interface ILaunchLog
     /// <param name="app">What was asked for — a path or an application id.</param>
     /// <param name="processId">The tracked process, or <c>0</c> on failure.</param>
     /// <param name="window">The window handle, or <c>0</c> on failure.</param>
+    /// <param name="windowClass">
+    /// The window's class. <c>ApplicationFrameWindow</c> against
+    /// <c>Windows.UI.Core.CoreWindow</c> is the discriminator behind three claims
+    /// about the window search that were each credited to the wrong mechanism,
+    /// and a handle on its own cannot show it.
+    /// </param>
     /// <param name="failure">Why it failed, or empty on success.</param>
     /// <param name="elapsedMilliseconds">
     /// Wall-clock cost. A launch at or near the ten-second timeout ran out rather
@@ -105,6 +111,27 @@ public interface ILaunchLog
         string app,
         int processId,
         long window,
+        string windowClass,
         string failure,
         double elapsedMilliseconds);
+}
+
+/// <summary>
+/// Records the end of an application this driver started.
+/// </summary>
+/// <remarks>
+/// <b>A safety record, not a convenience.</b> <c>DELETE /session</c> terminates
+/// the tracked process, and for a packaged application the window's OWNER is
+/// <c>ApplicationFrameHost</c> — a broker shared by every UWP window on the
+/// machine. Aimed there, one session teardown closes all of them. The pid is
+/// therefore worth having written down at the moment it is used, not only
+/// reconstructible afterwards.
+/// </remarks>
+public interface ITerminationLog
+{
+    /// <summary>Records an attempt to end a process.</summary>
+    /// <param name="processId">The process aimed at.</param>
+    /// <param name="ended">Whether it is no longer running.</param>
+    /// <param name="elapsedMilliseconds">Wall-clock cost.</param>
+    void ApplicationTerminated(int processId, bool ended, double elapsedMilliseconds);
 }

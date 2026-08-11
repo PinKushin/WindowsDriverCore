@@ -130,13 +130,21 @@ public sealed class TextRequestLogListener : EventListener
                 CultureInfo.InvariantCulture,
                 $"  {payload[0]} -> {payload[1]}{Via(payload[2])} {Cost(payload[3])} ms"),
 
-            (DriverEventSource.ApplicationLaunchedEventId, 5) => string.Create(
+            (DriverEventSource.ApplicationLaunchedEventId, 6) => string.Create(
                 CultureInfo.InvariantCulture,
                 $"  launch '{payload[0]}' -> pid {payload[1]} window 0x{Handle(payload[2])}" +
-                $"{Because(payload[3])} {Cost(payload[4])} ms"),
+                $"{Kind(payload[3])}{Because(payload[4])} {Cost(payload[5])} ms"),
+
+            (DriverEventSource.ApplicationTerminatedEventId, 3) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  terminate pid {payload[0]} -> " +
+                $"{(payload[1] is true ? "ended" : "STILL RUNNING")} {Cost(payload[2])} ms"),
 
             _ => null,
         };
+
+    private static string Kind(object? windowClass) =>
+        windowClass is string name && name.Length > 0 ? $" ({name})" : string.Empty;
 
     private static string Because(object? failure) =>
         failure is string reason && reason.Length > 0 ? $" FAILED: {reason}" : string.Empty;

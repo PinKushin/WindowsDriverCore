@@ -74,6 +74,8 @@ public partial class Program
             provider => provider.GetRequiredService<DriverEventSource>());
         builder.Services.AddSingleton<ILaunchLog>(
             provider => provider.GetRequiredService<DriverEventSource>());
+        builder.Services.AddSingleton<ITerminationLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
 
         // The transcript's destination and the consumer that fills it. Both are
         // DI singletons so the host disposes them: the listener unsubscribes and
@@ -99,7 +101,11 @@ public partial class Program
             new LoggingApplicationLauncher(
                 provider.GetRequiredService<ApplicationLauncher>(),
                 provider.GetRequiredService<ILaunchLog>()));
-        builder.Services.AddSingleton<IApplicationTerminator, ApplicationTerminator>();
+        builder.Services.AddSingleton<ApplicationTerminator>();
+        builder.Services.AddSingleton<IApplicationTerminator>(provider =>
+            new LoggingApplicationTerminator(
+                provider.GetRequiredService<ApplicationTerminator>(),
+                provider.GetRequiredService<ITerminationLog>()));
         builder.Services.AddSingleton<IPointerInput, SendInputPointer>();
         builder.Services.AddSingleton<IKeyboardInput, SendInputKeyboard>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());

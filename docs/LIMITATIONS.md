@@ -1696,22 +1696,23 @@ Console by default, or a file when `WINDOWSDRIVERCORE_LOG` names one. Requests a
 the margin, the work they caused indented under them. A real capture:
 
 ```
-2026-08-11T14:54:35.238Z GET /status -> 200 jwp - 191.6 ms
-2026-08-11T14:54:36.030Z   launch 'Microsoft.WindowsCalculator_...!App' -> pid 34112 window 0x2A204C6 760.7 ms
-2026-08-11T14:54:36.038Z POST /session -> 200 jwp 0 776.9 ms
-2026-08-11T14:54:36.121Z   find AutomationId='num5Button' -> 1 match(es) 55.4 ms
-2026-08-11T14:54:36.123Z POST /session/{id}/element -> 200 jwp 0 79.0 ms
-2026-08-11T14:54:36.183Z   Click -> Performed via Invoke 49.2 ms
-2026-08-11T14:54:36.185Z POST /session/{id}/element/42.14553210.4.102/click -> 200 jwp 0 54.6 ms
-2026-08-11T14:54:36.226Z   find AutomationId='NormalOutput' -> 0 match(es) 35.5 ms
-2026-08-11T14:54:36.234Z POST /session/{id}/element -> 404 jwp 7 44.2 ms
-2026-08-11T14:54:36.296Z DELETE /session/{id} -> 200 jwp 0 47.4 ms
+...01.209Z GET /status -> 200 jwp - 212.2 ms
+...01.977Z   launch 'Microsoft.WindowsCalculator_...!App' -> pid 27128 window 0xDC0858 (ApplicationFrameWindow) 733.3 ms
+...01.984Z POST /session -> 200 jwp 0 749.7 ms
+...02.068Z   find AutomationId='num5Button' -> 1 match(es) 54.9 ms
+...02.070Z POST /session/{id}/element -> 200 jwp 0 78.6 ms
+...02.124Z   Click -> Performed via Invoke 45.9 ms
+...02.126Z POST /session/{id}/element/42.462484.4.102/click -> 200 jwp 0 51.8 ms
+...02.173Z   find AutomationId='NormalOutput' -> 0 match(es) 40.6 ms
+...02.182Z POST /session/{id}/element -> 404 jwp 7 49.8 ms
+...02.258Z   terminate pid 27128 -> ended 52.2 ms
+...02.259Z DELETE /session/{id} -> 200 jwp 0 58.3 ms
 ```
 
 Read what that answers, because each was a bespoke probe before:
 
-- **Where the time went.** The find cost 55.4 ms of the request's 79.0 ms, so
-  23.6 ms is this driver's own overhead — which is exactly the quantity
+- **Where the time went.** The find cost 54.9 ms of the request's 78.6 ms, so
+  23.7 ms is this driver's own overhead — which is exactly the quantity
   `bench/WindowsDriverCore.Benchmarks` exists to shrink.
 - **Which rung clicked.** `via Invoke`. A pattern, an ancestor climb and a real
   mouse click all report status 0, and when the climb toggled an app bar instead
@@ -1719,11 +1720,17 @@ Read what that answers, because each was a bespoke probe before:
 - **Whether a find failed or simply matched nothing.** `NormalOutput` ran and
   returned 0, so the element is absent from the control view — a fact about the
   application. A search that could not run reads `FAILED: NoSuchWindow` instead.
-- **How the application was reached.** 760.7 ms and a real window handle. The
-  window search times out at ten seconds, so a launch near that number ran out
-  rather than succeeded, and a `LaunchResult` carrying only a handle cannot say
-  which happened. Three separate claims about that search were once credited to
-  the wrong mechanism for exactly this reason.
+- **How the application was reached.** 733.3 ms, and an `ApplicationFrameWindow`
+  rather than a `Windows.UI.Core.CoreWindow`. Both halves matter: the window
+  search times out at ten seconds, so a launch near that number ran out rather
+  than succeeded, and the CLASS separates "the frame answered" from "a CoreWindow
+  was held to the deadline and returned". Three separate claims about that search
+  were each credited to the wrong mechanism because the handle was the only
+  observable.
+- **Whether the application actually died.** `terminate pid 27128 -> ended`. A
+  false there reads `STILL RUNNING`, and it is how the next run inherits a warm
+  application it did not ask for and measures a re-attach as a cold launch —
+  misread as a code change twice already.
 
 Four decisions worth keeping:
 
@@ -1761,8 +1768,10 @@ milliseconds. Each one records the exception type and **rethrows** — an action
 that threw is the line most worth having, and swallowing it would change the
 driver's behaviour to tidy a log.
 
-Still open: no event from the resolver or the page-source reader, so a slow
-`/source` is still just a slow request.
+Every seam that answers a request is now covered: requests, launch, find, element
+actions, and termination. Still open: no event from the resolver or the
+page-source reader, so a slow `/source` is still just a slow request, and the
+split between resolving an element and acting on it sits inside one action line.
 
 ## Not implemented
 

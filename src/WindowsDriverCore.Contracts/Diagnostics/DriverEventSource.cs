@@ -29,7 +29,8 @@ namespace WindowsDriverCore.Diagnostics;
 /// </para>
 /// </remarks>
 [EventSource(Name = SourceName)]
-public sealed class DriverEventSource : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog
+public sealed class DriverEventSource
+    : EventSource, IRequestLog, IFindLog, IInteractionLog, ILaunchLog, ITerminationLog
 {
     /// <summary>
     /// The ETW/EventPipe provider name a consumer subscribes to.
@@ -57,6 +58,9 @@ public sealed class DriverEventSource : EventSource, IRequestLog, IFindLog, IInt
 
     /// <summary>Event id for <see cref="ApplicationLaunched"/>.</summary>
     public const int ApplicationLaunchedEventId = 4;
+
+    /// <summary>Event id for <see cref="ApplicationTerminated"/>.</summary>
+    public const int ApplicationTerminatedEventId = 5;
 
     /// <inheritdoc />
     /// <remarks>
@@ -146,11 +150,12 @@ public sealed class DriverEventSource : EventSource, IRequestLog, IFindLog, IInt
     [Event(
         ApplicationLaunchedEventId,
         Level = EventLevel.Informational,
-        Message = "launch '{0}' -> pid {1} window 0x{2:X} {3} {4} ms")]
+        Message = "launch '{0}' -> pid {1} window 0x{2:X} {3} {4} {5} ms")]
     public void ApplicationLaunched(
         string app,
         int processId,
         long window,
+        string windowClass,
         string failure,
         double elapsedMilliseconds)
     {
@@ -160,6 +165,27 @@ public sealed class DriverEventSource : EventSource, IRequestLog, IFindLog, IInt
         }
 
         WriteEvent(
-            ApplicationLaunchedEventId, app, processId, window, failure, elapsedMilliseconds);
+            ApplicationLaunchedEventId,
+            app,
+            processId,
+            window,
+            windowClass,
+            failure,
+            elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        ApplicationTerminatedEventId,
+        Level = EventLevel.Informational,
+        Message = "terminate pid {0} -> ended {1} {2} ms")]
+    public void ApplicationTerminated(int processId, bool ended, double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(ApplicationTerminatedEventId, processId, ended, elapsedMilliseconds);
     }
 }
