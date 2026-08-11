@@ -1,9 +1,41 @@
 # 019 — Protocol fixture consolidation, and a real timeout cluster on the guest
 
 **Date:** 2026-08-11
-**Status:** two findings, both unstarted work; nothing in this repo has changed for either yet
+**Status:** 11/21 protocol fixtures converted and pushed (`cd8a91a`, `e8ee62c`);
+7 deliberately deferred pending a session-store reset decision; fixture-folding
+(point 2 below) and the guest timeout cluster (point 3) both still unstarted.
 
-## 1. 19 of 21 protocol fixtures each boot their own `WebApplicationFactory`
+## 1. 11 of 21 protocol fixtures now share one `WebApplicationFactory`
+
+Originally 19 of 21 each booted their own per `[Test]`. Converted to
+`[OneTimeSetUp]` + a per-test `[SetUp]` that rearms substitute defaults and
+clears received-call history — verified green individually, green 3x in a
+row for the full protocol project (185/185 unchanged each run, ruling out
+order-dependence), and green once for the full solution. Protocol project
+duration dropped from ~36-40s to a stable ~29-30s.
+
+**The hazard that made this non-mechanical:** a test that reconfigures a
+substitute's `.Returns()` inline, which a sibling test's default silently
+depended on. Found by reading every file, not by pattern-matching — confirmed
+live in four of the ten (`ClosingAWindowWaitsForItTests`,
+`DeadWindowFailsFastTests`, `PageSourceRouteTests`,
+`PointerStaysInsideTheWindowTests`). Mutation-verified on the template file:
+removing one rearm line failed two tests because a third, declared LAST in
+the file, ran before them — proving NUnit's default execution order was
+never something to rely on.
+
+**7 files deliberately left unconverted**, because they use `ISessionStore`
+(and two of them `IElementRegistry`) as a REAL, unsubstituted singleton:
+`CreateSessionRouteTests`, `ElementActionRouteTests`,
+`ElementPropertyRouteTests`, `ElementRouteTests`, `LongLivedSessionTests`,
+`OrientationRouteTests`, `SessionRouteTests`. `CreateSessionRouteTests`
+specifically asserts `.All().ShouldBeEmpty()`, which a shared factory would
+break in an order-dependent way, and `ISessionStore` has no reset method.
+Surfaced to the user as a real fork (add a test-only reset vs. require
+self-cleanup via `DELETE` vs. leave as-is); no answer given yet, so left
+alone rather than guessed at.
+
+## Original survey, for reference
 
 ```
 grep -rln 'WebApplicationFactory<WindowsDriverCore.Host.Program>' tests/WindowsDriverCore.Tests.Protocol/*.cs | wc -l
