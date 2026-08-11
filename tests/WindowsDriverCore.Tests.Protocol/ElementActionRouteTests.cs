@@ -141,19 +141,42 @@ public sealed class ElementActionRouteTests : IDisposable
         // Taking value[0] would send "p" and pass a test written with a
         // single-element array — so the condition here is an array that is
         // actually split.
-        _interactor.SetValue(Window, ElementId, "printers")
-            .Returns(ElementAction.Performed("Value.SetValue"));
+        _interactor.TypeValue(Window, ElementId, "printers")
+            .Returns(ElementAction.Performed("keys"));
 
         HttpResponseMessage response = await Post("value", new { value = SplitText });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        _interactor.Received(1).SetValue(Window, ElementId, "printers");
+        _interactor.Received(1).TypeValue(Window, ElementId, "printers");
+    }
+
+    /// <summary>
+    /// The route TYPES rather than writing through ValuePattern.
+    /// </summary>
+    /// <remarks>
+    /// <b>The negative half is the point.</b> Asserting only that TypeValue was
+    /// called would still pass if the route called BOTH, and a stray ValuePattern
+    /// write is exactly the defect being removed: it put the literal key codes
+    /// U+E009 and U+E017 into the suite's edit box, which reads as an empty
+    /// string in a failure message and is not one.
+    /// </remarks>
+    [Test]
+    public async Task Value_Types_AndNeverWritesThroughValuePattern()
+    {
+        _interactor.TypeValue(Window, ElementId, "printers")
+            .Returns(ElementAction.Performed("keys"));
+
+        await Post("value", new { value = SplitText });
+
+        _interactor.Received(1).TypeValue(Window, ElementId, "printers");
+        _interactor.DidNotReceive().SetValue(
+            Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>());
     }
 
     [Test]
     public async Task Value_OnSomethingThatCannotHoldOne_IsElementNotInteractable()
     {
-        _interactor.SetValue(Window, ElementId, "hello")
+        _interactor.TypeValue(Window, ElementId, "hello")
             .Returns(ElementAction.Failed(ElementActionOutcome.NotInteractable));
 
         HttpResponseMessage response = await Post("value", new { value = SingleText });
