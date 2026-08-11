@@ -91,6 +91,32 @@ internal static partial class Win32
     internal static partial bool SetWindowPos(
         nint hWnd, nint insertAfter, int x, int y, int width, int height, uint flags);
 
+    /// <summary>Sends a message and waits for the target thread to process it.</summary>
+    /// <param name="hWnd">The window whose thread should process it.</param>
+    /// <param name="message">The message; <see cref="WM_NULL"/> to synchronise only.</param>
+    /// <param name="wParam">Unused for WM_NULL.</param>
+    /// <param name="lParam">Unused for WM_NULL.</param>
+    /// <param name="flags">Timeout behaviour.</param>
+    /// <param name="timeout">Milliseconds to wait.</param>
+    /// <param name="result">The message result, unused here.</param>
+    /// <returns>Zero on timeout or failure.</returns>
+    /// <remarks>
+    /// The synchronisation behind typing. <c>SendInput</c> only QUEUES input; the
+    /// application processes it on its own message loop, and a driver that
+    /// answers the client immediately lets the client read the control before the
+    /// keystrokes have landed. A message queue is ordered, so once a synchronous
+    /// <c>WM_NULL</c> comes back, everything queued before it has been consumed.
+    /// </remarks>
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW")]
+    internal static partial nint SendMessageTimeout(
+        nint hWnd, uint message, nint wParam, nint lParam, uint flags, uint timeout, out nint result);
+
+    /// <summary>Do not hang if the target thread stops responding.</summary>
+    internal const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    /// <summary>A message with no effect, sent purely to synchronise.</summary>
+    internal const uint WM_NULL = 0x0000;
+
     /// <summary>Maps a character to a virtual-key code in the current layout.</summary>
     /// <param name="character">The character, as a UTF-16 code unit.</param>
     /// <returns>

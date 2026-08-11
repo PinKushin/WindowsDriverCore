@@ -79,12 +79,21 @@ public static class KeyboardRoutes
                     statusCode: WebDriverFault.InvalidArgument.HttpStatus);
             }
 
-            return keyboard.Type(keys)
-                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                : Results.Json(
+            if (!keyboard.Type(keys))
+            {
+                return Results.Json(
                     JsonWireResponse.ForFault(
                         WebDriverFault.UnknownError, "The keystrokes were not accepted"),
                     statusCode: WebDriverFault.UnknownError.HttpStatus);
+            }
+
+            // Do not answer until the application has actually consumed them.
+            // SendInput queues; the client reads. Measured: 52 characters
+            // answered immediately, the client saw "abc", and the other 49 landed
+            // during the next test.
+            windows.WaitForInputProcessed(session.WindowHandle);
+
+            return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
         }).RequiresSession();
 
         return app;

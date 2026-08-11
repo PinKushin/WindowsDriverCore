@@ -90,6 +90,31 @@ public sealed class WindowLocator : IWindowLocator
     }
 
     /// <inheritdoc />
+    public bool WaitForInputProcessed(nint handle)
+    {
+        if (!Exists(handle))
+        {
+            return false;
+        }
+
+        // A message queue is ordered, so a synchronous WM_NULL cannot be handled
+        // until everything queued before it has been. No sleep and no guess: this
+        // waits for the condition itself.
+        //
+        // ABORTIFHUNG so a wedged application fails the command instead of
+        // hanging the driver, and a bounded timeout for the same reason.
+        return Win32.SendMessageTimeout(
+            handle, Win32.WM_NULL, 0, 0, Win32.SMTO_ABORTIFHUNG, InputDrainTimeoutMs, out _) != 0;
+    }
+
+    /// <summary>How long to wait for an application to consume queued input.</summary>
+    /// <remarks>
+    /// Generous, because it bounds a failure rather than a success: a responsive
+    /// application returns in microseconds and only a hung one waits this long.
+    /// </remarks>
+    private const uint InputDrainTimeoutMs = 5000;
+
+    /// <inheritdoc />
     public nint FindMainWindow(int processId)
     {
         if (processId == 0)
