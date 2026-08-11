@@ -259,6 +259,16 @@ internal static partial class Win32
     internal const int SW_RESTORE = 9;
 
     /// <summary>Asks a window to close.</summary>
+    /// <summary>The desktop shell's window, or 0 when there is no shell.</summary>
+    /// <remarks>
+    /// Used to identify the process that must never be killed. Comparing against
+    /// the name "explorer.exe" would also match a File Explorer running as its
+    /// own process and refuse to close something that safely could be; the shell
+    /// window names the shell exactly.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetShellWindow();
+
     internal const uint WM_CLOSE = 0x0010;
 
     /// <summary>Brings a window to the foreground.</summary>

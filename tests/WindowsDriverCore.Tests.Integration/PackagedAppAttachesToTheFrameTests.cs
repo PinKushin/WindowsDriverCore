@@ -117,7 +117,7 @@ public sealed class PackagedAppAttachesToTheFrameTests
         }
         finally
         {
-            new ApplicationTerminator().Terminate(launched.Application.ProcessId);
+            new ApplicationTerminator().Terminate(launched.Application.ProcessId, launched.Application.WindowHandle);
             AppLifetime.KillAll(CalculatorProcess);
         }
     }

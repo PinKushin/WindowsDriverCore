@@ -103,7 +103,7 @@ public sealed class SessionShutdownTests : IDisposable
 
         await Delete(sessionId);
 
-        _terminator.Received(1).Terminate(LaunchedProcess);
+        _terminator.Received(1).Terminate(LaunchedProcess, Arg.Any<nint>());
     }
 
     [Test]
@@ -117,7 +117,7 @@ public sealed class SessionShutdownTests : IDisposable
 
         await Delete(sessionId);
 
-        _terminator.DidNotReceive().Terminate(Arg.Any<int>());
+        _terminator.DidNotReceive().Terminate(Arg.Any<int>(), Arg.Any<nint>());
     }
 
     [Test]
@@ -127,7 +127,7 @@ public sealed class SessionShutdownTests : IDisposable
 
         await Delete(sessionId);
 
-        _terminator.DidNotReceive().Terminate(Arg.Any<int>());
+        _terminator.DidNotReceive().Terminate(Arg.Any<int>(), Arg.Any<nint>());
     }
 
     [Test]
@@ -145,12 +145,12 @@ public sealed class SessionShutdownTests : IDisposable
 
         await Delete(first);
 
-        _terminator.DidNotReceive().Terminate(Arg.Any<int>());
+        _terminator.DidNotReceive().Terminate(Arg.Any<int>(), Arg.Any<nint>());
 
         // And the last one out does close it, or the application leaks instead.
         await Delete(second);
 
-        _terminator.Received(1).Terminate(LaunchedProcess);
+        _terminator.Received(1).Terminate(LaunchedProcess, Arg.Any<nint>());
     }
 
     [Test]
@@ -159,7 +159,7 @@ public sealed class SessionShutdownTests : IDisposable
         // A process that will not die is not a reason to keep the session. The
         // client asked for it to be gone and a second delete must report it
         // unknown, not hand back a session addressing a half-dead application.
-        _terminator.Terminate(Arg.Any<int>()).Returns(false);
+        _terminator.Terminate(Arg.Any<int>(), Arg.Any<nint>()).Returns(false);
 
         string sessionId = await NewSession(
             new { app = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" });
