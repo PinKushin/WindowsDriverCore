@@ -181,6 +181,104 @@ public sealed class PointerActionRunner
         return null;
     }
 
+    /// <summary>Taps a point, holding the contact for a duration.</summary>
+    /// <param name="x">Screen x.</param>
+    /// <param name="y">Screen y.</param>
+    /// <param name="hold">How long to keep the contact down.</param>
+    /// <returns>Null when performed, or why it could not be.</returns>
+    /// <remarks>
+    /// <b>The hold really does pass time, and that is the operation rather than a
+    /// wait.</b> This project bans sleeping as a substitute for synchronising on a
+    /// condition — waiting and hoping. A long press is different in kind: the
+    /// caller asked for a contact held for a duration, and an application
+    /// distinguishes a tap from a long press by exactly that. Returning early
+    /// would perform a different gesture from the one requested.
+    /// </remarks>
+    public string? Tap(int x, int y, TimeSpan hold)
+    {
+        if (!_synthetic.CanInject(SyntheticPointerKind.Touch))
+        {
+            return "This system cannot inject touch input";
+        }
+
+        if (!_synthetic.Inject([Plain(x, y, SyntheticContactPhase.Down)]))
+        {
+            return "The system refused a touch contact";
+        }
+
+        // Updates while held. A contact that is down and silent is not what a
+        // digitiser produces, and a target watching for a long press needs to
+        // keep seeing it.
+        long deadline = Environment.TickCount64 + (long)hold.TotalMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (!_synthetic.Inject([Plain(x, y, SyntheticContactPhase.Update)]))
+            {
+                return "The system refused a contact update";
+            }
+
+            Thread.Sleep(HoldFrameMilliseconds);
+        }
+
+        return _synthetic.Inject([Plain(x, y, SyntheticContactPhase.Up)])
+            ? null
+            : "The system refused to lift a touch contact";
+    }
+
+    /// <summary>Drags from one point to another with the contact down.</summary>
+    /// <param name="fromX">Screen x to start at.</param>
+    /// <param name="fromY">Screen y to start at.</param>
+    /// <param name="toX">Screen x to finish at.</param>
+    /// <param name="toY">Screen y to finish at.</param>
+    /// <returns>Null when performed, or why it could not be.</returns>
+    public string? Drag(int fromX, int fromY, int toX, int toY)
+    {
+        if (!_synthetic.CanInject(SyntheticPointerKind.Touch))
+        {
+            return "This system cannot inject touch input";
+        }
+
+        if (!_synthetic.Inject([Plain(fromX, fromY, SyntheticContactPhase.Down)]))
+        {
+            return "The system refused a touch contact";
+        }
+
+        string? moved = Move(SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true);
+        if (moved is not null)
+        {
+            return moved;
+        }
+
+        return _synthetic.Inject([Plain(toX, toY, SyntheticContactPhase.Up)])
+            ? null
+            : "The system refused to lift a touch contact";
+    }
+
+    /// <summary>The centre of an element, in screen pixels.</summary>
+    /// <param name="window">The session's window.</param>
+    /// <param name="elementId">The element.</param>
+    /// <returns>The point, or why it could not be found.</returns>
+    public (int X, int Y, string? Failure) CentreOf(nint window, string elementId)
+    {
+        ElementRead<ElementBounds> bounds = _elements.ScreenBounds(window, elementId);
+
+        return bounds.Outcome == ElementReadOutcome.Read
+            ? (bounds.Value.X + (bounds.Value.Width / 2),
+               bounds.Value.Y + (bounds.Value.Height / 2),
+               null)
+            : (0, 0, $"The element could not be located: {bounds.Outcome}");
+    }
+
+    private static SyntheticContact Plain(int x, int y, SyntheticContactPhase phase) =>
+        new(SyntheticPointerKind.Touch, x, y, phase);
+
+    /// <summary>How often a held contact reports while it is held.</summary>
+    /// <remarks>
+    /// Roughly a 60 Hz digitiser. Faster floods the queue for no benefit; slower
+    /// and a target sampling for a long press can miss it.
+    /// </remarks>
+    private const int HoldFrameMilliseconds = 16;
+
     private string? Press(SyntheticPointerKind kind, int x, int y, JsonElement step) =>
         _synthetic.Inject([Contact(kind, x, y, SyntheticContactPhase.Down, step)])
             ? null
