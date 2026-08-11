@@ -82,13 +82,44 @@ $credential = [System.Management.Automation.PSCredential]::new(
     $lines[0], (ConvertTo-SecureString $lines[1] -AsPlainText -Force))
 
 Write-Host "Pushing payload to the guest (283 MB of it, so this takes a while)..."
+
+# What is already on the guest, so a re-run does not re-push a quarter of a
+# gigabyte. Every INSTALL step below is guarded by Test-Path and this one was
+# not, which made the script idempotent in effect and expensive in practice.
+#
+# Compared by length rather than by hash: Copy-VMFile is a byte copy over the
+# VMBus with no transform, so a matching size is sufficient - and hashing
+# 283 MB inside the guest to avoid copying 283 MB is not a saving.
+$already = Invoke-Command -VMName $VMName -Credential $credential -ScriptBlock {
+    $map = @{}
+    Get-ChildItem 'C:\baseline\payload' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { $map[$_.Name] = $_.Length }
+    $map
+}
+
 foreach ($file in $required + @("dotnet-install.ps1")) {
     $source = Join-Path $PayloadPath $file
     if (-not (Test-Path $source)) { continue }
+    $size = (Get-Item $source).Length
+    if ($already -and $already.ContainsKey($file) -and $already[$file] -eq $size) {
+        Write-Host "  $file (already there)"
+        continue
+    }
+
 
     Write-Host "  $file"
     Copy-VMFile -Name $VMName -SourcePath $source `
         -DestinationPath "C:\baseline\payload\$file" -CreateFullPath -FileSource Host -Force
+}
+
+# The agent comes from the repository rather than the payload, because it is
+# source rather than a pinned third-party binary and should follow the branch
+# being measured.
+$agent = Join-Path $PSScriptRoot "agent.ps1"
+if (Test-Path $agent) {
+    Write-Host "  agent.ps1"
+    Copy-VMFile -Name $VMName -SourcePath $agent `
+        -DestinationPath "C:\baseline\agent.ps1" -CreateFullPath -FileSource Host -Force
 }
 
 Write-Host "Installing on the guest..."
@@ -166,6 +197,82 @@ Invoke-Command -VMName $VMName -Credential $credential -ScriptBlock {
 
     $report
 } | ForEach-Object { Write-Host $_ }
+
+# ---------------------------------------------------------------------------
+# The agent, started by the machine rather than by a person.
+#
+# It has to run in the INTERACTIVE session: PowerShell Direct lands in session 0,
+# which has no desktop, and a UI automation job started there produces windowless
+# processes and a run that measures nothing while reporting skips.
+#
+# /IT is what puts a task on the interactive desktop, and the ScheduledTasks
+# module has no equivalent switch - hence schtasks. It CANNOT be started from
+# session 0 on demand (`schtasks /run` answers "ERROR: Element not found",
+# because Task Scheduler cannot resolve the interactive token across the session
+# boundary), so the trigger is logon and the guest is restarted to fire it. The
+# answer file's AutoLogon then brings the agent up unattended, on this boot and
+# every boot after it.
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "Installing the agent as a Startup item..."
+
+Invoke-Command -VMName $VMName -Credential $credential -ScriptBlock {
+    # THE STARTUP FOLDER, NOT A SCHEDULED TASK.
+    #
+    # schtasks /create /sc onlogon /it /ru <user> /rp <password> warned "not all
+    # specified triggers will start the task" and then did not persist the task at
+    # all - it was absent afterwards from both schtasks /query and
+    # Get-ScheduledTask. /IT means "run only while this user is logged on", which
+    # is answered by the interactive token; supplying a stored password as well is
+    # contradictory.
+    #
+    # The Startup folder runs in the interactive session at logon by definition.
+    # No password, no trigger semantics, nothing to misregister.
+    #
+    # Task Scheduler /IT is still right where Invoke-GuestTests.ps1 uses it, for a
+    # different problem: STARTING something on the interactive desktop on demand
+    # from session 0. That is not this.
+    $startup = Join-Path $env:APPDATA '\Microsoft\Windows\Start Menu\Programs\Startup'
+    $cmd = Join-Path $startup 'wdc-agent.cmd'
+
+    Set-Content -LiteralPath $cmd -Encoding Ascii -Value @(
+        '@echo off',
+        'rem Starts the job-queue agent in the interactive session at logon.',
+        'start "" powershell.exe -ExecutionPolicy Bypass -NoExit -File C:\baseline\agent.ps1'
+    )
+
+    'startup item: ' + (Test-Path $cmd)
+} | Write-Host
+
+# NOTE ON ELEVATION. The Startup item runs NON-elevated, which is the steady
+# state every future boot will have. An agent started by hand from an elevated
+# console is a different instrument, and a baseline measured there is measured
+# under conditions that will not recur - the same unmatched-conditions mistake
+# that made the 281 and 231 scores incomparable. Reboot before the first
+# baseline run so the agent comes from here.
+
+Write-Host "Restarting the guest so the logon trigger fires..."
+Restart-VM -Name $VMName -Force -Wait -For Heartbeat
+
+Write-Host "Waiting for the agent's heartbeat..."
+$deadline = (Get-Date).AddMinutes(5)
+$beat = $null
+while ((Get-Date) -lt $deadline -and -not $beat) {
+    Start-Sleep -Seconds 10
+    $beat = Invoke-Command -VMName $VMName -Credential $credential -ErrorAction SilentlyContinue -ScriptBlock {
+        if (Test-Path 'C:\baseline\cmd\_agent.heartbeat') {
+            Get-Content 'C:\baseline\cmd\_agent.heartbeat' -Raw
+        }
+    }
+}
+
+if ($beat) {
+    Write-Host "agent: $beat"
+} else {
+    Write-Warning "No agent heartbeat after five minutes. Check the guest's desktop -"
+    Write-Warning "a live process with a dead loop looks identical from session 0, which"
+    Write-Warning "is why the heartbeat file exists."
+}
 
 Write-Host ""
 Write-Host "CHECKPOINT IT NOW, before anything else touches the guest."
