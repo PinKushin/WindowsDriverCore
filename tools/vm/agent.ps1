@@ -76,18 +76,27 @@ if (-not $createdNew) {
 }
 
 function Write-Heartbeat {
-    param([string] $State, [string] $Job)
+    param([string] $State, [string] $Job, [string] $StartedUtc = '')
 
     # Written every loop, so a reader in session 0 can tell a live agent from a
     # process whose loop has died. Best-effort: a heartbeat that throws must not
     # be what stops the agent.
     try {
         $beat = [ordered]@{
-            utc     = (Get-Date).ToUniversalTime().ToString('o')
-            pid     = $PID
-            session = $sessionId
-            state   = $State
-            job     = $Job
+            utc       = (Get-Date).ToUniversalTime().ToString('o')
+            pid       = $PID
+            session   = $sessionId
+            state     = $State
+            job       = $Job
+
+            # WHEN THE JOB STARTED, because the beat itself FREEZES while one
+            # runs: the agent blocks in the call operator and cannot update it.
+            # So "running" and "wedged" look identical from session 0 unless the
+            # reader can see how long it has been running. Measured 2026-08-11:
+            # an agent sat in "running" for 25 minutes with no child process, no
+            # log output and the job still queued, and the only symptom was a
+            # poller timing out with nothing to say.
+            startedUtc = $StartedUtc
         } | ConvertTo-Json -Compress
 
         [System.IO.File]::WriteAllText($heartbeatPath, $beat)
@@ -119,7 +128,8 @@ try {
             $done = Join-Path $QueuePath ($name + '.done')
             $path = $job.FullName
 
-            Write-Heartbeat -State 'running' -Job $name
+            $startedUtc = (Get-Date).ToUniversalTime().ToString('o')
+            Write-Heartbeat -State 'running' -Job $name -StartedUtc $startedUtc
             Write-Host ('[' + (Get-Date -Format HH:mm:ss) + '] running ' + $job.Name)
 
             $exitCode = -1
