@@ -29,6 +29,27 @@ public sealed class WindowLocator : IWindowLocator
     }
 
     /// <inheritdoc />
+    public bool OwnsThePointAt(int x, int y, nint handle)
+    {
+        if (!Exists(handle))
+        {
+            return false;
+        }
+
+        nint atPoint = Win32.WindowFromPoint(new Win32.Point { X = x, Y = y });
+        if (atPoint == 0)
+        {
+            return false;
+        }
+
+        // Compared by ROOT, because WindowFromPoint answers with the deepest child
+        // at that point — for any real application that is a control inside the
+        // window, never the window itself. Comparing handles directly would refuse
+        // every legitimate click.
+        return Win32.GetAncestor(atPoint, Win32.GA_ROOT) == Win32.GetAncestor(handle, Win32.GA_ROOT);
+    }
+
+    /// <inheritdoc />
     public int GetHostedProcessId(nint handle)
     {
         int owner = GetOwningProcessId(handle);
