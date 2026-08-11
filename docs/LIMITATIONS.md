@@ -1201,6 +1201,40 @@ in WinAppDriver's mapping (the observation does not transfer to us), or
 `ClickablePoint` failing too (the element has no screen presence and refusing is
 correct).
 
+## Rooting at the frame: 150 -> 166, and the reason was NOT the one predicted
+
+MEASURED, cold, Windows 10 22H2 guest, alarm store reset, one run each:
+`e045b06` **150**/290, `c26e4d3` **166**/290. **Sixteen gained, none lost — a
+strict superset.**
+
+```
+GetWindowSize                        SetWindowSize
+SetWindowPosition                    SetWindowPosition_ToOrigin
+MaximizeWindow                       MouseDoubleClick
+GetWindowSizeError_NoSuchWindow      SetWindowSizeError_NoSuchWindow
+GetWindowPositionError_NoSuchWindow  SetWindowPositionError_NoSuchWindow
+MaximizeWindowError_NoSuchWindow     MouseDownMoveUp
+GetElementEnabledState               GetElementEnabledStateError_StaleElement
+GetElementEnabledStateError_NoSuchWindow
+CreateSessionFromExistingWindowHandleError_NonTopLevelWindowHandle
+```
+
+**Nine of the sixteen are window management.** `SetWindowPos`, `GetWindowRect`,
+maximize. Rooted at the `CoreWindow` those addressed a *child* window, where
+position and size are not meaningful quantities; rooted at the frame they address
+the real top-level window. The two mouse tests follow for the same reason — a
+click coordinate is relative to a window that actually has a position.
+
+**The prediction was reach, and reach is not what paid.** The argument for the
+frame was that its subtree carries `ApplicationFrameTitleBarWindow` — 53 elements
+against 45 — so title-bar chrome becomes findable. No chrome test moved. What
+moved was every operation that treats the session's handle as *the window*.
+
+That is the third time on this seam that a correct change has been justified by
+the wrong mechanism, after "the CoreWindow is destroyed" (retracted, it is
+reparented) and "the empty frame must be refused" (retracted, it cost 20 tests).
+The change stands on the measurement, not on the story attached to it.
+
 ## Not implemented
 
 | Area | State | Notes |
