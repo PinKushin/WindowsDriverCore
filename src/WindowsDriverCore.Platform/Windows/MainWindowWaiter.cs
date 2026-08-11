@@ -93,18 +93,41 @@ public sealed class MainWindowWaiter
 
         long deadline = _time.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
 
+        nint hostedButNotYetFramed = 0;
+
         while (_time.GetTimestamp() < deadline)
         {
             nint window = FindWindow(processId, windowsBeforeLaunch);
+
             if (window != 0)
             {
-                return window;
+                if (ClassNameOf(window) != CoreWindowClass)
+                {
+                    return window;
+                }
+
+                // A CoreWindow is the hosted half of a packaged application and
+                // the session wants the FRAME around it. Holding rather than
+                // returning is the whole mechanism: the next poll's
+                // FindFrameWindowHosting finds the frame once the reparent has
+                // happened, roughly 155 ms after launch on both systems.
+                //
+                // A fast path was written for this — GetParent of the CoreWindow
+                // becomes the frame at the instant of the reparent — and removed
+                // again, because mutating it away changed no observable behaviour:
+                // the hold alone produces the frame. It is worth revisiting only
+                // with a measurement of what one extra poll interval costs on
+                // session creation, not on the assumption that it must help.
+                hostedButNotYetFramed = window;
             }
 
             await Task.Delay(pollInterval, _time, cancellationToken).ConfigureAwait(false);
         }
 
-        return 0;
+        // The CoreWindow, if that is all there ever was. It is what this returned
+        // immediately before the wait existed, so the worst case is the old answer
+        // given late — never nothing where the old code gave something.
+        return hostedButNotYetFramed;
     }
 
     private static nint FindWindow(int processId, IReadOnlySet<nint> before)
