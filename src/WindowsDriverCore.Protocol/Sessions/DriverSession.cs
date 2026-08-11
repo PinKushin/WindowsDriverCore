@@ -41,6 +41,22 @@ public sealed record DriverSession(
     /// </remarks>
     public nint WindowHandle { get; set; } = WindowHandle;
 
+    /// <summary>Whether typed input may still be in flight.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Set by typing, paid for by reading.</b> <c>SendInput</c> only queues
+    /// keystrokes and the application consumes them on its own message loop, so a
+    /// client that types and immediately reads can see the control mid-update.
+    /// Measured 2026-08-11: 52 characters typed, and the client read <c>ab</c>.
+    /// </para>
+    /// <para>
+    /// The flag exists so the wait costs nothing on the paths that do not need
+    /// it. Typing stays at ~4 ms; a session that never types never waits; and a
+    /// read pays the drain once per typing burst rather than on every request.
+    /// </para>
+    /// </remarks>
+    public bool InputPending { get; set; }
+
     /// <summary>How long a find retries before reporting nothing found.</summary>
     /// <remarks>
     /// <para>

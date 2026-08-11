@@ -122,6 +122,10 @@ public static class ElementPropertyRoutes
              string elementId) =>
             {
                 DriverSession session = context.GetSession();
+
+                // Pay for typing here, and only when something was typed.
+                DrainTypedInput(session, windows);
+
                 ElementRead<T> result = read(inspector, session.WindowHandle, elementId);
 
                 return result.Outcome == ElementReadOutcome.Read
@@ -129,6 +133,39 @@ public static class ElementPropertyRoutes
                     : ElementFault.For(result.Outcome, session, elementId, registry, windows);
             })
             .RequiresSession();
+    }
+
+    /// <summary>Waits for typed input to land, if any is in flight.</summary>
+    /// <param name="session">The session, whose flag is cleared once drained.</param>
+    /// <param name="windows">Used to wait on the application.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured 2026-08-11, three candidate primitives, one survivor.</b>
+    /// A synchronous <c>WM_NULL</c> is delivered AHEAD of queued input, so it
+    /// returns at once and proves only that the thread is responsive.
+    /// <c>AttachThreadInput</c> plus <c>GetQueueStatus</c> reported zero pending
+    /// keys while 51 were still queued. <c>WaitForInputIdle</c> returned with all
+    /// 52 characters present, five times out of five, waiting 46-195 ms.
+    /// </para>
+    /// <para>
+    /// <b>It is not free, which is why it is here and not in <c>/keys</c>.</b>
+    /// Typing stays at ~4 ms, a session that never types never waits, and the
+    /// cost lands once per typing burst on the read that depends on it. For
+    /// comparison, WinAppDriver spends ~2500 ms typing the same 52 characters
+    /// and still races.
+    /// </para>
+    /// </remarks>
+    private static void DrainTypedInput(DriverSession session, IWindowLocator windows)
+    {
+        if (!session.InputPending)
+        {
+            return;
+        }
+
+        // Cleared either way. A wait that fails - no message loop, or a process
+        // this driver may not open - must not make every later read retry it.
+        session.InputPending = false;
+        windows.WaitForInputProcessed(session.WindowHandle);
     }
 
     private static ElementRead<ElementLocation> ReadLocation(
