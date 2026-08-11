@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WindowsDriverCore.Host.CommandLine;
 using Interop.UIAutomationClient;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Diagnostics;
 using WindowsDriverCore.Automation.Uia;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
@@ -58,6 +59,13 @@ public partial class Program
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
         builder.WebHost.UseUrls(address.ToListenUrl());
 
+        // One EventSource for the process, reached only through its interface.
+        // Registered by concrete type as well so DI owns the single instance and
+        // disposes it; resolving IRequestLog separately would construct a second.
+        builder.Services.AddSingleton<DriverEventSource>();
+        builder.Services.AddSingleton<IRequestLog>(
+            provider => provider.GetRequiredService<DriverEventSource>());
+
         builder.Services.AddSingleton<IServerStatusProvider, ServerStatusProvider>();
         builder.Services.AddSingleton<ISessionStore, SessionStore>();
         builder.Services.AddSingleton<SessionFactory>();
@@ -89,6 +97,11 @@ public partial class Program
         builder.Services.AddSingleton<IElementRegistry, ElementRegistry>();
 
         WebApplication app = builder.Build();
+
+        // FIRST, so nothing is invisible to it — including the base-path gate's
+        // 404, which never reaches routing. A transcript with a hole in it is
+        // worse than none, because the hole leaves no trace.
+        app.UseMiddleware<RequestLogMiddleware>();
 
         if (address.BasePath is not null)
         {

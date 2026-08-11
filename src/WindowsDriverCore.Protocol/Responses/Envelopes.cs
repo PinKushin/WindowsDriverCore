@@ -45,7 +45,7 @@ public sealed record ElementSize(
 public sealed record SessionResponse<T>(
     [property: JsonPropertyName("sessionId")] string SessionId,
     [property: JsonPropertyName("status")] int Status,
-    [property: JsonPropertyName("value")] T Value);
+    [property: JsonPropertyName("value")] T Value) : IJsonWireEnvelope;
 
 /// <summary>A response to a session-scoped command that returns nothing.</summary>
 /// <param name="SessionId">The session the command ran against.</param>
@@ -53,7 +53,7 @@ public sealed record SessionResponse<T>(
 /// <remarks>Carries no <c>value</c> property at all, matching WinAppDriver.</remarks>
 public sealed record VoidSessionResponse(
     [property: JsonPropertyName("sessionId")] string SessionId,
-    [property: JsonPropertyName("status")] int Status);
+    [property: JsonPropertyName("status")] int Status) : IJsonWireEnvelope;
 
 /// <summary>A response to a command not scoped to a session, such as <c>/sessions</c>.</summary>
 /// <typeparam name="T">The value type.</typeparam>
@@ -61,12 +61,12 @@ public sealed record VoidSessionResponse(
 /// <param name="Value">The result of the command.</param>
 public sealed record ServerResponse<T>(
     [property: JsonPropertyName("status")] int Status,
-    [property: JsonPropertyName("value")] T Value);
+    [property: JsonPropertyName("value")] T Value) : IJsonWireEnvelope;
 
 /// <summary>A response carrying only a status, as <c>DELETE /session</c> does.</summary>
 /// <param name="Status">Always 0.</param>
 public sealed record VoidServerResponse(
-    [property: JsonPropertyName("status")] int Status);
+    [property: JsonPropertyName("status")] int Status) : IJsonWireEnvelope;
 
 /// <summary>The <c>value</c> of a failure response.</summary>
 /// <param name="Error">The error string belonging to the fault.</param>
@@ -84,7 +84,7 @@ public sealed record FaultDetail(
 /// <param name="Value">The error and message.</param>
 public sealed record FaultResponse(
     [property: JsonPropertyName("status")] int Status,
-    [property: JsonPropertyName("value")] FaultDetail Value);
+    [property: JsonPropertyName("value")] FaultDetail Value) : IJsonWireEnvelope;
 
 /// <summary>Build metadata reported by <c>GET /status</c>.</summary>
 /// <param name="Version">Driver version.</param>

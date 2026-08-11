@@ -29,6 +29,17 @@ namespace WindowsDriverCore.Diagnostics;
 /// </remarks>
 public interface IRequestLog
 {
+    /// <summary>
+    /// Reported as the JSON Wire status when the response carries no envelope.
+    /// </summary>
+    /// <remarks>
+    /// <c>GET /status</c> is the one response with no <c>status</c> field at all.
+    /// Reporting <c>0</c> for it would read as "succeeded with status 0" and be
+    /// indistinguishable from a real success envelope, so absence gets its own
+    /// value. Negative because every real JSON Wire status is non-negative.
+    /// </remarks>
+    const int NoJsonWireStatus = -1;
+
     /// <summary>Records a finished request.</summary>
     /// <param name="method">HTTP method, e.g. <c>POST</c>.</param>
     /// <param name="route">
@@ -39,9 +50,13 @@ public interface IRequestLog
     /// <param name="httpStatus">The HTTP status code sent.</param>
     /// <param name="jsonWireStatus">
     /// The JSON Wire Protocol status in the response envelope; <c>0</c> is
-    /// success. Logged separately from <paramref name="httpStatus"/> because JWP
-    /// reports most faults as HTTP 200 with a non-zero status, so the HTTP code
-    /// alone cannot distinguish a working command from a failing one.
+    /// success and <see cref="NoJsonWireStatus"/> means there was no envelope.
+    /// Logged separately from <paramref name="httpStatus"/> because the two are
+    /// not derivable from each other: in this driver's own fault table HTTP 404
+    /// covers status <c>7</c> (no such element) and status <c>9</c> (unknown
+    /// command), and HTTP 400 covers <c>10</c>, <c>23</c>, <c>100</c> and
+    /// <c>105</c>. The HTTP code alone cannot tell "the element was not there"
+    /// from "that route does not exist".
     /// </param>
     /// <param name="elapsedMilliseconds">Wall-clock cost of the request.</param>
     void RequestCompleted(
