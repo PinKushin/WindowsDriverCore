@@ -62,6 +62,37 @@ mapping is not one-to-one and needs writing down rather than guessing — status
 is `no such element`, 23 is `no such window`, 10 is `stale element reference`,
 100 is `invalid argument`.
 
+### 3a. Where this driver deliberately does NOT follow W3C
+
+Three faults, and all three are inherited from WinAppDriver's measured wire
+behaviour rather than chosen:
+
+| status | our HTTP | W3C error name | W3C HTTP | agrees? |
+|---|---|---|---|---|
+| 7 no such element | 404 | no such element | 404 | yes |
+| 9 unknown command | 404 | unknown command | 404 | yes |
+| 13 unknown error | 500 | unknown error | 500 | yes |
+| 100 invalid argument | 400 | invalid argument | 400 | yes |
+| 101 invalid session id | 404 | invalid session id | 404 | yes |
+| 105 element not interactable | 400 | element not interactable | 400 | yes |
+| **10 stale element reference** | **400** | stale element reference | **404** | **no** |
+| **23 no such window** | **400** | no such window | **404** | **no** |
+| **19 `XPath Lookup Error`** | **500** | **`invalid selector`** | **400** | **no** |
+
+`WebDriverFault` already says so for the second: *"HTTP 400, not 404, despite
+being a 'not found' condition."* The third is not merely a wrong code —
+`XPath Lookup Error` is not a W3C error name at all.
+
+**None of these are ambiguous at request time**, which is what makes serving both
+possible. The dialect is fixed when the session is created, so one fault renders
+two ways. The fault is the domain concept; the status code and error string are a
+projection of it — the same one-truth-two-consumers shape already used for XPath
+and `/source`.
+
+So `WebDriverFault` gains a W3C rendering beside its JWP one, rather than being
+replaced or duplicated. W3C also requires a `stacktrace` member in the error
+object, which may be an empty string.
+
 ### 4. Element references
 
 | | key |
