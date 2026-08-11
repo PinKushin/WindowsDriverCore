@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using NUnit.Framework;
 
 namespace WindowsDriverCore.Tests.Integration.Support;
@@ -70,19 +71,16 @@ internal static class AppLifetime
     /// </remarks>
     internal static void WaitUntilWindowIsGone(nint window)
     {
+        // Generous, and yielding rather than spinning: see UiSettle.GiveUpAfter.
+        // A hot loop here starves the very process that is trying to exit.
         Stopwatch elapsed = Stopwatch.StartNew();
 
-        while (elapsed.Elapsed < TimeSpan.FromSeconds(30))
+        if (!SpinWait.SpinUntil(() => !IsWindow(window), TimeSpan.FromSeconds(120)))
         {
-            if (!IsWindow(window))
-            {
-                return;
-            }
+            Assert.Fail(
+                $"Window 0x{window:X} still exists {elapsed.Elapsed.TotalSeconds:F0}s after its " +
+                "process was killed. The application did not shut down.");
         }
-
-        Assert.Fail(
-            $"Window 0x{window:X} still exists {elapsed.Elapsed.TotalSeconds:F0}s after its " +
-            "process was killed. The application did not shut down.");
     }
 
     /// <summary>Kills every process with a name, for fixture teardown.</summary>

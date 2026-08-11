@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using NUnit.Framework;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
@@ -49,7 +50,18 @@ internal static class UiSettle
     /// synchronises on the observation; the deadline exists only so a hang fails
     /// with a diagnosis instead of running forever.
     /// </remarks>
-    private static readonly TimeSpan GiveUpAfter = TimeSpan.FromSeconds(30);
+    /// <remarks>
+    /// <b>Generous on purpose: a timeout bounds FAILURE, not success.</b> A
+    /// condition poll returns the instant the condition holds, so a fast machine
+    /// never notices this number and only a genuine hang waits it out. A tight
+    /// deadline is a bet on machine speed, and losing that bet looks exactly like
+    /// a flaky test.
+    ///
+    /// It was 30 s, and three fixtures blew through it at ~65 s each when the
+    /// machine was loaded with leftover applications. Nothing was wrong with the
+    /// code; the deadline was measuring the machine.
+    /// </remarks>
+    private static readonly TimeSpan GiveUpAfter = TimeSpan.FromSeconds(120);
 
     /// <summary>
     /// Blocks until a locator matches at least one element.
@@ -111,17 +123,16 @@ internal static class UiSettle
     {
         ArgumentNullException.ThrowIfNull(condition);
 
-        Stopwatch clock = Stopwatch.StartNew();
-
-        while (clock.Elapsed < timeout)
+        // SpinWait rather than a hot loop. A bare `while (!condition())` burns a
+        // core while the application it is waiting for competes for the same CPU
+        // - the waiter actively slows down the thing it is waiting for, which is
+        // worst exactly when the machine is already loaded. SpinWait spins only
+        // briefly and then escalates to yielding, so a fast machine still returns
+        // immediately and a slow one is left alone to finish.
+        if (!SpinWait.SpinUntil(condition, timeout))
         {
-            if (condition())
-            {
-                return;
-            }
+            Assert.Fail($"Timed out after {timeout.TotalSeconds:F0}s waiting for {what}.");
         }
-
-        Assert.Fail($"Timed out after {timeout.TotalSeconds:F0}s waiting for {what}.");
     }
 
     /// <summary>
