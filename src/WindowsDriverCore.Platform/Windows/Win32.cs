@@ -91,6 +91,25 @@ internal static partial class Win32
     internal static partial bool SetWindowPos(
         nint hWnd, nint insertAfter, int x, int y, int width, int height, uint flags);
 
+    /// <summary>Maps a character to a virtual-key code in the current layout.</summary>
+    /// <param name="character">The character, as a UTF-16 code unit.</param>
+    /// <returns>
+    /// Low byte is the virtual-key code, high byte the shift state; -1 when the
+    /// character has no key in the current layout.
+    /// </returns>
+    /// <remarks>
+    /// Needed because <c>KEYEVENTF_UNICODE</c> bypasses the keyboard layout, so
+    /// modifier state does not combine with it — an "a" injected as unicode
+    /// while control is held arrives as the letter, not as Ctrl+A.
+    ///
+    /// Takes a <c>ushort</c> rather than a <c>char</c> because the source
+    /// generator will not marshal <c>char</c> without disabling runtime
+    /// marshalling for the whole assembly. A UTF-16 code unit is exactly what
+    /// the API wants, so the cast at the call site costs nothing.
+    /// </remarks>
+    [LibraryImport("user32.dll", EntryPoint = "VkKeyScanW")]
+    internal static partial short VkKeyScan(ushort character);
+
     /// <summary>Reads the cursor's current screen position.</summary>
     /// <remarks>
     /// Needed because the protocol's <c>/moveto</c> with offsets and no element
