@@ -474,6 +474,59 @@ Incidental, and worth keeping: on the Windows 11 host the original CoreWindow is
 guest it is **destroyed**. That is why the whole defect only ever appeared in the
 guest, and why three attach-time fixes looked fine on the host.
 
+## Typing: one bug fixed, one still open — WM_NULL does not drain input
+
+**FIXED, and confirmed.** `Ctrl+A` was typing a literal `a`.
+`KEYEVENTF_UNICODE` injects a character directly and bypasses the keyboard
+layout, so modifier state does not combine with it. The suite clears its edit box
+with `Ctrl+A` then `Delete`, so every clear *appended* an `a` — measured, the
+residue grew by exactly one per test, `<a>` through `<aaaaaaaaaaaa>`. Under a
+held modifier the character now goes through `VkKeyScan` as a virtual key, and
+the accumulation is gone.
+
+**STILL OPEN: the client can read a control before the keystrokes land.**
+
+Measured by reading our `/text` and the control's own `WM_GETTEXT` back to back,
+in that order:
+
+```
+round 1  ours=6   truth=8
+round 2  ours=28  truth=30
+round 3  ours=47  truth=54
+```
+
+`truth` is read *second* and always sees more. Characters are still arriving
+between two adjacent reads, long after `POST /keys` has answered.
+
+**`WM_NULL` cannot fix this, which is the part worth remembering.** A synchronous
+`SendMessage` is delivered ahead of queued input — Windows processes sent
+messages before posted messages and input — so it jumps the queue, returns
+immediately, and proves only that the thread is responsive. Two attempts were
+built on it:
+
+| attempt | result |
+|---|---|
+| wait on the session window | no change; `Actual:<ab>` |
+| wait on the focused window (`GetGUIThreadInfo`) | no change; `Actual:<ab>` |
+
+The second was aimed at a real problem that does not apply here anyway: this
+fixture drives **Notepad**, a classic Win32 application whose window and thread
+are its own. The `ApplicationFrameWindow`/`ApplicationFrameHost` split it
+addressed is a *packaged* app concern.
+
+**What is NOT the problem**, all measured: typing itself (52 of 52 characters
+arrive), our `/text` route (agrees with `WM_GETTEXT` exactly when nothing is in
+flight), and input loss (nothing is lost — it is late).
+
+**Where to look next.** WinAppDriver passes these tests, so it either types
+slowly enough that the application keeps up, or it waits on something that
+actually reflects the input queue. Candidates, none tried: sending per-character
+batches so each `SendInput` yields; `AttachThreadInput` and then reading the
+input-queue state; or waiting until the control's own value stops changing, which
+is a poll on the condition rather than a sleep. Measure WinAppDriver's `/keys`
+response time first — if it is far slower than our 14 ms, that alone is the
+answer.
+
 ## Cold start: the session's window handle must be re-resolvable, not fixed
 
 **Root cause found 2026-08-10, after three wrong fixes.** Probed through this
