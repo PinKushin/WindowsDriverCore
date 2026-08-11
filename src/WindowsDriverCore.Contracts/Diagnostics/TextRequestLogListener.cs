@@ -140,6 +140,10 @@ public sealed class TextRequestLogListener : EventListener
                 $"  terminate pid {payload[0]} -> " +
                 $"{(payload[1] is true ? "ended" : "STILL RUNNING")} {Cost(payload[2])} ms"),
 
+            (DriverEventSource.ElementResolvedEventId, 2) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"    resolve -> {payload[0]} {Cost(payload[1])} ms"),
+
             _ => null,
         };
 

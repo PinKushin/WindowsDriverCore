@@ -1701,7 +1701,8 @@ the margin, the work they caused indented under them. A real capture:
 ...01.984Z POST /session -> 200 jwp 0 749.7 ms
 ...02.068Z   find AutomationId='num5Button' -> 1 match(es) 54.9 ms
 ...02.070Z POST /session/{id}/element -> 200 jwp 0 78.6 ms
-...02.124Z   Click -> Performed via Invoke 45.9 ms
+...02.995Z     resolve -> Resolved 32.7 ms
+...03.006Z   Click -> Performed via Invoke 43.7 ms
 ...02.126Z POST /session/{id}/element/42.462484.4.102/click -> 200 jwp 0 51.8 ms
 ...02.173Z   find AutomationId='NormalOutput' -> 0 match(es) 40.6 ms
 ...02.182Z POST /session/{id}/element -> 404 jwp 7 49.8 ms
@@ -1768,10 +1769,34 @@ milliseconds. Each one records the exception type and **rethrows** — an action
 that threw is the line most worth having, and swallowing it would change the
 driver's behaviour to tidy a log.
 
-Every seam that answers a request is now covered: requests, launch, find, element
-actions, and termination. Still open: no event from the resolver or the
-page-source reader, so a slow `/source` is still just a slow request, and the
-split between resolving an element and acting on it sits inside one action line.
+Every seam that answers a request is covered: requests, launch, find, resolve,
+element actions, and termination. Still open: no event from the page-source
+reader — and that one is close to redundant, since a `GET /source` request is
+almost entirely the read.
+
+### What it found on its first full run
+
+**OBSERVED once, 2026-08-11, not yet explained:**
+
+```
+  find AutomationId='num5Button' -> 1 match(es) 54.6 ms
+    resolve -> Resolved 32.7 ms
+  Click -> Performed via Invoke 43.7 ms
+```
+
+The resolve is **75% of the click**, and it is a resolve of an element found
+50 ms earlier through `CachingElementResolver` — the layer whose reason for
+existing is that a walk costs 19.4 ms and a held handle costs 0.45 ms. 32.7 ms is
+neither.
+
+Candidates, none tested: the find and the resolve do not share a cache key, so
+the click always misses; the cache is populated on resolve rather than on find,
+so the first resolve after any find is always a walk; or the 0.45 ms figure was
+measured under conditions this path does not meet.
+
+**This is exactly what the transcript was built for** — the number was always
+there and nothing showed it. Do not fix it from this paragraph: it is one
+observation, and one observation is not a measurement.
 
 ## Not implemented
 
