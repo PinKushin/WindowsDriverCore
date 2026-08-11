@@ -124,7 +124,7 @@ Get-Process Time, Calculator, notepad, WinAppDriver, WindowsDriverCore -ErrorAct
     Stop-Process -Force
 Start-Sleep -Seconds 4
 
-# THE RESET IS AN INSTRUMENT, NOT JUST A CRUTCH.
+# THE RESET IS A CRUTCH WHOSE NECESSITY IS NOT ESTABLISHED.
 #
 # The suite is supposed to clean up after itself:
 # AlarmClockBase.DeletePreviouslyCreatedAlarmEntry finds each alarm it made,
@@ -138,9 +138,16 @@ Start-Sleep -Seconds 4
 # would never see it. Suspected, not measured - the request transcript now
 # records every find, so a run says which step actually failed.
 #
-# So the leftover count is REPORTED before the store is cleared. Zero means the
-# suite cleaned up and the reset was a no-op. Non-zero is the defect, visible in
-# every run's log instead of being quietly absorbed by the reset.
+# The suspected gap was FindElementByName("Delete") on a context menu, which opens
+# in its own top-level window while our find is rooted at the session's window.
+# That suspicion is now UNSUPPORTED: the owner checked the app after a run and the
+# alarms were gone, so the whole chain - XPath find, right-click through /moveto
+# and /click button 2, and the find on the context menu - works against this
+# driver.
+#
+# Which leaves the reset without a demonstrated purpose beyond making runs
+# independent of each other. That is a real purpose, but it is not the one it was
+# introduced for.
 #
 # The reset itself stays, because a CI runner genuinely starts clean and runs
 # have to be independent of each other. What it must never do is hide that we
@@ -151,14 +158,25 @@ if ('$SkipStoreReset' -eq 'True') {
     `$pkg = "`$env:LOCALAPPDATA\Packages\Microsoft.WindowsAlarms_8wekyb3d8bbwe"
     `$settings = Join-Path `$pkg 'Settings'
     
-    # Reported BEFORE the reset, or the evidence is destroyed by the thing being
-    # measured. settings.dat is the alarm store; its size tracks how much the suite
-    # left behind.
+    # settings.dat is a REGISTRY HIVE, and its size is NOT an alarm count.
+    #
+    # Hives allocate in blocks and never shrink, and this one holds every setting
+    # the app has, so a growth from 8,192 to 16,384 bytes means a block was
+    # allocated at some point - nothing more. Written on 2026-08-11 as "its size
+    # tracks how much the suite left behind" and quoted twice as evidence that our
+    # cleanup was failing, until the owner looked in the app and reported the
+    # alarms were gone. Measuring file size as a proxy for alarm count is the
+    # wrong-instrument failure this project's own testing rules describe.
+    #
+    # A real count needs the app running, and launching it is exactly the warm
+    # step that was removed. So there is no honest COLD measurement of leftovers
+    # available, and the size is reported as what it is: a weak signal that the
+    # store exists and roughly how big it has grown.
     `$store = Join-Path `$settings 'settings.dat'
     if (Test-Path `$store) {
-        'alarm store left by the previous run : {0:N0} bytes  (a run that cleaned up leaves the baseline size)' -f (Get-Item `$store).Length
+        'settings.dat : {0:N0} bytes  (hive size, NOT an alarm count - see the comment above)' -f (Get-Item `$store).Length
     } else {
-        'alarm store left by the previous run : none'
+        'settings.dat : absent - the app has not run since the last reset'
     }
     if (Test-Path `$settings) {
         try {
