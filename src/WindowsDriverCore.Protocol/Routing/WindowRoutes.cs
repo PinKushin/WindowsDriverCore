@@ -184,9 +184,19 @@ public static class WindowRoutes
             // Closes the WINDOW and leaves the session alive — the suite closes
             // a window and then keeps using its session id, so this must not be
             // confused with DELETE /session.
-            return windows.Close(session.WindowHandle)
-                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                : WindowClosed();
+            if (!windows.Close(session.WindowHandle))
+            {
+                return WindowClosed();
+            }
+
+            // WM_CLOSE is POSTED, so the window is still alive when Close
+            // returns. The suite closes a window and immediately uses an element
+            // from it, expecting "Currently selected window has been closed" —
+            // answering before the window has gone makes that a race the client
+            // loses, and it answers an element error instead.
+            windows.WaitUntilGone(session.WindowHandle);
+
+            return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
         }).RequiresSession();
 
         app.MapPost("/session/{sessionId}/window", async (HttpContext context, IWindowLocator windows) =>

@@ -64,6 +64,22 @@ public interface IWindowLocator
     /// </remarks>
     bool Close(nint handle);
 
+    /// <summary>Waits for a window to actually disappear.</summary>
+    /// <param name="handle">The window that was asked to close.</param>
+    /// <returns>True when it is gone; false if it is still there.</returns>
+    /// <remarks>
+    /// <b>Closing is asynchronous and the protocol is not.</b> <c>WM_CLOSE</c> is
+    /// POSTED, so <c>Close</c> returns as soon as the message is queued and the
+    /// window is very much still alive. The compatibility suite closes a window
+    /// and immediately uses an element from it, expecting "Currently selected
+    /// window has been closed" — and gets an element error instead, because the
+    /// window has not gone yet.
+    ///
+    /// Bounded, because an application showing "save changes?" may never close,
+    /// and the request was still delivered.
+    /// </remarks>
+    bool WaitUntilGone(nint handle);
+
     /// <summary>Brings a window to the foreground.</summary>
     /// <param name="handle">The window.</param>
     /// <returns>True if the window is now in the foreground.</returns>
