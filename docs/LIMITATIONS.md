@@ -1449,11 +1449,36 @@ This matches WinAppDriver's own ceiling — its 281/290 on this guest includes
 failures for an absent browser, so the comparison remains fair; both drivers lose
 the same tests for the same environmental reason.
 
-**Consequence for the target — the ceiling is 281, and here is the failure list
-rather than a description of it.**
+**Consequence for the target — the ceiling was 281 and is now 231.**
+
+> **RE-MEASURED 2026-08-11 after the Alarms & Clock update** (see the drift section
+> below). WinAppDriver 1.2.1, same guest, same suite, store reset and app warmed:
+> **231/290, 59 failed** — `run-4725072-WinAppDriver-140334.trx`. Fifty tests worse
+> than the 281 below, and the diff against the old failure set is **50 newly
+> failing, 0 recovered**: a strict regression, not a reshuffle.
+>
+> **So the live ceiling is 231, and our 169 was measured against the same
+> application.** The gap is **62 tests**, not the 112 computed against the stale
+> baseline. That is the number to work against.
+>
+> The 50 are dominated by tests whose subject is Alarms & Clock — the eleven
+> `*Error_StaleElement`, `ClickElement`, `GetElementText`, `GetElementAttribute`,
+> `GetElementDisplayedState`, `GetElementScreenshot`, the `FindNestedElement*`
+> family, `FindElement_ByClassName`, `FindElement_ByXPath` — plus twelve `Touch_*`
+> and `Pen_*` Actions tests and a few others (`Launch_ModernApp`,
+> `NavigateBack_SystemApp`, `MiscellaneousSession_MultiSessionsSingleInstance`).
+>
+> **Attribution, stated honestly:** what is measured is that *the guest changed*
+> between 08-10 13:53 and now. The change that can be named is the app version, and
+> the failure set is consistent with it. Other guest changes in that window were not
+> ruled out, so "the app update cost 50 tests" is the leading reading rather than an
+> isolated manipulation.
+
+The 281 figure below is kept because it is what the pre-update guest measured, and
+because the reasoning around it was corrected at the same time.
 
 Read straight out of `run-winappdriver121-matched-134208.trx`, WinAppDriver 1.2.1
-on this guest, 290 run / 281 passed / 9 failed:
+on this guest **before the update**, 290 run / 281 passed / 9 failed:
 
 ```
 NavigateBack_Browser                  browser navigation, no Edge
@@ -1467,9 +1492,10 @@ SwitchWindows                         needs a UWP app that will not install
 GetLocation                           geolocation; a VM has no provider
 ```
 
-That is **exactly** the eight in the table above, plus `GetLocation`. Every one is
-environmental, so the ceiling on this guest is **281** and WinAppDriver reaches it
-precisely — it leaves no capability on the table.
+That is **exactly** the eight in the table above, plus `GetLocation`. Every one was
+environmental, so the ceiling on the *pre-update* guest was **281** and WinAppDriver
+reached it precisely — it left no capability on the table. All nine still fail
+today; they are the first nine of the current 59.
 
 **Two corrections, both to text written on 2026-08-11.**
 
@@ -1625,12 +1651,19 @@ document.
 `*Error_StaleElement` tests plus everything routed through `AddAlarmEntry` are now
 unreachable **by any driver on this guest**, WinAppDriver included.
 
-### What that costs the ground truth
+### What that costs the ground truth — MEASURED
 
 The 281 baseline was measured against a **different application** than every score
 taken after 2026-08-10 16:38 — which is all of them from `05768de` onward,
-including 169. Comparing across that boundary is invalid in both directions, and
-"the gap is 112 tests, all capability" was computed across it.
+including 169. So the reference driver was re-measured on the current guest:
+
+| | app | WinAppDriver | ours | gap |
+|---|---|---|---|---|
+| before the update | earlier Alarms | **281**/290 | — | — |
+| after the update | `11.2606.11.0` | **231**/290 | **169** | **62** |
+
+**50 newly failing, 0 recovered.** The old "112 tests, all capability" was computed
+across the boundary and is wrong by 50; the real backlog is **62**.
 
 Three consequences:
 

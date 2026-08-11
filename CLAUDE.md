@@ -88,13 +88,18 @@ The goal above is the claim. Two footnotes keep it honest:
   application suite. Prefer it to anything about issue numbers.
 
 **Measured so far:** this driver scores **169/290** and WinAppDriver 1.2.1
-scores **281/290**, matched — same Windows 10 22H2 guest, same suite DLL, alarm
-store reset for both (2026-08-10). A suite score is only comparable if the alarm
-store was reset and Alarms & Clock warmed first; see `docs/LIMITATIONS.md`.
-WinAppDriver scores **281/290 on its own compatibility suite on Windows 10 22H2** and 112/290 on Windows 11 — the difference is app
-drift, not capability, and the 112 figure must never be quoted as a capability
-claim. A find takes roughly 33 ms here against roughly 1070 ms through
-WinAppDriver, under unmatched conditions.
+scores **231/290** — same Windows 10 22H2 guest, same suite DLL, alarm store reset
+and app warmed for both, both against Alarms & Clock `11.2606.11.0` (2026-08-11).
+**The gap is 62 tests.**
+
+WinAppDriver scored **281** on this guest before Alarms & Clock updated on
+2026-08-10, and 112/290 on Windows 11. Neither is the live ceiling: **231 is**,
+and it is the only WinAppDriver figure comparable to our 169. A suite score is
+only comparable if the alarm store was reset, the app warmed, and **the app
+version recorded** — see `docs/LIMITATIONS.md`.
+
+A find takes roughly 33 ms here against roughly 1070 ms through WinAppDriver,
+under unmatched conditions.
 
 ## As close to the metal as possible — meaning fast
 
@@ -205,19 +210,22 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 
 ## Ground truth worth memorising
 
-- **169/290 for this driver, 281/290 for WinAppDriver 1.2.1**, matched on
-  Windows 10 22H2 with the alarm store reset. Reset the store and warm Alarms &
+- **169/290 for this driver, 231/290 for WinAppDriver 1.2.1** — matched on
+  Windows 10 22H2, alarm store reset, app warmed, both against Alarms & Clock
+  `11.2606.11.0`. **The backlog is 62 tests.** Reset the store and warm Alarms &
   Clock before any suite run — `tools/vm/Invoke-CompatibilitySuite.ps1` does
   both — or the score measures the previous run's residue, not the driver.
-- WinAppDriver scores **281/290 on Windows 10 22H2** and 112/290 on Windows 11.
-  **Quote the operating system every time or do not quote the number.** All 9 of
+- WinAppDriver scored **281/290 on Windows 10 22H2 before the app update** and
+  112/290 on Windows 11. **Quote the operating system AND the Alarms & Clock
+  version every time, or do not quote the number.** All 9 of
   its Windows 10 failures are ENVIRONMENTAL, read out of its TRX rather than
   described: 2 browser navigation, 3 `EdgeBase` fixtures that die in
   `ClassInitialize`, 3 that need a UWP app which will not install
   (`CreateSessionWithArguments_ModernApp`, `GetWindowHandles_ModernApp`,
   `SwitchWindows`), and `GetLocation` — geolocation, which a VM has no provider
-  for. **So 281 is the environmental ceiling of this guest and WinAppDriver
-  reaches it exactly.** Two shorthands written on 2026-08-11 were wrong and are
+  for. **So 281 was the environmental ceiling of the pre-update guest and
+  WinAppDriver reached it exactly; all nine still fail, as the first nine of
+  today's 59.** Two shorthands written on 2026-08-11 were wrong and are
   corrected in `docs/LIMITATIONS.md`: "eight need legacy EdgeHTML" (only five are
   browser-related) and "WinAppDriver passes the three package-blocked tests" (it
   fails all three — they are *inside* the eight, and the old 279 double-counted
@@ -231,9 +239,11 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
   `CancelButton` are gone. **Measured 2026-08-11 through WinAppDriver itself** —
   it cannot find `AlarmSaveButton` either, on repeated one-shot finds over 8 s
   with the store reset and the app warmed. So the 281 baseline was taken against a
-  DIFFERENT application than every score after it, and any comparison across that
-  boundary is invalid. Re-measure the reference driver rather than assuming its
-  old number still holds.
+  DIFFERENT application than every score after it. **Re-measured 2026-08-11:
+  WinAppDriver now scores 231/290 on this guest — 50 newly failing, 0 recovered.**
+  The live ceiling is 231 and the backlog against our 169 is 62, not 112.
+  Re-measure the reference driver rather than assuming its old number still holds;
+  a baseline is a measurement of a machine at a time, not a constant.
 - A find takes roughly **33 ms** here against roughly **1070 ms** through
   WinAppDriver — unmatched conditions, but a 30x gap.
 - Compatibility floor is **Windows 10 1607 / Server 2016**, the same as
