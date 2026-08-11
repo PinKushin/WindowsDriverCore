@@ -48,7 +48,6 @@ public sealed record WindowPosition(
 /// </remarks>
 public static class WindowRoutes
 {
-    private const string WindowClosedMessage = "Currently selected window has been closed";
 
     /// <summary>Measured from the real server, not invented.</summary>
     private const string SwitchFailedMessage =
@@ -275,6 +274,6 @@ public static class WindowRoutes
 
     private static IResult WindowClosed() =>
         Results.Json(
-            JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, WindowClosedMessage),
+            JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, ElementFault.WindowClosedMessage),
             statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
 }

@@ -30,6 +30,7 @@ public static class JsonWireRoutes
         app.MapElementRoutes();
         app.MapTimeoutRoutes();
         app.MapWindowRoutes();
+        app.MapPageSourceRoutes();
         app.MapActionRoutes();
         app.MapKeyboardRoutes();
         app.MapElementPropertyRoutes();

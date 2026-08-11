@@ -23,7 +23,15 @@ internal static class ElementFault
     private const string StaleElementMessage =
         "An element command failed because the referenced element is no longer attached to the DOM.";
 
-    private const string WindowClosedMessage = "Currently selected window has been closed";
+    /// <summary>What a command against a closed window is told.</summary>
+    /// <remarks>
+    /// Public and declared once, because it was declared four times — in
+    /// <see cref="ElementRoutes"/>, <see cref="KeyboardRoutes"/>,
+    /// <see cref="WindowRoutes"/> and here. The compatibility suite compares it
+    /// character for character, so four copies is four chances to answer the same
+    /// condition with three slightly different messages.
+    /// </remarks>
+    public const string WindowClosedMessage = "Currently selected window has been closed";
 
     /// <summary>The fault for an outcome that is not a successful read.</summary>
     /// <param name="outcome">What the inspector reported.</param>
