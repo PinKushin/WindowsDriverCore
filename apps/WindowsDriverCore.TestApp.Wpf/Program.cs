@@ -82,10 +82,15 @@ internal static class Program
         // was disabled, the ladder climbed one level, toggled the command bar,
         // and answered status 0. The app bar opened and closed while the driver
         // reported that "Add new alarm" had been clicked.
+        //
+        // The host is INERT to the mouse on purpose. It was a CheckBox, and that
+        // could not discriminate: a disabled child does not consume mouse input,
+        // so the coordinate click routed to the check box and toggled it — the
+        // same observation a wrong climb produces. See InertToggleHost.
         Button disabledInside = new() { Content = "disabled", IsEnabled = false };
         Identified(disabledInside, "disabledInsideToggle");
         panel.Children.Add(Identified(
-            new CheckBox { Content = disabledInside }, "toggleHostingDisabled"));
+            new InertToggleHost { Content = disabledInside }, "toggleHostingDisabled"));
 
         // The refusal: pattern-less, and no ancestor within three levels carries
         // a pattern either. Border and StackPanel expose no patterns, so the

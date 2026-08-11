@@ -81,6 +81,67 @@ internal sealed class DualPatternCheckBox : CheckBox
 }
 
 /// <summary>
+/// A container that carries Toggle but does <b>not</b> respond to the mouse.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>The one subject that can tell a climb from a click.</b> The obvious host —
+/// a real <see cref="CheckBox"/> wrapping a disabled child — cannot: a disabled
+/// element does not consume mouse input, so the click routes to the check box and
+/// toggles it. Firing Toggle on the ancestor and clicking the child's coordinates
+/// then produce the <i>same</i> observation, and the test passes whichever the
+/// driver did. Measured 2026-08-11, on exactly that subject.
+/// </para>
+/// <para>
+/// This one has no mouse handling at all. A coordinate click inside it does
+/// nothing; <see cref="IToggleProvider.Toggle"/> moves <see cref="ToggleState"/>.
+/// The two hypotheses now predict different observations, which is the only
+/// property that makes the assertion worth making.
+/// </para>
+/// <para>
+/// Custom rather than a real control type, because that is what it is: a
+/// container advertising a pattern it does not implement in its own input
+/// handling — the shape AlarmCollectionPageCommandBar has.
+/// </para>
+/// </remarks>
+internal sealed class InertToggleHost : ContentControl
+{
+    private bool _on;
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new InertTogglePeer(this);
+
+    private sealed class InertTogglePeer : FrameworkElementAutomationPeer, IToggleProvider
+    {
+        private readonly InertToggleHost _owner;
+
+        public InertTogglePeer(InertToggleHost owner)
+            : base(owner) => _owner = owner;
+
+        public ToggleState ToggleState => _owner._on ? ToggleState.On : ToggleState.Off;
+
+        public override object? GetPattern(PatternInterface patternInterface) =>
+            patternInterface == PatternInterface.Toggle
+                ? this
+                : base.GetPattern(patternInterface);
+
+        public void Toggle()
+        {
+            PatternLog.Record("Toggle:inertHost");
+            _owner._on = !_owner._on;
+        }
+
+        protected override AutomationControlType GetAutomationControlTypeCore() =>
+            AutomationControlType.Custom;
+
+        // Explicit, because the driver climbs the CONTROL view. A host the walker
+        // skips would make the climb unreachable and the test vacuous.
+        protected override bool IsControlElementCore() => true;
+
+        protected override string GetClassNameCore() => nameof(InertToggleHost);
+    }
+}
+
+/// <summary>
 /// A radio button that advertises <b>both</b> SelectionItem and Invoke.
 /// </summary>
 /// <remarks>

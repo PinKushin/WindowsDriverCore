@@ -189,28 +189,6 @@ public sealed class UiaElementInteractor : IElementInteractor
 
     private ElementAction ClickElementOrAncestor(nint window, IUIAutomationElement element)
     {
-        // A disabled element cannot be clicked, and — this is the part that bit —
-        // it is not an invitation to click something near it.
-        //
-        // Measured against Alarms & Clock on Windows 10, 2026-08-10. Its
-        // "Add new alarm" button goes disabled once the alarm list hits the
-        // application's cap. InvokePattern.Invoke() threw, so the ladder fell
-        // through to the ancestor walk, reached AlarmCollectionPageCommandBar —
-        // which advertises Toggle and ExpandCollapse — and toggled the app bar.
-        // The driver then answered status 0. The client is told "Add new alarm
-        // was clicked" while the application opened and closed its overflow menu.
-        //
-        // Nine tests in the compatibility suite fail behind this, and none of
-        // them can tell, because a successful click and a click that toggled
-        // something else look identical from the wire.
-        //
-        // The check is FIRST, before scrolling or foregrounding, so a refusal
-        // has no side effects at all.
-        if (IsDisabled(element))
-        {
-            return ElementAction.Failed(ElementActionOutcome.NotInteractable);
-        }
-
         ScrollIntoView(element);
 
         // Foreground before any rung runs. UI Automation refuses SetFocus
@@ -218,6 +196,35 @@ public sealed class UiaElementInteractor : IElementInteractor
         // is unreachable without this, and a mouse click on a window that is
         // behind another one lands on whatever is in front.
         _windows?.BringToForeground(window);
+
+        // A disabled element gets the mouse and nothing else — and above all, no
+        // climb.
+        //
+        // Measured against Alarms & Clock on Windows 10, 2026-08-10. Its
+        // "Add new alarm" button goes disabled once the alarm list hits the
+        // application's cap. InvokePattern.Invoke() threw, so the ladder fell
+        // through to the ancestor walk, reached AlarmCollectionPageCommandBar —
+        // which advertises Toggle and ExpandCollapse — and toggled the app bar.
+        // The driver then answered status 0: the client is told "Add new alarm
+        // was clicked" while the application opened and closed its overflow menu.
+        // A successful click and a click that toggled something else look
+        // identical from the wire, so nothing downstream can catch it.
+        //
+        // **The climb is the defect. Refusing the click was our own idea, and it
+        // was wrong** — measured 2026-08-11: twelve compatibility-suite tests
+        // passed in every run before the refusal and failed in every run after
+        // it, GetElementEnabledState because it clicks a deliberately disabled
+        // button and expects that to work, and eleven StaleElement tests because
+        // they reach their subject through a disabled AddAlarmButton.
+        //
+        // A real user clicking a disabled button gets a click that lands and does
+        // nothing. That is what this dispatches, and reporting it as performed is
+        // honest: the click happened. What must not happen is inventing a
+        // different target for it.
+        if (IsDisabled(element))
+        {
+            return ClickWithTheMouse(element);
+        }
 
         ElementAction direct = ClickOne(element);
         if (direct.Outcome == ElementActionOutcome.Performed)

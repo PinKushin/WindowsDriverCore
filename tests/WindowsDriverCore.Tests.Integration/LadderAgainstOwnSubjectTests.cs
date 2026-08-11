@@ -61,7 +61,13 @@ public sealed class LadderAgainstOwnSubjectTests
         UiaElementResolver resolver = new(automation);
         _finder = new UiaElementFinder(automation, resolver);
         _inspector = new UiaElementInspector(automation, resolver);
-        _interactor = new UiaElementInteractor(automation, resolver);
+        // With a real pointer and locator, so the mouse rung is reachable. It was
+        // not before, and that made every "the ladder refused" assertion here
+        // ambiguous: a refusal and a mouse rung that could not run are the same
+        // observation when _pointer is null. The clicks it dispatches land on
+        // this fixture's own window, which it foregrounds first.
+        _interactor = new UiaElementInteractor(
+            automation, resolver, new SendInputPointer(), new WindowLocator());
 
         LaunchResult launched = new ApplicationLauncher(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator())
@@ -237,13 +243,22 @@ public sealed class LadderAgainstOwnSubjectTests
     }
 
     [Test]
-    public void APatternlessOrphan_IsRefused()
+    public void APatternlessOrphan_FallsThroughToTheGuardedMouse()
     {
-        // Nothing within three levels carries a pattern. Reporting success here
-        // is the exact failure the ladder exists to avoid, and it is
-        // indistinguishable from having worked unless the driver says so.
-        _interactor.Click(_window, Id("patternlessOrphan")).Outcome
-            .ShouldBe(ElementActionOutcome.NotInteractable);
+        // Nothing within three levels carries a pattern, so the last rung is a
+        // real mouse click at the element's own coordinates — guarded, because
+        // the fixture supplies a window locator.
+        //
+        // **This asserted NotInteractable until 2026-08-11, and passed for the
+        // wrong reason.** The fixture built its interactor with no pointer, so
+        // the mouse rung could not run at all: "the ladder refused" and "the
+        // rung was unreachable" are the same observation when _pointer is null,
+        // and the test was blind to which one it was measuring. Giving the
+        // fixture a real pointer is what exposed it.
+        ElementAction click = _interactor.Click(_window, Id("patternlessOrphan"));
+
+        click.Outcome.ShouldBe(ElementActionOutcome.Performed);
+        click.Path.ShouldBe("mouse");
     }
 
     [Test]
@@ -261,14 +276,26 @@ public sealed class LadderAgainstOwnSubjectTests
     }
 
     [Test]
-    public void ADisabledElement_IsRefused_AndItsAncestorIsLeftAlone()
+    public void ADisabledElement_IsClickedWhereItIs_AndItsAncestorIsLeftAlone()
     {
         // Measured against Alarms & Clock on Windows 10, 2026-08-10.
         // AddAlarmButton was disabled; InvokePattern.Invoke() threw; the ladder
         // climbed one level to AlarmCollectionPageCommandBar — which advertises
         // Toggle and ExpandCollapse — toggled the app bar, and answered
-        // status 0. Nine compatibility-suite tests fail from this, and every one
-        // of them is told the click succeeded.
+        // status 0. The client is told "Add new alarm was clicked" while the
+        // application opened and closed its overflow menu.
+        //
+        // **The ancestor walk is the defect, not the click.** This first
+        // asserted NotInteractable, which was a prediction rather than a
+        // measurement, and the compatibility suite measured it wrong:
+        // GetElementEnabledState clicks a deliberately disabled ClearMemoryButton
+        // and expects that to succeed, and eleven StaleElement tests reach their
+        // subject through a click on a disabled AddAlarmButton. All twelve passed
+        // before the refusal landed and failed in every run after it — see
+        // docs/LIMITATIONS.md.
+        //
+        // So a disabled element gets what a real user gets: a mouse click at its
+        // own coordinates, which does nothing, and no climb.
         string disabled = Id("disabledInsideToggle");
         string host = Id("toggleHostingDisabled");
 
@@ -279,13 +306,18 @@ public sealed class LadderAgainstOwnSubjectTests
 
         ElementAction click = _interactor.Click(_window, disabled);
 
-        click.Outcome.ShouldBe(ElementActionOutcome.NotInteractable);
+        click.Outcome.ShouldBe(ElementActionOutcome.Performed);
 
-        // The control, and the part that actually caught this. "Refused" and
-        // "climbed and toggled the parent" both leave the disabled button
-        // untouched, so only the bystander distinguishes them.
+        // The bystander is asserted BEFORE the path, and that ordering is the
+        // point of this fixture: the path is the driver's own account of what it
+        // did, and a driver that climbed and mislabelled it passes that check.
+        // The host's toggle state comes from the other side of the COM boundary.
         _inspector.Attribute(_window, host, "Toggle.ToggleState").Value
             .ShouldBe(before, "the ancestor must not have been acted on instead");
+
+        click.Path.ShouldBe(
+            "mouse",
+            "a disabled element cannot answer a pattern, so the only honest rung is the mouse");
     }
 
     [Test]
