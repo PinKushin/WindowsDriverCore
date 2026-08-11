@@ -55,6 +55,13 @@ public sealed record DriverSession(
     /// read pays the drain once per typing burst rather than on every request.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// Set by every route that DISPATCHES synthesized input - keyboard, mouse,
+    /// element actions - and cleared by the first read that depends on it.
+    /// It was set by the keyboard route alone, so a read after a click never
+    /// waited; typing and clicking are the same problem, since SendInput only
+    /// queues and the application consumes on its own message loop.
+    /// </remarks>
     public bool InputPending { get; set; }
 
     /// <summary>How long a find retries before reporting nothing found.</summary>

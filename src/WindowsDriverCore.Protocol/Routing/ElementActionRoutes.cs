@@ -89,9 +89,18 @@ public static class ElementActionRoutes
             {
                 DriverSession session = context.GetSession();
 
-                return Respond(
-                    act(interactor, session.WindowHandle, elementId),
-                    session, elementId, registry, windows);
+                ElementAction performed = act(interactor, session.WindowHandle, elementId);
+
+                if (performed.Outcome == ElementActionOutcome.Performed)
+                {
+                    // Every rung of the ladder makes the application do work -
+                    // a pattern invocation, a focus change, a real mouse click -
+                    // and none of it is finished when the call returns. The next
+                    // read that depends on it waits; this one does not.
+                    session.InputPending = true;
+                }
+
+                return Respond(performed, session, elementId, registry, windows);
             })
             .RequiresSession();
     }

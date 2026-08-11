@@ -15,7 +15,7 @@ using WindowsDriverCore.Platform.Windows;
 namespace WindowsDriverCore.Tests.Protocol;
 
 /// <summary>
-/// Typed input is waited for by the READ that depends on it, not by typing.
+/// Dispatched input is waited for by the READ that depends on it, not by the dispatch.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,7 +33,7 @@ namespace WindowsDriverCore.Tests.Protocol;
 /// </para>
 /// </remarks>
 [TestFixture]
-public sealed class TypedInputDrainsBeforeAReadTests : IDisposable
+public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
 {
     private const nint TheWindow = 0x1234;
 
@@ -56,6 +56,13 @@ public sealed class TypedInputDrainsBeforeAReadTests : IDisposable
         IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
         keyboard.Type(Arg.Any<string>()).Returns(true);
 
+        // A click that actually happened. Without this the substitute returns a
+        // default outcome, the route correctly declines to flag input that was
+        // never dispatched, and the test would be measuring the stub.
+        IElementInteractor interactor = Substitute.For<IElementInteractor>();
+        interactor.Click(Arg.Any<nint>(), Arg.Any<string>())
+            .Returns(ElementAction.Performed("test"));
+
         IElementInspector inspector = Substitute.For<IElementInspector>();
         inspector.Text(Arg.Any<nint>(), Arg.Any<string>()).Returns(ElementRead.Success("whatever"));
 
@@ -66,6 +73,7 @@ public sealed class TypedInputDrainsBeforeAReadTests : IDisposable
                 services.AddSingleton(_windows);
                 services.AddSingleton(keyboard);
                 services.AddSingleton(inspector);
+                services.AddSingleton(interactor);
             }));
 
         _client = _factory.CreateClient();
@@ -147,6 +155,61 @@ public sealed class TypedInputDrainsBeforeAReadTests : IDisposable
 
         await ReadText(sessionId);
         await ReadText(sessionId);
+
+        _windows.DidNotReceive().WaitForInputProcessed(Arg.Any<nint>());
+    }
+    private async Task MouseClick(string sessionId) =>
+        await _client.PostAsync(
+            new Uri($"/session/{sessionId}/click", UriKind.Relative),
+            new StringContent("{\"button\":0}", Encoding.UTF8, "application/json"));
+
+    private async Task ClickElement(string sessionId) =>
+        await _client.PostAsync(
+            new Uri($"/session/{sessionId}/element/1.2/click", UriKind.Relative),
+            new StringContent("{}", Encoding.UTF8, "application/json"));
+
+    [Test]
+    public async Task ReadingAfterAMouseClick_WaitsForItToLand()
+    {
+        // **The generalisation this fixture was missing.** InputPending was set
+        // by the keyboard route ALONE, so a read after a click never waited. The
+        // compatibility suite's MouseClick clicks num8Button and immediately
+        // asserts the display reads "8"; it has never passed, under any window
+        // root or desktop state, while its siblings now do.
+        //
+        // Typing and clicking are the same problem: SendInput queues, the
+        // application consumes on its own message loop, and a read that outruns
+        // that answers about a state the client never asked about.
+        string sessionId = await NewSession();
+
+        await MouseClick(sessionId);
+        await ReadText(sessionId);
+
+        _windows.Received(1).WaitForInputProcessed(TheWindow);
+    }
+
+    [Test]
+    public async Task ReadingAfterAnElementClick_WaitsForItToLand()
+    {
+        // The element route dispatches through the same ladder and can end in a
+        // real mouse click, so it owes the same wait.
+        string sessionId = await NewSession();
+
+        await ClickElement(sessionId);
+        await ReadText(sessionId);
+
+        _windows.Received(1).WaitForInputProcessed(TheWindow);
+    }
+
+    [Test]
+    public async Task AMouseClick_DoesNotWaitAtDispatchTime()
+    {
+        // The same trade as typing: paid once by the read that depends on it,
+        // not by every dispatch. A suite that clicks three times and reads once
+        // pays 46-195 ms once rather than three times.
+        string sessionId = await NewSession();
+
+        await MouseClick(sessionId);
 
         _windows.DidNotReceive().WaitForInputProcessed(Arg.Any<nint>());
     }
