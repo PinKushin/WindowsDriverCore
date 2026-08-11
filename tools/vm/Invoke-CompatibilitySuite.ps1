@@ -203,6 +203,14 @@ if (-not '$Commit'.StartsWith(`$head) -and -not `$head.StartsWith('$Commit')) {
 if ('$Driver' -eq 'WindowsDriverCore') {
     & C:\dotnet\dotnet.exe publish src\WindowsDriverCore.Host -c Release -o C:\baseline\host --nologo -v q 2>&1 |
         Select-String -Pattern 'WindowsDriverCore.Host ->|error' | ForEach-Object { `$_.Line }
+    # THE TRANSCRIPT IS THE POINT OF RUNNING OURS.
+    #
+    # A count says 290 ran and N failed. This says WHICH request failed, with
+    # which locator, at which step of which command, and what each one cost -
+    # for all 290. Chasing the last set of failures took a bespoke probe per
+    # question because the server said nothing about what it had answered.
+    `$env:WINDOWSDRIVERCORE_LOG = 'C:\baseline\transcript-' + `$head + '-' + (Get-Date -Format HHmmss) + '.log'
+    'transcript: ' + `$env:WINDOWSDRIVERCORE_LOG
     `$srv = Start-Process -FilePath 'C:\baseline\host\WindowsDriverCore.exe' -PassThru
 } else {
     `$srv = Start-Process -FilePath 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe' -PassThru
