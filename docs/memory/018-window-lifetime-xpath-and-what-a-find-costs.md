@@ -3,10 +3,11 @@
 **Date:** 2026-08-10
 **Status:** measured; one item still under measurement at time of writing
 
-## 1. A session's window is not permanent
+## 1. A session's window is not permanent, and a frame is ready in THREE stages
 
-At the moment the launcher returns, a packaged application has **no
-`ApplicationFrameWindow`**. Measured across three cold starts:
+At the moment the launcher returns, a packaged application has **no usable
+`ApplicationFrameWindow`**. The `CoreWindow` is top-level, is its own root
+(`GA_ROOT` of it is itself), and finds from it work:
 
 ```
 waiter handed : 0x00210CE6  class=Windows.UI.Core.CoreWindow
@@ -14,26 +15,57 @@ GA_ROOT of it : 0x00210CE6  class=Windows.UI.Core.CoreWindow   <- itself
 finds from it : num5Button=1  buttons=47                       <- all fine
 ```
 
-The `CoreWindow` is top-level, is its own root, and finds from it work. Later,
-when the application is rehosted into its frame, that CoreWindow is **destroyed**
-— not reparented — and every command answers "Currently selected window has been
-closed". A warm application already has its frame, which is why this only ever
-appeared on a cold start.
+**What happens to that CoreWindow differs by OS, and that is why the bug hid.**
+Windows 11 **reparents** it into the frame and it stays alive (same handle,
+`IsWindow` true — measured). Windows 10 **destroys** it. So a session anchored
+there survives on the host and loses its window in the guest, where every
+subsequent command answers "Currently selected window has been closed".
 
-**Three fixes at attach time all failed identically.** Preferring
-`FindFrameWindowHosting`, rejecting a CoreWindow and waiting for its frame, and
-resolving with `GetAncestor(GA_ROOT)` each asked for a window that does not exist
-yet, returned 0, ran the poll loop to its deadline, and handed back window 0.
-That presents as "element finds come back empty", and one test took 30 seconds —
-a timeout, not a slow find.
+### A frame becomes usable in three stages, and they are not simultaneous
 
-**The fix belongs at use time.** `RequiresSession` re-resolves when `IsWindow`
-says the handle is dead. Two properties matter as much as the fix:
+```
+1. the window exists            EnumWindows finds it              ~250 ms after the CoreWindow
+2. our CoreWindow is its child  FindFrameWindowHosting matches
+3. UIA will resolve it          ElementFromHandle returns something usable   <- LATER STILL
+```
+
+**Stage 3 is the one that matters and the one nothing has ever waited for.**
+Attempt five waited for stage 2 and still failed, with the resolver reporting
+`NoSuchWindow` — `ElementFromHandle` refusing a frame that Win32 was perfectly
+happy with, and that answered 50 buttons when probed at 15 s.
+
+Stage 3 also **cannot be checked where the waiting happens**: `MainWindowWaiter`
+is in `Platform`, which is Win32-only by design, and UIA lives in `Automation`.
+Any further attempt must first decide where a UIA-readiness check belongs.
+
+### Five attempts, five different causes
+
+Each disproved the previous diagnosis rather than confirming it:
+
+| # | believed cause | what actually happened |
+|---|---|---|
+| 1 | frame lookup ordered too late | returned 0, poll ran to deadline |
+| 2 | the CoreWindow must be refused | the loose fallback grabbed an **empty** frame |
+| 3 | `GA_ROOT` resolves to the frame | `GA_ROOT` of a CoreWindow is itself |
+| 4 | the frame is a superset, prefer the hosted CoreWindow | recovered none of the 19, lost 2 |
+| 5 | wait for frame-hosting, skip the loose stage | UIA will not resolve the frame yet |
+
+Attempt 2's real failure is worth keeping separately: **refusing the CoreWindow
+does not make the poll loop wait.** It diverts into the loose "any top-level
+window that did not exist before" stage, which returns the frame as an empty
+shell before its CoreWindow is reparented in. That stage cannot simply be
+deleted — WinUI 3 and classic Win32 applications have no frame at all and need
+it.
+
+### The fix that DID work is at use time
+
+`RequiresSession` re-resolves when `IsWindow` says the handle is dead. Two
+properties matter as much as the fix:
 
 - a **live** handle is never second-guessed, or a client that switched windows
   deliberately silently loses its choice
-- a re-resolve that finds nothing **keeps the dead handle**, so the driver reports
-  the window is gone rather than inventing one
+- a re-resolve that finds nothing **keeps the dead handle**, so the driver
+  reports the window is gone rather than inventing one
 
 ## 2. A dead window must fail fast — but only when it is really dead
 
@@ -74,9 +106,18 @@ does. The re-resolve points the session at the `ApplicationFrameWindow` where it
 began at the `CoreWindow`, and the frame is a superset (73 descendants against 65,
 measured) because it also holds the title bar and chrome.
 
-So the re-resolve should prefer the hosted CoreWindow — the same *kind* of window
-the session started with — rather than the outermost frame. To be confirmed by
-comparing find results from each on the same application before changing it.
+That reasoning was tested and **disproved**. Preferring the hosted CoreWindow
+recovered **none** of the 19 and lost two more (122 against 124), and was
+reverted. The frame really is a superset — 50 buttons against 47, the extra three
+being Minimize, Maximize and Close — so the mechanism was real; it simply was not
+what those 19 tests were dying of. **A confirmed mechanism is not a confirmed
+cause.**
+
+Re-reading the lost set afterwards, it is not about counts at all: every one of
+the 19 hands back an element id and then uses it — `GetElementAttribute`,
+`GetElementText`, all four `FindNestedElement*`, `CompareElementsError_NoSuchElement`,
+five `*Error_StaleElement`. The untested hypothesis is that re-pointing a session
+invalidates ids already issued against the old window.
 
 ## 3. XPath: use the BCL engine, own only the lifetime
 
