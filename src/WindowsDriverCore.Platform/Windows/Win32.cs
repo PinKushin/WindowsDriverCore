@@ -65,6 +65,18 @@ internal static partial class Win32
     [LibraryImport("user32.dll")]
     internal static partial nint GetAncestor(nint hWnd, uint flags);
 
+    /// <summary>The window at a screen point.</summary>
+    /// <param name="point">Screen coordinates.</param>
+    /// <returns>The deepest visible, enabled window there, or zero.</returns>
+    /// <remarks>
+    /// Answers "what is actually at this point", which is a different question
+    /// from "is this point inside that window's rectangle". A covered window
+    /// satisfies the second and fails the first, and only the first says where a
+    /// synthesized click will land.
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    internal static partial nint WindowFromPoint(Point point);
+
 
     /// <summary>Length of a window's title.</summary>
     /// <param name="hWnd">The window.</param>

@@ -24,6 +24,26 @@ public interface IWindowLocator
     /// <returns>The owning process id, or 0 when the window does not exist.</returns>
     int GetOwningProcessId(nint handle);
 
+    /// <summary>Whether a window owns what is actually drawn at a screen point.</summary>
+    /// <param name="x">Screen x.</param>
+    /// <param name="y">Screen y.</param>
+    /// <param name="handle">The window that should be there.</param>
+    /// <returns><see langword="true"/> when the point belongs to that window or a child of it.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A different question from "is the point inside the rectangle", and the
+    /// right one.</b> A window that is covered still contains the point and is not
+    /// what a click at that point reaches. Dispatching anyway is the unguarded
+    /// coordinate click this driver exists to avoid.
+    /// </para>
+    /// <para>
+    /// It matters because raising a window can fail: <c>SetForegroundWindow</c>
+    /// refuses when the calling process does not hold foreground rights, and the
+    /// result was being discarded.
+    /// </para>
+    /// </remarks>
+    bool OwnsThePointAt(int x, int y, nint handle);
+
     /// <summary>The process whose content a window shows.</summary>
     /// <param name="handle">The window handle.</param>
     /// <returns>

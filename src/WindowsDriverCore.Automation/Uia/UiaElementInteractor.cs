@@ -545,6 +545,35 @@ public sealed class UiaElementInteractor : IElementInteractor
             return ElementAction.Failed(ElementActionOutcome.NotInteractable);
         }
 
+        // And the question that actually decides where the click lands: is this
+        // window the one DRAWN at that point? Being inside the rectangle is not
+        // the same thing — a covered window satisfies it and receives nothing.
+        //
+        // Raising the window above is best-effort by necessity:
+        // SetForegroundWindow refuses when the calling process does not hold
+        // foreground rights, and its result was being discarded. Rather than
+        // trust that, this checks the outcome.
+        //
+        // MEASURED 2026-08-11: MouseDoubleClick and MouseDownMoveUp passed at
+        // c26e4d3 and failed in BOTH runs at 0cdadc6 — the commit that first let
+        // the suite open File Explorer sessions, whose windows outlive the session
+        // and sit over the target. Both failures are "the effect did not happen",
+        // which is what a click delivered to somebody else's window looks like.
+        if (!_windows.OwnsThePointAt(x, y, window))
+        {
+            // One re-attempt, because raising the window is the only action that
+            // can change this answer, and the ladder's earlier attempt was made
+            // before scrolling and before any of the pattern rungs ran. Bounded at
+            // one: a second failure means something is genuinely in front, and
+            // retrying a losing race is how flake gets built in.
+            _windows.BringToForeground(window);
+
+            if (!_windows.OwnsThePointAt(x, y, window))
+            {
+                return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+            }
+        }
+
         return _pointer.ClickAt(x, y)
             ? ElementAction.Performed("mouse")
             : ElementAction.Failed(ElementActionOutcome.NotInteractable);
