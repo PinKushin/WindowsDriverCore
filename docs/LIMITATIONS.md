@@ -1279,19 +1279,37 @@ point inside the target window's rectangle*. What matters is *is the target wind
 the one at this point*, and `WindowFromPoint` answers exactly that — a window
 that is covered fails the second test and passes the first.
 
-Newly relevant, because the WOW64 fix made the compatibility suite able to open
-**File Explorer** sessions for the first time. Those windows stay on screen after
-their session ends, so the suite now runs later tests against a desktop with
-windows over the target that were never there before. `MouseDoubleClick` and
-`MouseDownMoveUp` went from failing to passing to failing across three commits and
-both failures are "the effect did not happen" — consistent with this, and **not
-attributed to it**, because one run cannot tell that from flake. A repeat of the
-same commit is the measurement.
+**Fixed at `008f87a`** with `IWindowLocator.OwnsThePointAt`, plus one bounded
+re-attempt at raising the window before refusing.
 
-Not fixed yet, deliberately: verifying it needs a window deliberately covering
-another, and the last fixture that synthesised windows for a click test wedged the
-development desktop. It belongs on the guest, in the `SynthesisesRealInput`
-category.
+**It gained nothing, and the reasoning that motivated it was wrong.** The guard was
+built on a story: the WOW64 fix let the suite open File Explorer sessions whose
+windows outlive them, so later clicks were landing on Explorer.
+`MouseDoubleClick` and `MouseDownMoveUp` had gone failing to passing to failing
+across three commits, which looked like a regression.
+
+Across five runs they read:
+
+```
+e045b06 Failed   c26e4d3 Passed   0cdadc6 Failed   0cdadc6 Failed   008f87a Failed
+```
+
+**One pass in five.** The "baseline" was a single passing run, and the regression
+was inferred from it — the one-observation error, made while the rule against it
+was being quoted. The pair mostly fails; `c26e4d3` was the outlier.
+
+The measurement also refutes the covering-window story directly. If something were
+in front, the new guard would now *refuse* and the suite would report a driver
+error. It still reports assertion failures — `Expected any value
+except:<{X=120,Y=0}>` — so the clicks reach our window and simply do not have the
+expected effect. Whatever is wrong with the mouse family, it is not where the
+click lands.
+
+**The guard is kept on its own merits, not on a score.** A driver that can fail to
+raise a window and then dispatch synthesized input into whatever is in front is
+the founding defect of this project, and `BringToForeground`'s result was being
+discarded. That is worth fixing whether or not any test moves. Claiming otherwise
+would be reading the number backwards into the reasoning.
 
 ## Not implemented
 
