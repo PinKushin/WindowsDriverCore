@@ -1,3 +1,11 @@
+
+> **Every claim below is labelled MEASURED, HYPOTHESIS or REFUTED.** This is a
+> clean-room reimplementation, so hypotheses are the working material and being
+> wrong is normal — five refuted theories produced the three-stage frame model.
+> What is not acceptable is a guess written in the register of a result, because
+> nothing downstream can then tell them apart. Refuted theories are kept rather
+> than deleted, so nobody re-walks them. The measurements themselves are never
+> adjusted to fit: a number that disagrees with the theory kills the theory.
 # Known Limitations
 
 Living document. Every entry is something measured or deliberately chosen, not a
