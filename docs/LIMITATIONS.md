@@ -474,6 +474,28 @@ Incidental, and worth keeping: on the Windows 11 host the original CoreWindow is
 guest it is **destroyed**. That is why the whole defect only ever appeared in the
 guest, and why three attach-time fixes looked fine on the host.
 
+## Only a COLD run is a score. A warm run is an instrument.
+
+**CI never gets a warm boot and should not need one**, so a warm number measures
+the previous run's residue rather than the driver. Every figure quoted as a score
+from here is a cold run: alarm store reset, application not pre-launched.
+
+**That does not mean stop running warm.** The warm run is a deliberate
+manipulation, and the *delta* between cold and warm is a real measurement — it
+isolates precisely those failures that depend on startup state. Two of the most
+useful findings came from exactly that comparison:
+
+| finding | how the delta exposed it |
+|---|---|
+| the nine add-alarm tests | passed warm, failed cold — pointed at the alarm store |
+| the sixteen `ActionsError_*` | passed warm, failed cold — pointed at the session's window dying |
+
+So: run warm to **diagnose**, run cold to **report**. A warm figure in a
+comparison table is a bug in the table.
+
+Current cold score: **127/290** at `04dcfaf`. The 133 previously quoted was warm
+and should not be used as a ceiling.
+
 ## Typing: one bug fixed, one still open — WM_NULL does not drain input
 
 **FIXED, and confirmed.** `Ctrl+A` was typing a literal `a`.
