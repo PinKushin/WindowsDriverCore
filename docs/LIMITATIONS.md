@@ -1077,40 +1077,57 @@ multiplied across their members — which is why it recovers to 281/290 on Windo
 
 ---
 
-## /source does not match WinAppDriver's shape yet — MEASURED
+## /source: the tag names already match. The ATTRIBUTES do not — MEASURED
 
-From the same wire probe, 2026-08-11, WinAppDriver 1.2.1 on the Win10 guest,
-`GET /session/{id}/source` against Calculator:
+WinAppDriver 1.2.1, Win10 guest, `GET /session/{id}/source` against Alarms &
+Clock. Raw response head, which is the ground truth here:
 
-```
-root element : <Calculator>   ClassName='ApplicationFrameWindow'
-attributes   : AcceleratorKey, AccessKey, AutomationId, ClassName, FrameworkId,
-               HasKeyboardFocus, HelpText, IsContentElement, IsControlElement,
-               IsEnabled, IsKeyboardFocusable, IsOffscreen, IsPassword,
-               IsRequiredForForm, ItemStatus, ItemType, LocalizedControlType,
-               Name, Orientation, ProcessId, RuntimeId, x, y, width, height,
-               CanMaximize, CanMinimize, IsModal, WindowVisualState,
-               WindowInteractionState, IsTopmost, CanRotate, CanResize, CanMove,
-               IsAvailable                                        (33 in total)
-descendants  : 54        //Button : 36
+```xml
+<Window AcceleratorKey="" AccessKey="" AutomationId="" ClassName="ApplicationFrameWindow"
+        FrameworkId="Win32" HasKeyboardFocus="False" HelpText="" IsContentElement="True"
+        IsControlElement="True" IsEnabled="True" IsKeyboardFocusable="True"
+        IsOffscreen="False" IsPassword="False" IsRequiredForForm="False" ItemStatus=""
+        ItemType="" LocalizedControlType="window" N…
 ```
 
-Two differences from ours, and the first is the surprising one:
+Distinct element tags across the document:
 
-- **The root element is tagged with the window's NAME, not its control type.**
-  `<Calculator>`, where ours emits `<Window>`. Buttons are still `<Button>`, so
-  this is not a blanket naming rule and one sample is not enough to say what the
-  rule is — it needs a second subject before anything is built on it.
-- **Thirty-three attributes against our five.** Ours carries `Name`,
-  `AutomationId`, `ClassName`, `IsEnabled`, `ControlType`. An expression written
-  against a real driver's source — `//*[@RuntimeId=...]`, anything positional on
-  `x`/`y`, `[@IsOffscreen='False']` — matches nothing here.
+```
+AppBar, Button, Custom, DataItem, Group, HyperLink, Image, ListItem,
+MenuBar, MenuItem, Pane, ScrollBar, Text, Window
+```
+
+**Tags are bare control-type names, which is what this driver already emits.**
+Nothing to change there.
+
+**The attributes are the gap: roughly 33 against our 5.** Ours carries `Name`,
+`AutomationId`, `ClassName`, `IsEnabled`, `ControlType`. A client expression
+written against a real driver's source — `//*[@RuntimeId=…]`, anything positional
+on `x`/`y`, `[@IsOffscreen='False']`, `[@FrameworkId='XAML']` — matches nothing
+here. The root also reports `ClassName="ApplicationFrameWindow"`, which is the
+same frame-rooting fact recorded above, arriving independently.
 
 The projection is shared between `/source` and XPath by construction, so widening
 it changes both surfaces at once. That is the point of sharing it, and it is also
 why the cost has to be measured before it lands: every attribute is a property in
 the cache request, and the cache request was measured to win at five properties
 and lose at one.
+
+### RETRACTED: "the root element is tagged with the window's NAME"
+
+Asserted here and in memory on 2026-08-11, and **false**. It came from reading
+`$root.Name` on an `XmlElement` in PowerShell, whose XML adapter exposes
+*attributes* as properties — so `.Name` returned the `Name` **attribute**, never
+the tag. `LocalName` and the raw string both say `Window`.
+
+The refutation was already inside the same probe and was walked past: `//Button`
+matched **36** nodes in Calculator, which is impossible if tags were names. Two
+readings from one probe disagreed, and the one that agreed with the surprise got
+published.
+
+Kept rather than deleted, because the failure mode is the durable part — a
+measurement taken through a convenience API that silently answers a different
+question. Read the raw payload when the shape of a payload is the finding.
 
 ## Not implemented
 
