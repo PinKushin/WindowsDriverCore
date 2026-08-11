@@ -267,8 +267,6 @@ public sealed class LoggingDecoratorTests
         public ElementAction SetValue(nint window, string elementId, string value) => action;
 
         public ElementAction SendKeys(nint window, string elementId, string keys) => action;
-
-        public ElementAction TypeValue(nint window, string elementId, string keys) => action;
     }
 
     private sealed class StubLauncher(LaunchResult result) : IApplicationLauncher

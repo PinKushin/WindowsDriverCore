@@ -123,25 +123,32 @@ public sealed class UiaElementInteractorTests
     }
 
     /// <summary>
-    /// <c>TypeValue</c> refuses an element with no value BEFORE sending a key.
+    /// Typing at an element with no value is ACCEPTED, matching the recording.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The outcome alone cannot measure this, and asserting it was the first
-    /// mistake.</b> A Calculator button refuses for two independent reasons — it
-    /// has no ValuePattern, and its provider also declines focus — so
-    /// <c>NotInteractable</c> is what both the correct code and code with no gate
-    /// at all produce. Inverting the gate left that assertion passing, which is a
-    /// test insensitive to its own manipulation.
+    /// <b>This asserted the opposite until the recording was read.</b> The code
+    /// refused an element with no ValuePattern and the comment justified it as
+    /// "the recorded contract answers 400 ElementNotInteractable". No such record
+    /// exists. What the recording holds is
+    /// <c>error.element.sendKeysDisabled.ClearMemoryButton</c> — WinAppDriver
+    /// sent <c>{"value":["x"]}</c> to a DISABLED Calculator button and answered
+    /// <c>200 status 0</c>.
     /// </para>
     /// <para>
-    /// The keyboard is the faithful instrument: the claim is that nothing is
-    /// TYPED, and a substituted keyboard can say so directly. With the gate
-    /// removed, the keystroke goes out and this fails.
+    /// <b>The refusal was not free.</b> <c>SendKeys_ModifierWindowsKey</c>
+    /// dismisses the Action Center it opened by sending Escape TO THE PANE, which
+    /// has no ValuePattern. Refusing left the pane on screen holding the
+    /// foreground, and every later test in that class failed with "could not be
+    /// brought to the foreground".
+    /// </para>
+    /// <para>
+    /// The keyboard is substituted so this measures the DECISION rather than
+    /// typing into whatever is in front of the developer.
     /// </para>
     /// </remarks>
     [Test]
-    public void TypingAValueIntoSomethingThatCannotHoldOne_IsRefusedBeforeAnyKeyIsSent()
+    public void TypingAtAnElementWithNoValue_IsAccepted_AsWinAppDriverDoes()
     {
         IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
         keyboard.Type(Arg.Any<string>()).Returns(true);
@@ -152,10 +159,13 @@ public sealed class UiaElementInteractorTests
             windows: new WindowLocator(),
             keyboard: keyboard);
 
-        ElementAction action = typing.TypeValue(_window, Find("num5Button"), "hello");
+        ElementAction action = typing.SendKeys(_window, Find("num5Button"), "hello");
 
-        action.Outcome.ShouldBe(ElementActionOutcome.NotInteractable);
-        keyboard.DidNotReceive().Type(Arg.Any<string>());
+        action.Outcome.ShouldBe(
+            ElementActionOutcome.Performed,
+            "the reference driver types at a button rather than refusing it");
+
+        keyboard.Received(1).Type("hello");
     }
 
     [Test]
