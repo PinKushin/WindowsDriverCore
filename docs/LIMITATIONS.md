@@ -2991,3 +2991,49 @@ read the next guest run. If raises are failing there, it explains typed text
 going missing without any drain being involved — and it would explain why the
 session-level family, which raises through a path that already records the
 result, is 12/12.
+
+### REFUTED: failed foreground raises on the element path
+
+Measured from `transcript-3362c89a0-195109.log`, the first run with the raise
+recorded:
+
+```
+element SendKeys raised+focused : 45
+element SendKeys NOT RAISED     :  1
+element SendKeys unfocused      :  0
+```
+
+**The single failure does not belong to the family.** It is at `19:56:05` in the
+Action Center session — a shell surface that legitimately owns the foreground —
+while the four failing `SendKeysToElement_*` tests ran between `19:55:13` and
+`19:55:21`. Correlating the timestamp is what settles it; the count alone
+(1 of 46) would have left it arguable.
+
+So the element path raises, focuses and types correctly during exactly the tests
+that fail. **Seventh candidate refuted by measurement.**
+
+### Where that leaves it
+
+| candidate | status |
+|---|---|
+| modifier persistence | REFUTED |
+| a send race in the keyboard path | REFUTED — session family 12/12 × 3 runs |
+| foreground refusal (session path) | REFUTED — `keys -> raised` |
+| `SetFocus` declining | REFUTED — `unfocused=0` twice |
+| `WaitForInputIdle` waits once per process | REFUTED — 6 drains, 52/52 each |
+| `OpenProcess` denied for a packaged app | REFUTED — 0 of 101 |
+| **failed raise on the element path** | **REFUTED — the one failure is another session** |
+| **the read races the typing** | **still standing, and now the only one** |
+
+The evidence for the survivor is direct and unchanged: `GET /text` lands
+**0.9 ms** after the keystroke that should have changed it, the value it returns
+is exactly the pre-typing content (`Alarm (1)`, the new-alarm default, or the
+previous test's `0123456789`), and the drain in between returns in under a
+millisecond 79% of the time because `WaitForInputIdle` samples before the
+injected keys reach the target thread.
+
+**What is missing is not another hypothesis — it is a local subject that can
+falsify this one.** A Win32 `EDIT` is too fast, Calculator's condition is too
+small and its display caps, and the WPF subject lost its window mid-run. Until
+one exists, any drain change would be validated by subjects that pass under every
+candidate, which is how the current drain looked correct for two days.
