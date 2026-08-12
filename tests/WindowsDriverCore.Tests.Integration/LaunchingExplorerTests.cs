@@ -4,6 +4,7 @@ using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
 
@@ -54,7 +55,16 @@ namespace WindowsDriverCore.Tests.Integration;
 public sealed class LaunchingExplorerTests
 {
     private const string Explorer = @"C:\Windows\System32\explorer.exe";
-    private const string Notepad = @"C:\Windows\System32\notepad.exe";
+    /// <summary>The control application: one that STAYS alive after launching.</summary>
+    /// <remarks>
+    /// Our own Win32 subject rather than Notepad, which on Windows 11 is a shim
+    /// to the packaged build and leaves session-restore modals behind whenever a
+    /// run kills it. All this control needs is a process that does not exit
+    /// immediately - which explorer.exe does and this does not.
+    /// </remarks>
+    private static string StaysAlive =>
+        Win32TestApp.Path ?? throw new InvalidOperationException(
+            "The Win32 test application has not been built.");
 
     [Test]
     public void AnApplicationWhoseProcessExitsImmediately_StillGetsASession()
@@ -108,14 +118,14 @@ public sealed class LaunchingExplorerTests
         // every classic application would look like an Explorer quirk.
         LaunchResult launched = new ApplicationLauncher(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator())
-            .Launch(new ApplicationTarget(Notepad, null, null));
+            .Launch(new ApplicationTarget(StaysAlive, null, null));
 
         try
         {
             launched.Application.ShouldNotBeNull(launched.FailureMessage);
 
-            using Process notepad = Process.GetProcessById(launched.Application.ProcessId);
-            notepad.HasExited.ShouldBeFalse("this one stays alive, unlike explorer.exe");
+            using Process subject = Process.GetProcessById(launched.Application.ProcessId);
+            subject.HasExited.ShouldBeFalse("this one stays alive, unlike explorer.exe");
         }
         finally
         {

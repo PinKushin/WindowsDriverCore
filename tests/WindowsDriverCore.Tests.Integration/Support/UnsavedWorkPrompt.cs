@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Threading;
 using Interop.UIAutomationClient;
@@ -50,6 +51,17 @@ internal static class UnsavedWorkPrompt
     /// <summary>The discard button of a WinUI content dialog.</summary>
     private const string DiscardButtonId = "SecondaryButton";
 
+    /// <summary>The discard button of a classic Win32 dialog.</summary>
+    /// <remarks>
+    /// Matched by LABEL rather than automation id, because a native BUTTON has
+    /// no automation id worth the name - UIA reports its control id. That is
+    /// safe only because this label belongs to the repository's own Win32
+    /// subject and does not localize. A third-party dialog would need a
+    /// different approach, and inventing one without a subject to measure
+    /// against would be a guess.
+    /// </remarks>
+    private const string DiscardButtonLabel = "Discard changes";
+
     /// <summary>
     /// How long to keep watching for a prompt that may never appear.
     /// </summary>
@@ -84,6 +96,7 @@ internal static class UnsavedWorkPrompt
         UiaElementInteractor interactor = new(automation, resolver);
 
         string? discard = null;
+        nint host = window;
 
         // Three exits, and only the last is a timeout: the button appeared, the
         // window went away on its own, or nothing happened at all.
@@ -95,15 +108,85 @@ internal static class UnsavedWorkPrompt
                     return true;
                 }
 
-                FindResult found = finder.FindFirst(
+                // TWO SHAPES, and a helper that knows one hangs on the other.
+                //
+                // A WinUI ContentDialog has no window of its own and lives in
+                // its owner's UIA subtree, so it is found by searching the
+                // window's descendants. A classic Win32 dialog is a SEPARATE
+                // owned top-level window - a sibling under the desktop - which
+                // that search never reaches. Measured: a teardown that only knew
+                // the first spent the full kill wait on the second.
+                FindResult inWindow = finder.FindFirst(
                     window, LocatorKind.AutomationId, DiscardButtonId);
 
-                discard = found.ElementIds.Count > 0 ? found.ElementIds[0] : null;
-                return discard is not null;
+                if (inWindow.ElementIds.Count > 0)
+                {
+                    host = window;
+                    discard = inWindow.ElementIds[0];
+                    return true;
+                }
+
+                // BY LABEL, still inside the window. An OWNED dialog is a
+                // separate HWND but UI Automation nests it under its owner, so
+                // the descendant search reaches it - the same shape measured for
+                // a WinUI context menu, whose PopupHost owns an HWND and is
+                // still a UIA child of the application frame. Cheaper than
+                // enumerating the desktop, and tried before it.
+                FindResult labelled = finder.FindFirst(
+                    window, LocatorKind.Name, DiscardButtonLabel);
+
+                if (labelled.ElementIds.Count > 0)
+                {
+                    host = window;
+                    discard = labelled.ElementIds[0];
+                    return true;
+                }
+
+                foreach (nint owned in OwnedDialogsOf(windows, window))
+                {
+                    FindResult inDialog = finder.FindFirst(
+                        owned, LocatorKind.Name, DiscardButtonLabel);
+
+                    if (inDialog.ElementIds.Count > 0)
+                    {
+                        host = owned;
+                        discard = inDialog.ElementIds[0];
+                        return true;
+                    }
+                }
+
+                return false;
             },
             Budget);
 
         return discard is not null &&
-            interactor.Click(window, discard).Outcome == ElementActionOutcome.Performed;
+            interactor.Click(host, discard).Outcome == ElementActionOutcome.Performed;
+    }
+
+    /// <summary>Top-level windows owned by the same process as <paramref name="window"/>.</summary>
+    /// <remarks>
+    /// A classic dialog is a separate window, so finding it means looking beside
+    /// the application rather than inside it. Scoped to the same process so a
+    /// teardown never reaches into somebody else's dialog - this runs on a
+    /// desktop several suites share.
+    /// </remarks>
+    private static IEnumerable<nint> OwnedDialogsOf(WindowLocator windows, nint window)
+    {
+        int owner = windows.GetOwningProcessId(window);
+
+        if (owner == 0)
+        {
+            yield break;
+        }
+
+        foreach (nint candidate in MainWindowWaiter.SnapshotTopLevelWindows())
+        {
+            if (candidate != window &&
+                windows.Exists(candidate) &&
+                windows.GetOwningProcessId(candidate) == owner)
+            {
+                yield return candidate;
+            }
+        }
     }
 }
