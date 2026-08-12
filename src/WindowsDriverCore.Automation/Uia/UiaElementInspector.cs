@@ -253,4 +253,82 @@ public sealed class UiaElementInspector : IElementInspector
             rectangle.right - rectangle.left,
             rectangle.bottom - rectangle.top);
     }
+
+    /// <inheritdoc />
+    public ElementRead<string> FocusedElementId(nint window)
+    {
+        IUIAutomationElement? root;
+        try
+        {
+            root = _automation.ElementFromHandle(window);
+        }
+        catch (COMException)
+        {
+            return ElementRead.Failed<string>(ElementReadOutcome.NoSuchWindow);
+        }
+
+        if (root is null)
+        {
+            return ElementRead.Failed<string>(ElementReadOutcome.NoSuchWindow);
+        }
+
+        IUIAutomationElement? focused;
+        try
+        {
+            focused = _automation.GetFocusedElement();
+        }
+        catch (COMException)
+        {
+            // Nothing focused anywhere, or the provider that owned it just
+            // died. Neither is this session's window being gone, so it reads
+            // as "focus is not ours" rather than as a fault.
+            return ElementRead.Success(string.Empty);
+        }
+
+        if (focused is null)
+        {
+            return ElementRead.Success(string.Empty);
+        }
+
+        // UIA's focused element is GLOBAL. Without this the driver would answer
+        // with an element belonging to whatever application the user last
+        // clicked, which the suite catches directly: it opens the Start menu to
+        // steal focus and requires an EMPTY id back, not somebody else's button.
+        return IsWithin(focused, root)
+            ? ElementRead.Success(UiaRuntimeId.Read(focused) ?? string.Empty)
+            : ElementRead.Success(string.Empty);
+    }
+
+    /// <summary>Whether <paramref name="element"/> sits under <paramref name="root"/>.</summary>
+    /// <remarks>
+    /// Walked rather than compared by process id. A packaged application's frame
+    /// belongs to ApplicationFrameHost while its content belongs to the app, so
+    /// a process comparison would call the app's own focused control foreign.
+    /// </remarks>
+    private bool IsWithin(IUIAutomationElement element, IUIAutomationElement root)
+    {
+        IUIAutomationTreeWalker walker = _automation.RawViewWalker;
+
+        IUIAutomationElement? current = element;
+        while (current is not null)
+        {
+            if (_automation.CompareElements(current, root) != 0)
+            {
+                return true;
+            }
+
+            try
+            {
+                current = walker.GetParentElement(current);
+            }
+            catch (COMException)
+            {
+                // The element went away mid-walk. It cannot be shown to be
+                // ours, so it is not claimed as ours.
+                return false;
+            }
+        }
+
+        return false;
+    }
 }
