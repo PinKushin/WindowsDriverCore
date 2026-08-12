@@ -1,3 +1,5 @@
+using WindowsDriverCore.Diagnostics;
+using System.Diagnostics;
 using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
@@ -187,7 +189,8 @@ public static class WindowRoutes
                 : WindowClosed();
         }).RequiresSession();
 
-        app.MapDelete("/session/{sessionId}/window", (HttpContext context, IWindowLocator windows) =>
+        app.MapDelete("/session/{sessionId}/window",
+            (HttpContext context, IWindowLocator windows, ITerminationLog log) =>
         {
             DriverSession session = context.GetSession();
 
@@ -204,7 +207,23 @@ public static class WindowRoutes
             // from it, expecting "Currently selected window has been closed" —
             // answering before the window has gone makes that a race the client
             // loses, and it answers an element error instead.
-            windows.WaitUntilGone(session.WindowHandle);
+            long started = Stopwatch.GetTimestamp();
+            bool gone = windows.WaitUntilGone(session.WindowHandle);
+
+            // RECORDED, and still not acted upon. The wait is bounded because an
+            // application showing "save changes?" may never close and the close
+            // request was still delivered, so answering success remains right.
+            // But a window that OUTLIVES the wait is currently invisible on the
+            // wire, and it is the leading suspect for the *Error_NoSuchWindow
+            // tests that flap: a command issued straight afterwards finds the
+            // window alive and answers "no such element". Logging it first,
+            // because three theories for that flapping have already been
+            // measured and refuted, and a fourth guess is worth less than one
+            // line of evidence from a real run.
+            log.WindowClosed(
+                session.WindowHandle,
+                gone,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
 
             return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
         }).RequiresSession();

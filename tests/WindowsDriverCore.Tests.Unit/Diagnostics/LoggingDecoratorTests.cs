@@ -213,6 +213,8 @@ public sealed class LoggingDecoratorTests
 
     private sealed record LoggedTermination(int ProcessId, bool Ended, double Elapsed);
 
+    private sealed record LoggedWindowClose(nint Window, bool Gone, double Elapsed);
+
     private sealed class RecordingLog : IFindLog, IInteractionLog, ILaunchLog, ITerminationLog
     {
         internal List<LoggedFind> Finds { get; } = [];
@@ -222,6 +224,8 @@ public sealed class LoggingDecoratorTests
         internal List<LoggedLaunch> Launches { get; } = [];
 
         internal List<LoggedTermination> Terminations { get; } = [];
+
+        internal List<LoggedWindowClose> WindowCloses { get; } = [];
 
         public void FindCompleted(
             string locatorKind,
@@ -249,6 +253,9 @@ public sealed class LoggingDecoratorTests
         public void ApplicationTerminated(
             int processId, bool ended, double elapsedMilliseconds) =>
             Terminations.Add(new LoggedTermination(processId, ended, elapsedMilliseconds));
+
+        public void WindowClosed(nint windowHandle, bool gone, double elapsedMilliseconds) =>
+            WindowCloses.Add(new LoggedWindowClose(windowHandle, gone, elapsedMilliseconds));
     }
 
     private sealed class StubFinder(FindResult result) : IElementFinder

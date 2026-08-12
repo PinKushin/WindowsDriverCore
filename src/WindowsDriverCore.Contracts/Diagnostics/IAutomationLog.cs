@@ -228,4 +228,16 @@ public interface ITerminationLog
     /// <param name="ended">Whether it is no longer running.</param>
     /// <param name="elapsedMilliseconds">Wall-clock cost.</param>
     void ApplicationTerminated(int processId, bool ended, double elapsedMilliseconds);
+
+    /// <summary>Records closing a window and whether it actually went.</summary>
+    /// <param name="windowHandle">The window asked to close.</param>
+    /// <param name="gone">
+    /// Whether it was observed to disappear within the bounded wait. FALSE is
+    /// the interesting case: the close still answers success because the request
+    /// was delivered, so a window that outlives the wait is invisible on the
+    /// wire - and a command issued straight afterwards sees it alive and reports
+    /// "no such element" where the caller expects "window has been closed".
+    /// </param>
+    /// <param name="elapsedMilliseconds">Wall-clock cost of the close and the wait.</param>
+    void WindowClosed(nint windowHandle, bool gone, double elapsedMilliseconds);
 }

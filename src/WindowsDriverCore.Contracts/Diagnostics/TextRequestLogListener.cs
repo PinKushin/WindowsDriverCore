@@ -135,6 +135,11 @@ public sealed class TextRequestLogListener : EventListener
                 $"  launch '{payload[0]}' -> pid {payload[1]} window 0x{Handle(payload[2])}" +
                 $"{Kind(payload[3])}{Because(payload[4])} {Cost(payload[5])} ms"),
 
+            (DriverEventSource.WindowClosedEventId, 3) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  close window 0x{Handle(payload[0])} -> " +
+                $"{(payload[1] is true ? "gone" : "STILL THERE")} {Cost(payload[2])} ms"),
+
             (DriverEventSource.ApplicationTerminatedEventId, 3) => string.Create(
                 CultureInfo.InvariantCulture,
                 $"  terminate pid {payload[0]} -> " +
