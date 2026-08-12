@@ -182,6 +182,7 @@ public partial class Program
             new LoggingApplicationTerminator(
                 provider.GetRequiredService<ApplicationTerminator>(),
                 provider.GetRequiredService<ITerminationLog>()));
+        builder.Services.AddSingleton<IScreenCapture, ScreenCapture>();
         builder.Services.AddSingleton<IPointerInput, SendInputPointer>();
         builder.Services.AddSingleton<ISyntheticPointer, SyntheticPointer>();
         builder.Services.AddSingleton<PointerActionRunner>();
