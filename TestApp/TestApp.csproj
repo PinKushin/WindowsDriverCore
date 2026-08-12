@@ -7,6 +7,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- S101: the interop structs are named for the Win32 API they mirror.
+         WNDCLASSEXW, MSG and POINT are the platform's names, and renaming them
+         to PascalCase would break the one property that makes an interop
+         declaration checkable against the documentation.
+         CA1838: StringBuilder is the marshalling the GetWindowText family is
+         documented with, and this is a test subject rather than a hot path. -->
+    <NoWarn>$(NoWarn);S101;CA1838</NoWarn>
   </PropertyGroup>
 
 </Project>
