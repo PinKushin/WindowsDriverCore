@@ -200,6 +200,29 @@ public sealed class ScreenshotRouteTests : IDisposable
         _capture.Received(1).CapturePng(310, 420, 50, 24);
     }
 
+    /// <summary>The W3C spelling of the element screenshot is served too.</summary>
+    /// <remarks>
+    /// <b>Nothing else tests this.</b> The compatibility suite is a Selenium 2
+    /// client and asks for <c>/session/{id}/screenshot/{elementId}</c>; it will
+    /// never request the W3C path, so a break there would ship unnoticed. This
+    /// driver serves both deliberately - JWP is the contract and W3C is
+    /// additive - and "we serve it" is only true if something checks.
+    /// </remarks>
+    [Test]
+    public async Task TheW3CElementScreenshotPath_IsServedAsWell()
+    {
+        string sessionId = await NewSession();
+
+        _inspector.ScreenBounds(TheWindow, "42")
+            .Returns(ElementRead.Success(new ElementBounds(310, 420, 50, 24)));
+
+        HttpResponseMessage response = await _client.GetAsync(
+            new Uri($"/session/{sessionId}/element/42/screenshot", UriKind.Relative));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        _capture.Received(1).CapturePng(310, 420, 50, 24);
+    }
+
     [Test]
     public async Task AStaleElement_IsReportedAsStale_NotPhotographed()
     {

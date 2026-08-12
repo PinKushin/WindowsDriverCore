@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Platform.Windows;
@@ -34,6 +35,15 @@ public sealed class PointerActionRunner
     private readonly ISyntheticPointer _synthetic;
     private readonly IElementInspector _elements;
     private readonly IWindowLocator _windows;
+
+    /// <summary>How long a drag with no stated duration takes.</summary>
+    /// <remarks>
+    /// The touch routes carry no duration of their own, but a gesture delivered
+    /// instantly is not one the window manager can follow - measured against the
+    /// reference, which spends 1261 ms on a 1000 ms move and repositions the
+    /// window, where this driver spent 50 ms and moved nothing.
+    /// </remarks>
+    private static readonly TimeSpan DragDuration = TimeSpan.FromMilliseconds(300);
 
     /// <summary>How many frames a move is broken into.</summary>
     /// <remarks>
@@ -146,7 +156,7 @@ public sealed class PointerActionRunner
                         return failure;
                     }
 
-                    PointerRefusal? moved = Move(kind, x, y, toX, toY, down);
+                    PointerRefusal? moved = Move(kind, x, y, toX, toY, down, DurationOf(step));
                     if (moved is not null)
                     {
                         return moved;
@@ -308,7 +318,12 @@ public sealed class PointerActionRunner
             return PointerRefusal.Reason("The system refused a touch contact");
         }
 
-        PointerRefusal? moved = Move(SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true);
+        // A DURATION HERE TOO. This is the same gesture the W3C path performs,
+        // and the same window-manager sampling applies - a drag delivered
+        // instantly moves nothing. The caller supplies no duration on this
+        // route, so it gets the one a person's flick takes.
+        PointerRefusal? moved = Move(
+            SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true, DragDuration);
         if (moved is not null)
         {
             return moved;
@@ -414,7 +429,8 @@ public sealed class PointerActionRunner
             : PointerRefusal.Reason(
                 $"The system refused to lift a {kind.ToString().ToLowerInvariant()} contact");
 
-    private PointerRefusal? Move(SyntheticPointerKind kind, int fromX, int fromY, int toX, int toY, bool down)
+    private PointerRefusal? Move(
+        SyntheticPointerKind kind, int fromX, int fromY, int toX, int toY, bool down, TimeSpan duration)
     {
         if (!down)
         {
@@ -424,11 +440,31 @@ public sealed class PointerActionRunner
             return null;
         }
 
+        // THE DURATION IS SPENT, not skipped, and that reverses an earlier
+        // decision in this file. Frames used to be emitted as fast as they could
+        // be, reasoning that sleeping blocks the request thread for the caller's
+        // benefit alone. MEASURED on the guest, dragging Calculator's title bar
+        // with a 1000 ms move:
+        //
+        //   WinAppDriver   POST /actions 1261 ms -> window moved 207,64 to 297,154
+        //   this driver    POST /actions   50 ms -> window did not move at all
+        //
+        // A window manager samples the pointer across its own message loop, so a
+        // hundred frames delivered in a microsecond is not a gesture it can
+        // follow. The duration is SEMANTIC here rather than a timeout: the
+        // client asked for a move lasting a second because that is what the
+        // application needs to see.
+        long frameTicks = duration > TimeSpan.Zero
+            ? duration.Ticks / FramesPerMove
+            : 0;
+
         // Interpolated, because a drag is the PATH and not the endpoints. An
         // application measuring velocity or distinguishing a flick from a press
         // sees nothing in a single jump.
         for (int frame = 1; frame <= FramesPerMove; frame++)
         {
+            long frameDue = Stopwatch.GetTimestamp();
+
             int stepX = fromX + (((toX - fromX) * frame) / FramesPerMove);
             int stepY = fromY + (((toY - fromY) * frame) / FramesPerMove);
 
@@ -437,10 +473,39 @@ public sealed class PointerActionRunner
             {
                 return PointerRefusal.Reason("The system refused a contact update");
             }
+
+            if (frameTicks > 0)
+            {
+                // Paced against the clock rather than slept blindly, so the
+                // cost of injecting a frame comes out of the interval instead of
+                // being added to it. A move asking for a second takes about a
+                // second, not a second plus a hundred injections.
+                TimeSpan spent = Stopwatch.GetElapsedTime(frameDue);
+                TimeSpan remaining = TimeSpan.FromTicks(frameTicks) - spent;
+
+                if (remaining > TimeSpan.Zero)
+                {
+                    Thread.Sleep(remaining);
+                }
+            }
         }
 
         return null;
     }
+
+    /// <summary>How long a step asked to take.</summary>
+    /// <remarks>
+    /// Absent means instant, which is what W3C says and what a pointerDown or a
+    /// move with no duration wants. Validation has already rejected a negative
+    /// or non-numeric value, so anything arriving here is usable.
+    /// </remarks>
+    private static TimeSpan DurationOf(JsonElement step) =>
+        step.TryGetProperty("duration", out JsonElement duration) &&
+        duration.ValueKind == JsonValueKind.Number &&
+        duration.TryGetDouble(out double milliseconds) &&
+        milliseconds > 0
+            ? TimeSpan.FromMilliseconds(milliseconds)
+            : TimeSpan.Zero;
 
     private (int X, int Y, PointerRefusal? Failure) Target(
         JsonElement step, nint window, int currentX, int currentY)
