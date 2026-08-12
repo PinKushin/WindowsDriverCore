@@ -93,6 +93,15 @@ public interface IWindowLocator
     /// <param name="bounds">Where it should be and how big.</param>
     /// <returns>True if the window was still there to move.</returns>
     bool SetBounds(nint handle, WindowBounds bounds);
+    /// <summary>Whether the handle names a top-level window.</summary>
+    /// <param name="handle">The window.</param>
+    /// <remarks>
+    /// Answered by comparing the immediate parent against the desktop, NOT by
+    /// GA_ROOT: measured, GA_ROOT of a UWP CoreWindow returns the CoreWindow
+    /// itself, so a child would report itself top level.
+    /// </remarks>
+    bool IsTopLevel(nint handle);
+
 
     /// <summary>Maximizes a window.</summary>
     /// <param name="handle">The window.</param>

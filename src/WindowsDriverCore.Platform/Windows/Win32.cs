@@ -446,5 +446,14 @@ internal static partial class Win32
     internal const uint GW_OWNER = 4;
 
     /// <summary>GetAncestor flag: the root window of the chain.</summary>
+    /// <summary>GetAncestor flag: the immediate parent, desktop for a top-level window.</summary>
+    /// <remarks>
+    /// GA_ROOT cannot answer "is this top level": measured in MainWindowWaiter,
+    /// GA_ROOT of a UWP CoreWindow returns the CoreWindow ITSELF, so a child
+    /// window looks like its own root. GA_PARENT compared against the desktop
+    /// does answer it.
+    /// </remarks>
+    internal const uint GA_PARENT = 1;
+
     internal const uint GA_ROOT = 2;
 }

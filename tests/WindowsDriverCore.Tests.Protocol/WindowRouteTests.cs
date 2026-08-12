@@ -256,6 +256,17 @@ public sealed class WindowRouteTests : IDisposable
     {
         // The control for the test above: a handle that DOES exist must be
         // accepted, or "always refuse" would pass it and be useless.
+        //
+        // A REAL window is now more than one that exists: switching also
+        // requires it to be top level and to belong to this application, which
+        // is what SwitchWindowsError_NonTopLevelWindowHandle and
+        // _ForeignWindowHandle ask for. NSubstitute answers false and 0 by
+        // default, so without saying so here this control would describe a
+        // child window owned by no process - and it caught exactly that when
+        // those checks landed.
+        _windows.IsTopLevel(Arg.Any<nint>()).Returns(true);
+        _windows.GetOwningProcessId(Arg.Any<nint>()).Returns(4242);
+
         string sessionId = await NewSession();
 
         HttpResponseMessage response = await Post(sessionId, "window", "{\"name\":\"0x00551120\"}");
