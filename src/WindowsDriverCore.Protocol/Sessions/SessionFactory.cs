@@ -157,7 +157,8 @@ public sealed class SessionFactory
                 capabilities.Echo,
                 processId,
                 windowHandle,
-                ownsApplication),
+                ownsApplication,
+                capabilities.IsDesktopSession),
             Fault: null,
             Message: null);
 }

@@ -26,12 +26,19 @@ namespace WindowsDriverCore.Protocol.Sessions;
 /// the session is deleted: a desktop session addresses explorer, and an attached
 /// session addresses a window somebody else opened.
 /// </param>
+/// <param name="IsDesktop">
+/// Whether this session addresses the whole desktop rather than one
+/// application. A desktop session owns no application windows, and the suite
+/// requires <c>window_handles</c> to answer EMPTY for it - not the desktop
+/// window it happens to be rooted at.
+/// </param>
 public sealed record DriverSession(
     string Id,
     IReadOnlyDictionary<string, string> Capabilities,
     int ProcessId,
     nint WindowHandle,
-    bool OwnsApplication = false)
+    bool OwnsApplication = false,
+    bool IsDesktop = false)
 {
     /// <summary>
     /// The window the session is pointed at, which <c>POST /session/:id/window</c>
@@ -42,6 +49,50 @@ public sealed record DriverSession(
     /// fixed at creation, so a session cannot quietly become a different session.
     /// </remarks>
     public nint WindowHandle { get; set; } = WindowHandle;
+
+    /// <summary>Every window this session has opened, newest last.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A session addresses one window at a time but can own several.</b>
+    /// <c>POST /appium/app/launch</c> relaunches the application in the SAME
+    /// session, and <c>Launch_ModernApp</c> requires the handle count to go up
+    /// by one and the current handle to change - so a single mutable
+    /// <see cref="WindowHandle"/> cannot express what the protocol promises.
+    /// </para>
+    /// <para>
+    /// Membership is not liveness: a window in this list may already be closed,
+    /// which is why the read route filters by existence rather than trusting the
+    /// list. Keeping a dead handle here is deliberate, because forgetting it
+    /// would make a closed window indistinguishable from one this session never
+    /// owned.
+    /// </para>
+    /// </remarks>
+    private readonly List<nint> _windows = WindowHandle == 0 ? [] : [WindowHandle];
+
+    /// <summary>Records a window this session has opened.</summary>
+    /// <param name="handle">The new window.</param>
+    public void AlsoOwns(nint handle)
+    {
+        lock (_windows)
+        {
+            if (handle != 0 && !_windows.Contains(handle))
+            {
+                _windows.Add(handle);
+            }
+        }
+    }
+
+    /// <summary>Every window handle this session owns, in the order opened.</summary>
+    public IReadOnlyList<nint> OwnedWindows
+    {
+        get
+        {
+            lock (_windows)
+            {
+                return [.. _windows];
+            }
+        }
+    }
 
     /// <summary>Whether typed input may still be in flight.</summary>
     /// <remarks>
