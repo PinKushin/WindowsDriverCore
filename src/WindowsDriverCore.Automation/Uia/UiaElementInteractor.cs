@@ -125,7 +125,16 @@ public sealed class UiaElementInteractor : IElementInteractor
             // against a control in a background window even when it reports
             // focusable, enabled and on screen — measured 2026-08-10 — so
             // focusing without this simply does not work.
-            _windows?.BringToForeground(window);
+            // THE RESULT IS RECORDED, and discarding it was the same defect the
+            // drain had. Synthesised keys go to whatever holds the FOREGROUND,
+            // not to a handle, so a failed raise means the keystrokes landed in
+            // another window - and this method still answers Performed, because
+            // refusing to type deadlocks a caller trying to dismiss a shell
+            // surface it just opened.
+            //
+            // Null means no window locator was supplied, which happens only in
+            // tests that are not exercising the raise. Production always has one.
+            bool? raised = _windows?.BringToForeground(window);
 
             // Then focus, because keystrokes go wherever focus is: typing
             // without moving it would type into whatever the user last clicked.
@@ -153,7 +162,18 @@ public sealed class UiaElementInteractor : IElementInteractor
             // foregrounded above either way, so "somewhere" is the application
             // under test rather than the desktop.
             bool focused = TryFocus(element);
-            string path = focused ? "keys" : "keys (unfocused)";
+
+            // Both facts in the path, because the transcript is where this gets
+            // read and IInteractionLog has no parameter that could carry them
+            // separately. "NOT RAISED" is shouted for the same reason the drain's
+            // "DID NOT WAIT" is: the request answers success either way.
+            string path = (raised, focused) switch
+            {
+                (false, true) => "keys (NOT RAISED, went to whatever was in front)",
+                (false, false) => "keys (NOT RAISED, unfocused)",
+                (_, false) => "keys (unfocused)",
+                (_, true) => "keys",
+            };
 
             return _keyboard.Type(keys)
                 ? ElementAction.Performed(path)
