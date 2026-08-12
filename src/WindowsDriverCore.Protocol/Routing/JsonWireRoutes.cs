@@ -38,6 +38,7 @@ public static class JsonWireRoutes
         logged.MapTimeoutRoutes();
         logged.MapWindowRoutes();
         logged.MapPageSourceRoutes();
+        logged.MapScreenshotRoutes();
         logged.MapActionRoutes();
         logged.MapKeyboardRoutes();
         logged.MapElementPropertyRoutes();
