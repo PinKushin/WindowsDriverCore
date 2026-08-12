@@ -58,6 +58,38 @@ public sealed class NestedFindTests
             new UiaElementInspector(automation, resolver), _window, _keypad);
     }
 
+    /// <summary>The container matches itself.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured from the compatibility suite, which asserts exactly this.</b>
+    /// <c>FindNestedElements_ByAccessibilityId</c> searches the alarm tab for the
+    /// alarm tab's own automation id and asserts the result is <b>one</b> element
+    /// and that it IS the container. <c>FindNestedElements_ByRuntimeId</c> does
+    /// the same with the container's runtime id. Both failed here with
+    /// <c>Expected:&lt;1&gt;. Actual:&lt;0&gt;.</c>
+    /// </para>
+    /// <para>
+    /// So a nested search is <c>TreeScope_Subtree</c> — the element AND its
+    /// descendants — not <c>TreeScope_Descendants</c>. The distinction is
+    /// invisible to every other nested test, because every other one looks for
+    /// something genuinely below the container.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ANestedFind_MatchesTheContainerItself_NotOnlyItsDescendants()
+    {
+        FindResult found = _finder.FindAll(
+            new SearchScope(_window, _keypad), LocatorKind.AutomationId, "NumberPad");
+
+        found.Failure.ShouldBe(FindFailure.None);
+
+        // Exactly one, and it is the container. "At least one" would also pass
+        // if the subtree scope somehow matched a nested NumberPad, and the suite
+        // asserts the count rather than mere presence.
+        found.ElementIds.Count.ShouldBe(1);
+        found.ElementIds[0].ShouldBe(_keypad);
+    }
+
     [Test]
     public void ANestedFind_FindsSomethingInsideTheContainer()
     {
@@ -131,7 +163,18 @@ public sealed class NestedFindTests
             LocatorKind.AutomationId,
             "num5Button");
 
-        found.Failure.ShouldBe(FindFailure.None);
+        // THE SIGNAL CHANGED, THE PROTOCOL ANSWER DID NOT. This used to report a
+        // successful find of nothing, which the routes turned into "no such
+        // element" - correct for an id nobody issued, and wrong for one this
+        // server DID issue and which has since died, where the suite wants
+        // "stale". This layer cannot tell those apart because it does not know
+        // what was issued, so it now reports the container failure and the
+        // protocol layer decides using the registry.
+        found.Failure.ShouldBe(FindFailure.NoSuchContainer);
+
+        // The guard this test exists for is untouched: no fallback to the window.
+        // num5Button really is in that window, so a search that quietly restarted
+        // at the root would answer with a live element here.
         found.ElementIds.ShouldBeEmpty();
     }
 }

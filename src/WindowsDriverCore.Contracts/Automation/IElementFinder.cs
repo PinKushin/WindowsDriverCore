@@ -13,6 +13,20 @@ public enum FindFailure
 
     /// <summary>An XPath expression could not be evaluated.</summary>
     XPathLookupError,
+
+    /// <summary>
+    /// The element the search was scoped to could not be resolved.
+    /// </summary>
+    /// <remarks>
+    /// <b>Distinct from an empty result, because the two answer differently.</b>
+    /// A container that resolved and holds no match is a successful find of
+    /// nothing; a container that no longer exists is a failure whose fault
+    /// depends on whether this server ever issued that id — stale if it did,
+    /// unknown if it did not. Reported as no-match, the plural route returns an
+    /// empty array and a client sees a container with no children rather than a
+    /// dead one.
+    /// </remarks>
+    NoSuchContainer,
 }
 
 /// <summary>Where a search runs.</summary>

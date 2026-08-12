@@ -180,7 +180,7 @@ public static class ElementRoutes
         // element" while the same locator at window scope finds it.
         app.MapPost("/session/{sessionId}/element/{elementId}/element",
             async (HttpContext context, IElementFinder finder, IElementRegistry registry,
-                   string elementId) =>
+                   IWindowLocator windows, string elementId) =>
             {
                 (LocatorParseResult locator, IResult? rejection) = await ReadLocator(context)
                     .ConfigureAwait(false);
@@ -192,6 +192,11 @@ public static class ElementRoutes
                 DriverSession session = context.GetSession();
                 FindResult found = finder.FindFirst(
                     new SearchScope(session.WindowHandle, elementId), locator.Kind, locator.Value);
+
+                if (found.Failure == FindFailure.NoSuchContainer)
+                {
+                    return ContainerFault(session, elementId, registry, windows);
+                }
 
                 if (found.Failure != FindFailure.None)
                 {
@@ -213,7 +218,7 @@ public static class ElementRoutes
 
         app.MapPost("/session/{sessionId}/element/{elementId}/elements",
             async (HttpContext context, IElementFinder finder, IElementRegistry registry,
-                   string elementId) =>
+                   IWindowLocator windows, string elementId) =>
             {
                 (LocatorParseResult locator, IResult? rejection) = await ReadLocator(context)
                     .ConfigureAwait(false);
@@ -225,6 +230,11 @@ public static class ElementRoutes
                 DriverSession session = context.GetSession();
                 FindResult found = finder.FindAll(
                     new SearchScope(session.WindowHandle, elementId), locator.Kind, locator.Value);
+
+                if (found.Failure == FindFailure.NoSuchContainer)
+                {
+                    return ContainerFault(session, elementId, registry, windows);
+                }
 
                 if (found.Failure != FindFailure.None)
                 {
@@ -262,6 +272,24 @@ public static class ElementRoutes
 
         return (locator, null);
     }
+
+    /// <summary>The fault for a nested find whose container is gone.</summary>
+    /// <remarks>
+    /// <b>Not part of <see cref="FailureResponse"/>, because it is not decidable
+    /// from the failure alone.</b> The answer depends on whether this server ever
+    /// issued the container id — stale if it did, unknown if it did not — which
+    /// is a question about the registry rather than about the search. It reuses
+    /// <see cref="ElementFault"/> so a dead ancestor reports exactly what a dead
+    /// element reports everywhere else; the alternative was a second copy of the
+    /// stale-versus-unknown rule, which is the drift that made this file's own
+    /// message inconsistent before.
+    /// </remarks>
+    private static IResult ContainerFault(
+        DriverSession session,
+        string containerId,
+        IElementRegistry registry,
+        IWindowLocator windows) =>
+        ElementFault.For(ElementReadOutcome.NotFound, session, containerId, registry, windows);
 
     private static IResult FailureResponse(FindFailure failure, string locatorValue) => failure switch
     {
