@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
@@ -74,12 +75,22 @@ public static class WindowRoutes
         {
             DriverSession session = context.GetSession();
 
-            // One handle, because a session addresses one window. The plural
-            // route exists because clients call it; it does not imply this
-            // driver tracks a window list it does not have.
-            IReadOnlyList<string> handles = windows.Exists(session.WindowHandle)
-                ? [FormatHandle(session.WindowHandle)]
-                : [];
+            // A DESKTOP SESSION OWNS NO APPLICATION WINDOWS, so it answers
+            // empty rather than reporting the desktop window it is rooted at.
+            // GetWindowHandles_Desktop asserts exactly zero, and returning the
+            // root would be reporting a window the session cannot close, move
+            // or switch away from.
+            //
+            // Otherwise every window this session has opened that is still
+            // alive. Liveness is asked here rather than trusted from the list,
+            // because a window the session opened may have been closed since -
+            // and Launch_ModernApp requires the count to RISE by one when the
+            // application is relaunched, which a single handle cannot express.
+            IReadOnlyList<string> handles = session.IsDesktop
+                ? []
+                : [.. session.OwnedWindows
+                    .Where(windows.Exists)
+                    .Select(FormatHandle)];
 
             return Results.Json(JsonWireResponse.ForSession(session.Id, handles));
         }).RequiresSession();
