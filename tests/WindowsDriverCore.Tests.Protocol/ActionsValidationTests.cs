@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -141,6 +142,11 @@ public sealed class ActionsValidationTests : IDisposable
         // be reporting on the guard instead.
         _windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
 
+        // A viewport coordinate is window-relative, so a move cannot be placed
+        // without the window's bounds. Left unstubbed this answers null and
+        // every viewport gesture is refused before it reaches the injector.
+        _windows.GetBounds(Arg.Any<nint>()).Returns(new WindowBounds(100, 200, 800, 600));
+
         _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
         _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
     }
@@ -281,6 +287,58 @@ public sealed class ActionsValidationTests : IDisposable
         ((int)response.StatusCode).ShouldBe(500, "a refused contact is not a success");
     }
 
+    /// <summary>A move spends the duration it was asked for.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>MEASURED against the reference.</b> Dragging Calculator's title bar
+    /// with a 1000 ms move: WinAppDriver's <c>POST /actions</c> took 1261 ms and
+    /// the window moved from 207,64 to 297,154; this driver took 50 ms and the
+    /// window did not move at all. A window manager samples the pointer across
+    /// its own message loop, so frames delivered instantly are not a gesture it
+    /// can follow - the duration is semantic, not a pause to skip.
+    /// </para>
+    /// <para>
+    /// <b>The instant move is the CONTROL.</b> An absolute assertion on elapsed
+    /// time cannot fail here: the request costs more than the threshold in fixed
+    /// overhead before any pointer work happens. Timing both and comparing them
+    /// subtracts that, leaving the waiting itself.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AMoveWithADuration_TakesThatLong_UnlikeAnInstantOne()
+    {
+        string instant = MoveSequence(durationMs: 0);
+        string slow = MoveSequence(durationMs: 400);
+
+        await PostActions(instant);
+
+        Stopwatch whenInstant = Stopwatch.StartNew();
+        await PostActions(instant);
+        whenInstant.Stop();
+
+        Stopwatch whenSlow = Stopwatch.StartNew();
+        HttpResponseMessage response = await PostActions(slow);
+        whenSlow.Stop();
+
+        response.IsSuccessStatusCode.ShouldBeTrue();
+
+        (whenSlow.Elapsed - whenInstant.Elapsed).ShouldBeGreaterThan(
+            TimeSpan.FromMilliseconds(250),
+            "a move must spend the duration it was asked for, or the window manager " +
+            "sees no gesture and nothing is dragged");
+    }
+
+    /// <summary>A touch press, a move of the given duration, and a lift.</summary>
+    private static string MoveSequence(int durationMs) =>
+        $$"""
+        {"actions":[{"type":"pointer","id":"finger1","parameters":{"pointerType":"touch"},
+        "actions":[
+        {"type":"pointerMove","duration":0,"origin":"viewport","x":10,"y":10},
+        {"type":"pointerDown","button":0},
+        {"type":"pointerMove","duration":{{durationMs}},"origin":"pointer","x":40,"y":40},
+        {"type":"pointerUp","button":0}]}]}
+        """;
+
     private const string PenMoveToOrigin =
         """
         {"actions":[{"type":"pointer","id":"pen1","parameters":{"pointerType":"pen"},
@@ -313,6 +371,34 @@ public sealed class ActionsValidationTests : IDisposable
         HttpResponseMessage response = await PostActions(
             PenMoveToOrigin.Replace("ORIGIN", """{"ELEMENT":"42"}""", StringComparison.Ordinal));
 
+        (await MessageOf(response))
+            .ShouldEndWith("specified in the Actions origin is unknown or does not exist");
+    }
+
+    /// <summary>An Actions origin may name its element either way.</summary>
+    /// <remarks>
+    /// <b>Only the JWP spelling had coverage, and the suite will never supply
+    /// the other.</b> Measured while probing the reference: WinAppDriver
+    /// REJECTED <c>{"ELEMENT": id}</c> on <c>/actions</c> with a 400 and required
+    /// the long uuid key, even though it is otherwise a Selenium 2 driver -
+    /// <c>/actions</c> is a W3C-era command. A client that speaks either dialect
+    /// has to work here, so both are asserted.
+    /// </remarks>
+    [Test]
+    public async Task AnOriginNamedTheW3CWay_IsUnderstoodToo()
+    {
+        _inspector.ScreenBounds(Arg.Any<nint>(), "42")
+            .Returns(ElementRead.Failed<ElementBounds>(ElementReadOutcome.NotFound));
+        _registry.TryConsume(Arg.Any<string>(), Arg.Any<string>()).Returns(false);
+
+        HttpResponseMessage response = await PostActions(
+            PenMoveToOrigin.Replace(
+                "ORIGIN",
+                """{"element-6066-11e4-a52e-4f735466cecf":"42"}""",
+                StringComparison.Ordinal));
+
+        // Reaching the element lookup at all is the point: an origin it could
+        // not parse would answer the bad-origin sentence instead.
         (await MessageOf(response))
             .ShouldEndWith("specified in the Actions origin is unknown or does not exist");
     }
