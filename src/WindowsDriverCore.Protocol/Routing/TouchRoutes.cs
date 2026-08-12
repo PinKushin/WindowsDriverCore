@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -60,6 +61,13 @@ public static class TouchRoutes
     public static IEndpointRouteBuilder MapTouchRoutes(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        // down/move/up: one contact phase per request, so a gesture spans
+        // several HTTP calls. Absent before this and answering 404 jwp 9 twice
+        // in the last measured run.
+        MapContact(app, "down", SyntheticContactPhase.Down);
+        MapContact(app, "move", SyntheticContactPhase.Update);
+        MapContact(app, "up", SyntheticContactPhase.Up);
 
         MapElementGesture(app, "click", Tap);
         MapElementGesture(app, "longclick", LongPress);
@@ -218,4 +226,59 @@ public static class TouchRoutes
         [property: JsonPropertyName("element")] string? Element,
         [property: JsonPropertyName("xoffset")] int XOffset,
         [property: JsonPropertyName("yoffset")] int YOffset);
+
+    /// <summary>Maps one phase of a multi-request touch gesture.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The body carries window-relative coordinates.</b>
+    /// <c>TouchDownMoveUp_SingleTap</c> computes them from
+    /// <c>element.Location</c> plus half the element's size, and this driver
+    /// answers <c>location</c> relative to the window - so treating them as
+    /// screen pixels would land the contact that far from the DESKTOP origin,
+    /// outside the application under test.
+    /// </para>
+    /// <para>
+    /// <b>Missing coordinates default to zero rather than faulting</b>, matching
+    /// the other pointer routes: JSON Wire sends x and y on every one of these,
+    /// and inventing a fault for a body the suite never sends would be a rule
+    /// with no test behind it.
+    /// </para>
+    /// </remarks>
+    private static void MapContact(
+        IEndpointRouteBuilder app, string suffix, SyntheticContactPhase phase)
+    {
+        app.MapPost($"/session/{{sessionId}}/touch/{suffix}",
+            async (
+                HttpContext context,
+                PointerActionRunner? runner,
+                IElementRegistry registry,
+                IWindowLocator windows) =>
+            {
+                DriverSession session = context.GetSession();
+
+                if (runner is null)
+                {
+                    return Results.Text(NoInjector, statusCode: 501);
+                }
+
+                using JsonDocument body = await JsonDocument
+                    .ParseAsync(context.Request.Body).ConfigureAwait(false);
+
+                int x = Coordinate(body.RootElement, "x");
+                int y = Coordinate(body.RootElement, "y");
+
+                PointerRefusal? failure = runner.Contact(session.WindowHandle, x, y, phase);
+
+                return failure is null
+                    ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                    : Fault(failure, session, registry, windows);
+            }).RequiresSession();
+    }
+
+    private static int Coordinate(JsonElement body, string name) =>
+        body.TryGetProperty(name, out JsonElement value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt32(out int number)
+            ? number
+            : 0;
 }
