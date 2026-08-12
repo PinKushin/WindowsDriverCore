@@ -108,6 +108,99 @@ public sealed class ElementRouteTests : IDisposable
     private static async Task<JsonElement> BodyOf(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
 
+    private const string StaleMessage =
+        "An element command failed because the referenced element is no longer attached to the DOM.";
+
+    private const string AncestorId = "42.19466560.4.7";
+
+    /// <summary>Finds an ancestor for real, so the registry records that id.</summary>
+    /// <remarks>
+    /// The registry here is the REAL one, so "this server issued that id" has to
+    /// become true the way it becomes true in production - by answering a find -
+    /// rather than by stubbing the record. That is the whole variable the
+    /// stale-versus-unknown decision turns on.
+    /// </remarks>
+    private async Task IssueTheAncestor()
+    {
+        _finder.FindFirst(new SearchScope(0x9999), LocatorKind.AutomationId, "theAncestor")
+            .Returns(FindResult.Matched([AncestorId]));
+
+        (await Find("element", "accessibility id", "theAncestor")).EnsureSuccessStatusCode();
+    }
+
+    /// <summary>A dead ancestor is stale, and the child locator is irrelevant.</summary>
+    /// <remarks>
+    /// <b>Measured from the suite, which asserts the message.</b>
+    /// <c>FindNestedElementError_StaleElement</c> searches inside an element it
+    /// deliberately made stale and expects the STALE sentence, not "could not be
+    /// located" - the failure is the container, and reporting it as a missing
+    /// child blames the locator the client did supply correctly.
+    /// </remarks>
+    [Test]
+    public async Task ANestedFind_InsideAnAncestorWeIssuedThatIsGone_IsStale()
+    {
+        await IssueTheAncestor();
+
+        _finder.FindFirst(
+            new SearchScope(0x9999, AncestorId), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Failed(FindFailure.NoSuchContainer));
+
+        HttpResponseMessage response = await Find(
+            $"element/{AncestorId}/element", "accessibility id", "An accessibility id");
+
+        ((int)response.StatusCode).ShouldBe(400);
+        JsonElement body = await BodyOf(response);
+        body.GetProperty("status").GetInt32().ShouldBe(10);
+        body.GetProperty("value").GetProperty("message").GetString().ShouldBe(StaleMessage);
+    }
+
+    /// <summary>The plural route faults too, rather than answering an empty list.</summary>
+    /// <remarks>
+    /// <b>This is the one an empty array hides.</b>
+    /// <c>FindNestedElementsError_StaleElement</c> fails with "Exception should
+    /// have been thrown" - an empty result is a perfectly ordinary answer for
+    /// FindElements, so a dead container reported as "no matches" is
+    /// indistinguishable from a live container holding nothing.
+    /// </remarks>
+    [Test]
+    public async Task ANestedFindAll_InsideAnAncestorWeIssuedThatIsGone_IsStale_NotAnEmptyList()
+    {
+        await IssueTheAncestor();
+
+        _finder.FindAll(
+            new SearchScope(0x9999, AncestorId), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Failed(FindFailure.NoSuchContainer));
+
+        HttpResponseMessage response = await Find(
+            $"element/{AncestorId}/elements", "accessibility id", "An accessibility id");
+
+        ((int)response.StatusCode).ShouldBe(400);
+        JsonElement body = await BodyOf(response);
+        body.GetProperty("status").GetInt32().ShouldBe(10);
+        body.GetProperty("value").GetProperty("message").GetString().ShouldBe(StaleMessage);
+    }
+
+    /// <summary>An id this server never issued is unknown, not stale.</summary>
+    /// <remarks>
+    /// The control on the two above, and it protects a MEASURED behaviour: a
+    /// nested find against an element id WinAppDriver never handed out answers
+    /// "no such element". Without this, moving the dead-container case to stale
+    /// could quietly move that one too, and only the suite would notice.
+    /// </remarks>
+    [Test]
+    public async Task ANestedFind_InsideAnAncestorWeNeverIssued_IsNoSuchElement()
+    {
+        _finder.FindFirst(
+            new SearchScope(0x9999, "9.9.9"), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Failed(FindFailure.NoSuchContainer));
+
+        HttpResponseMessage response = await Find(
+            "element/9.9.9/element", "accessibility id", "An accessibility id");
+
+        ((int)response.StatusCode).ShouldBe(404);
+        (await BodyOf(response)).GetProperty("status").GetInt32().ShouldBe(7);
+    }
+
     /// <summary>
     /// A find that finds nothing does not answer sooner than the reference would.
     /// </summary>

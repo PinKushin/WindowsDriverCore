@@ -79,12 +79,21 @@ public sealed class UiaElementFinder : IElementFinder
         if (scope.ContainerElementId is not null &&
             container.Outcome != ElementLookupOutcome.Resolved)
         {
-            // A container that cannot be resolved is reported as no match rather
-            // than as a window failure, matching WinAppDriver: a nested find
-            // against an unknown element id answers "no such element".
+            // A container that cannot be resolved is a FAILURE, not a find of
+            // nothing. The two were the same answer here, and it cost two suite
+            // tests: FindNestedElementError_StaleElement wants the stale sentence
+            // and got "could not be located", and FindNestedElementsError_
+            // StaleElement got an empty array and no exception at all - because
+            // an empty array is exactly what a live container holding nothing
+            // returns.
+            //
+            // WHICH fault it becomes is not decided here. This layer does not
+            // know which ids this server has handed out, and stale-versus-unknown
+            // turns on precisely that; the protocol layer answers it with the
+            // registry, the same way every other element command does.
             return container.Outcome == ElementLookupOutcome.NoSuchWindow
                 ? FindResult.Failed(FindFailure.NoSuchWindow)
-                : FindResult.Matched([]);
+                : FindResult.Failed(FindFailure.NoSuchContainer);
         }
 
         IUIAutomationElement? root;
@@ -140,9 +149,23 @@ public sealed class UiaElementFinder : IElementFinder
             // element.
             bool mustEnumerate = exhaustive || kind == LocatorKind.RuntimeId;
 
+            // A NESTED search includes the container itself; a window-scoped one
+            // does not. Measured from the compatibility suite, which searches the
+            // alarm tab for the alarm tab's own automation id and asserts the
+            // answer is one element and that it IS the container - twice, once by
+            // automation id and once by runtime id. Both answered zero here.
+            //
+            // The window keeps TreeScope_Descendants deliberately. Nothing
+            // measured says a window-scoped find should match the window element,
+            // and widening the scope every find runs under is not a change to
+            // make on the strength of a nested measurement.
+            TreeScope treeScope = scope.ContainerElementId is null
+                ? TreeScope.TreeScope_Descendants
+                : TreeScope.TreeScope_Subtree;
+
             IReadOnlyList<string> ids = mustEnumerate
-                ? ReadRuntimeIds(root.FindAll(TreeScope.TreeScope_Descendants, condition.Value))
-                : ReadFirstRuntimeId(root.FindFirst(TreeScope.TreeScope_Descendants, condition.Value));
+                ? ReadRuntimeIds(root.FindAll(treeScope, condition.Value))
+                : ReadFirstRuntimeId(root.FindFirst(treeScope, condition.Value));
 
             return FindResult.Matched(
                 kind == LocatorKind.RuntimeId
