@@ -428,14 +428,20 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void Launch_ClassicApplication_ReturnsAWindowOwnedByThatProcess()
     {
-        string? classicApp = TestApp.Path;
+        // THE WIN32 SUBJECT, not the WPF one. WPF is non-packaged and so
+        // exercises the same window OWNERSHIP the assertions below check, but it
+        // is not a classic application: it renders its own content and exposes
+        // WPF automation peers rather than native controls. "Classic" on Windows
+        // means Win32, and this subject registers a window class with real EDIT
+        // and BUTTON children.
+        string? classicApp = Win32TestApp.Path;
 
         if (classicApp is null)
         {
-            Assert.Ignore("The WPF test application has not been built.");
+            Assert.Ignore("The Win32 test application has not been built.");
         }
 
-        HashSet<int> before = ProcessIdsNamed(TestApp.ProcessName);
+        HashSet<int> before = ProcessIdsNamed(Win32TestApp.ProcessName);
 
         LaunchResult result = _launcher.Launch(new ApplicationTarget(classicApp, null, null));
 
@@ -457,7 +463,7 @@ public sealed class ApplicationLauncherTests
         }
         finally
         {
-            StopWhatWasStarted(TestApp.ProcessName, before, result.Application);
+            StopWhatWasStarted(Win32TestApp.ProcessName, before, result.Application);
         }
     }
 

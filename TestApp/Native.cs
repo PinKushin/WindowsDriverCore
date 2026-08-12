@@ -3,7 +3,7 @@ using System.Text;
 
 namespace TestApp;
 
-static class Native
+internal static class Native
 {
     public const string User32 = "user32.dll";
     public const string Kernel32 = "kernel32.dll";
@@ -97,4 +97,16 @@ static class Native
         public int X;
         public int Y;
     }
+
+    [DllImport(User32, EntryPoint = "DestroyWindow", SetLastError = true)]
+    public static extern bool DestroyWindow(IntPtr hWnd);
+
+    [DllImport(User32, EntryPoint = "EnableWindow")]
+    public static extern bool EnableWindow(IntPtr hWnd, bool bEnable);
+
+    [DllImport(User32, EntryPoint = "SetFocus")]
+    public static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport(User32, EntryPoint = "GetWindow")]
+    internal static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 }
