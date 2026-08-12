@@ -6,6 +6,7 @@ using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
 
@@ -107,6 +108,12 @@ public sealed class ApplicationLauncherTests
         if (application is not null && _windows.Exists(application.WindowHandle))
         {
             _windows.Close(application.WindowHandle);
+
+            // A close request on an application holding unsaved work raises a
+            // modal, and a modal nobody answers sits on a SHARED desktop until
+            // the kill below times out. See UnsavedWorkPrompt.
+            UnsavedWorkPrompt.DiscardIfAsked(application.WindowHandle);
+
             _windows.WaitUntilGone(application.WindowHandle);
         }
 
@@ -131,6 +138,14 @@ public sealed class ApplicationLauncherTests
                 // so a test tears an application down the way the driver does.
                 if (process.CloseMainWindow())
                 {
+                    // Same reason as above, for the process the launch added
+                    // rather than the window it reported. The handle is read
+                    // after the request, because a window that only appears in
+                    // response to the close — a save prompt — is the case this
+                    // is for.
+                    process.Refresh();
+                    UnsavedWorkPrompt.DiscardIfAsked(process.MainWindowHandle);
+
                     process.WaitForExit(5000);
                 }
 
@@ -247,6 +262,87 @@ public sealed class ApplicationLauncherTests
         _windows.Exists(window).ShouldBeFalse(
             "the window the launch produced must be gone; a process count cannot " +
             "see it, because Notepad is single-instance and multi-window");
+    }
+
+    /// <summary>
+    /// An application holding unsaved work is torn down without leaving its
+    /// "save changes?" prompt on the desktop.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The condition is the typed character, and without it this test cannot
+    /// fail.</b> An untouched Notepad closes on WM_CLOSE with no prompt, so
+    /// dismissing the prompt and never producing one predict the same
+    /// observation. The text is what makes the two differ.
+    /// </para>
+    /// <para>
+    /// <b>The measurement is the clock, because the end state is the same either
+    /// way.</b> The old teardown also ended up with no window and no process — it
+    /// got there by letting <c>WaitForExit(5000)</c> expire against a modal
+    /// nobody answered and then killing. So "no window afterwards" is blind to
+    /// the defect; the five seconds a focus-stealing modal spends on a shared
+    /// desktop is the thing being fixed, and elapsed time is what sees it.
+    /// </para>
+    /// <para>
+    /// Measured 2026-08-11 on Windows 11 26200: the prompt is a WinUI
+    /// <c>ContentDialog</c> INSIDE the application's own window, not a separate
+    /// top-level dialog, so no amount of window enumeration finds it.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void StoppingAnApplicationWithUnsavedWork_LeavesNoPromptAndTakesNoKillWait()
+    {
+        HashSet<int> before = ProcessIdsNamed("Notepad");
+
+        LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
+
+        if (result.FailureMessage is not null)
+        {
+            Assert.Ignore($"Notepad is not available on this machine: {result.FailureMessage}");
+        }
+
+        result.Application.ShouldNotBeNull();
+        nint window = result.Application.WindowHandle;
+
+        TypeSomethingUnsaved(window);
+
+        Stopwatch teardown = Stopwatch.StartNew();
+        StopWhatWasStarted("Notepad", before, result.Application);
+        teardown.Stop();
+
+        _windows.Exists(window).ShouldBeFalse("the window must be gone");
+        ProcessIdsNamed("Notepad").Except(before).ShouldBeEmpty(
+            "nothing the launch added may survive, including a restored instance");
+
+        // The prediction that separates the two. Answering the prompt is fast;
+        // waiting it out is the five-second WaitForExit and then a kill.
+        teardown.Elapsed.ShouldBeLessThan(
+            TimeSpan.FromMilliseconds(4000),
+            "the save prompt must be answered, not waited out and killed");
+    }
+
+    /// <summary>
+    /// Puts unsaved content into the window, and proves it landed there.
+    /// </summary>
+    /// <remarks>
+    /// <b>The title check is not decoration.</b> Synthesised keystrokes go to
+    /// whatever holds the foreground, so without confirming the modified marker
+    /// this helper could type into another agent's window and the test would
+    /// still measure a clean teardown — of an application with nothing unsaved.
+    /// That is the same class of mistake as an unguarded coordinate click.
+    /// </remarks>
+    private void TypeSomethingUnsaved(nint window)
+    {
+        _windows.BringToForeground(window).ShouldBeTrue(
+            "typing into a window that is not in front sends the keys elsewhere");
+        _windows.WaitForInputProcessed(window);
+
+        new SendInputKeyboard().Type("unsaved").ShouldBeTrue();
+
+        UiSettle.Until(
+            () => _windows.GetTitle(window).StartsWith('*'),
+            TimeSpan.FromSeconds(10),
+            "Notepad to report unsaved changes in its title");
     }
 
     [Test]
