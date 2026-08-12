@@ -28,6 +28,28 @@ public static class ElementRoutes
     /// <summary>How often a find is retried while an implicit wait is set.</summary>
     private static readonly TimeSpan RetryInterval = TimeSpan.FromMilliseconds(50);
 
+    /// <summary>
+    /// The shortest a find may take to answer "nothing found".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured from the reference, and this is a correctness floor rather
+    /// than a courtesy.</b> On the guest with implicit wait 0, WinAppDriver
+    /// answers a find for an absent element in 152-161 ms while this driver
+    /// answers in 18-22 ms. An element that appears 50 ms after the request is
+    /// therefore FOUND by WinAppDriver and MISSED by us — a different result,
+    /// not a faster one, and invisible to the compatibility suite on a fast
+    /// machine.
+    /// </para>
+    /// <para>
+    /// Only the give-up path pays it. A find that succeeds still returns
+    /// immediately, which is where the speed advantage actually lives: the
+    /// reference spends ~148 ms whether it finds anything or not, and we spend
+    /// ~26 ms when the element is there.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan ReferenceGiveUp = TimeSpan.FromMilliseconds(150);
+
     private const string NoSuchElementMessage =
         "An element could not be located on the page using the given search parameters.";
 
@@ -295,17 +317,26 @@ public static class ElementRoutes
     private static async Task<FindResult> RetryWhileEmpty(
         DriverSession session, Func<FindResult> find)
     {
+        long started = Stopwatch.GetTimestamp();
+
         FindResult found = find();
 
-        if (session.ImplicitWait <= TimeSpan.Zero ||
-            found.Failure != FindFailure.None ||
-            found.ElementIds.Count > 0)
+        if (found.Failure != FindFailure.None || found.ElementIds.Count > 0)
         {
             return found;
         }
 
-        long deadline = Stopwatch.GetTimestamp() +
-            (long)(session.ImplicitWait.TotalSeconds * Stopwatch.Frequency);
+        // NOTHING FOUND, so the question becomes how long to keep looking. The
+        // client's implicit wait if it set one, and otherwise the reference
+        // driver's own give-up time - never less, because answering "no such
+        // element" sooner than WinAppDriver would is a different answer rather
+        // than a quicker one.
+        TimeSpan budget = session.ImplicitWait > ReferenceGiveUp
+            ? session.ImplicitWait
+            : ReferenceGiveUp;
+
+        long deadline = started +
+            (long)(budget.TotalSeconds * Stopwatch.Frequency);
 
         while (Stopwatch.GetTimestamp() < deadline)
         {

@@ -44,12 +44,27 @@ public sealed class ContentReadyLauncher : IApplicationLauncher
 {
     /// <summary>How long to wait before giving up and answering anyway.</summary>
     /// <remarks>
-    /// The measured gap is 28-59 ms across both applications, so this is roughly
-    /// eight times the worst observation — generous enough that a loaded machine
-    /// does not fall out of it, and short enough that an application which never
-    /// renders does not hold a session hostage.
+    /// <para>
+    /// <b>Taken from the REFERENCE, not from our own timings.</b> Measured on the
+    /// guest over four rounds: WinAppDriver answers <c>POST /session</c> in
+    /// 771-1515 ms, averaging 1118, while this driver averages 392 ms. So there
+    /// is roughly 700 ms of headroom in which we can keep waiting for the
+    /// application's UI and still answer sooner than the reference does.
+    /// </para>
+    /// <para>
+    /// The first version of this was 500 ms, chosen as eight times OUR measured
+    /// 28-59 ms content gap. That is the wrong way round: a budget inferred from
+    /// our own speed says nothing about when a client would have got an answer
+    /// from WinAppDriver, and one <c>AppName</c> lookup still missed at 500 ms.
+    /// Failing sooner than the reference is a different result, not a faster one.
+    /// </para>
+    /// <para>
+    /// Still bounded, and it still proceeds rather than refusing: an application
+    /// that never renders must not hold a session hostage, and refusing an empty
+    /// frame was measured at 130 against 150.
+    /// </para>
     /// </remarks>
-    private static readonly TimeSpan Budget = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan Budget = TimeSpan.FromMilliseconds(1000);
 
     private readonly IApplicationLauncher _inner;
     private readonly IUIAutomation _automation;

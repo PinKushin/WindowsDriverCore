@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -106,6 +107,57 @@ public sealed class ElementRouteTests : IDisposable
 
     private static async Task<JsonElement> BodyOf(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
+
+    /// <summary>
+    /// A find that finds nothing does not answer sooner than the reference would.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>MEASURED on the guest, and this is a correctness floor.</b> With
+    /// implicit wait 0, WinAppDriver answers a find for an absent element in
+    /// 152-161 ms; this driver answered in 18-22 ms. An element appearing 50 ms
+    /// after the request is therefore FOUND by the reference and MISSED by us —
+    /// a different result, not a quicker one, and invisible to the compatibility
+    /// suite because both drivers pass when the element is simply absent.
+    /// </para>
+    /// <para>
+    /// <b>The successful find is the CONTROL, and without it this test cannot
+    /// fail.</b> An absolute assertion on elapsed time passed with the floor cut
+    /// to one millisecond, because the request already costs more than the
+    /// threshold in fixed overhead — server pipeline, JSON, the loopback hop.
+    /// Timing both paths and comparing them subtracts that overhead, so what is
+    /// left is the waiting itself.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AFindThatFindsNothing_KeepsLookingAsLongAsTheReferenceWould()
+    {
+        // The control: an element that IS there, answered immediately.
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Matched(["42.1.1"]));
+
+        await Find("element", "accessibility id", "present");
+
+        Stopwatch whenFound = Stopwatch.StartNew();
+        await Find("element", "accessibility id", "present");
+        whenFound.Stop();
+
+        // The subject: nothing found, which must keep looking.
+        _finder.FindFirst(Arg.Any<SearchScope>(), Arg.Any<LocatorKind>(), Arg.Any<string>())
+            .Returns(FindResult.Matched([]));
+
+        Stopwatch whenMissing = Stopwatch.StartNew();
+        HttpResponseMessage response = await Find("element", "accessibility id", "absent");
+        whenMissing.Stop();
+
+        (await BodyOf(response)).GetProperty("status").GetInt32().ShouldBe(7);
+
+        // The DIFFERENCE, not the total: the give-up path spends the reference's
+        // ~150 ms that the success path does not.
+        (whenMissing.Elapsed - whenFound.Elapsed).ShouldBeGreaterThan(
+            TimeSpan.FromMilliseconds(100),
+            "answering sooner than WinAppDriver would is a different result, not a faster one");
+    }
 
     [Test]
     public async Task FindElement_ReturnsTheFirstMatch_AsAnElementReference()
