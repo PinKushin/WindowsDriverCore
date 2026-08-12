@@ -2894,3 +2894,100 @@ after typing is the element's own value, and the honest options are:
 
 None of these should be chosen without measuring, and the measurement has to be
 against a **UWP** subject, because a Win32 `EDIT` passes under all of them.
+
+#### Two subjects tried for a XAML measurement, and neither can serve
+
+Evaluating any candidate drain needs a subject where a working drain and a broken
+one predict **different** observations. The Win32 one does — mutation-removing the
+drain fails `TheDrainWorksMoreThanOnceTests`. Two attempts at a XAML subject did
+not, and both failures are worth recording because each looked like a result.
+
+**Calculator: insensitive to its own manipulation.** Typing three digits and
+reading the display back passed **with the drain removed**. Three injected
+characters land fast enough that waiting and not waiting agree — the effect size
+is below the resolution of the condition. Calculator cannot host a larger one
+either: its display caps the digits, so a 52-character condition would report
+truncation as a race. *This one nearly shipped as "the drain is fine on UWP".*
+
+Its first form was worse: it clicked Calculator's C button between iterations,
+the click did not take, and every iteration reported a race that was really an
+ineffective setup step. A setup that shares the mechanism under test cannot
+isolate it.
+
+**The WPF subject: unstable.** Retargeted to the WPF `TextBox` with 52
+characters, the run failed with `NoSuchWindow` — the application lost its window
+partway through, so the fixture measured its own subject dying rather than a
+race.
+
+**So there is currently no local experiment that can evaluate a candidate fix
+against a XAML control.** That is the blocker, and it is worth more than another
+guess at the primitive: a fix validated only on the Win32 subject would be
+validated by exactly the subject that passes under every candidate.
+
+The available validator is the guest compatibility suite itself, with a stated
+prediction — the `SendKeysToElement_*` family stops moving between runs — but a
+change to the element read path affects every element command, so it should be
+made deliberately and measured cold, not appended to a session's end.
+
+## The one flake in our OWN suite, and why it may be the same defect
+
+`StoppingAnApplicationWithUnsavedWork_LeavesNoPromptAndTakesNoKillWait` failed
+twice in six full integration runs on 2026-08-12 and passed in isolation both
+times. Order-dependent state, not a bad assertion.
+
+**The failure is FAST — 315 ms and 405 ms** — which rules out most of the test.
+Enumerating what can fail that quickly:
+
+| assertion | can it fail in ~400 ms |
+|---|---|
+| `BringToForeground(window).ShouldBeTrue()` | **yes** |
+| `new SendInputKeyboard().Type("unsaved").ShouldBeTrue()` | **yes** |
+| `result.Application.ShouldNotBeNull()` | yes, but the launch is otherwise reliable |
+| `UiSettle.Until(title starts with '*', 10 s)` | no — it would take 10 s |
+| `teardown.Elapsed < 4000 ms` | no — it would take over 4 s |
+
+So the failure is in **acquiring the foreground, or typing right after acquiring
+it**. The helper does:
+
+```csharp
+_windows.BringToForeground(window).ShouldBeTrue(...);
+_windows.WaitForInputProcessed(window);
+new SendInputKeyboard().Type("unsaved").ShouldBeTrue();
+```
+
+**`BringToForeground` is called once and its success is asserted immediately.**
+Nothing waits for the window to actually BE foreground, and Windows restricts
+foreground stealing — a subject launched moments earlier, with another fixture's
+application still holding the foreground, is exactly the case that fails
+intermittently. This repository's own rule applies: synchronise on the condition,
+not on a single attempt.
+
+### Why this may not be only a test defect
+
+`UiaElementInteractor.SendKeys` does the same two steps in the same order:
+
+```csharp
+_windows?.BringToForeground(window);   // result DISCARDED
+bool focused = TryFocus(element);      // recorded
+_keyboard.Type(keys);
+```
+
+**The foreground result is discarded there too.** Synthesised keys go to whatever
+holds the foreground, NOT to a handle — so a failed raise means the keystrokes
+landed in another window, and the request still answers 200. That is the same
+class of defect as the drain's discarded boolean, in the same method, and it is
+currently invisible: the transcript records `SendKeys -> Performed via keys`
+whether or not the window ever came forward.
+
+Note what the existing measurements do and do not cover. `focused=48,
+unfocused=0` is **`SetFocus`**, a different call — it says nothing about the
+raise. The `keys -> raised` counter belongs to the session-level `/keys` route,
+which is the family that never fails. **Nothing measures the raise on the element
+path, which is the family that flaps.**
+
+**HYPOTHESIS, and the next experiment is cheap:** log the `BringToForeground`
+result on the element SendKeys path, exactly as the drain now logs its wait, and
+read the next guest run. If raises are failing there, it explains typed text
+going missing without any drain being involved — and it would explain why the
+session-level family, which raises through a path that already records the
+result, is 12/12.
