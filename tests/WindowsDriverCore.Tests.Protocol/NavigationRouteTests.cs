@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -66,7 +67,7 @@ public sealed class NavigationRouteTests : IDisposable
             .Returns(LaunchResult.Success(new LaunchedApplication(4242, TheWindow)));
 
         _windows.Exists(Arg.Any<nint>()).Returns(true);
-        _keyboard.Type(Arg.Any<string>(), Arg.Any<HeldModifiers>()).Returns(true);
+        _keyboard.Type(Arg.Any<string>()).Returns(true);
     }
 
     [OneTimeTearDown]
@@ -100,11 +101,13 @@ public sealed class NavigationRouteTests : IDisposable
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        // The exact gesture, not "some keystroke". Alt+Left is what raises
-        // BackRequested in a packaged application; a bare Left arrow moves the
-        // caret and would leave the view exactly where it was.
-        _keyboard.Received(1).Type(
-            LeftArrow, Arg.Is<HeldModifiers>(held => held.Contains(Alt)));
+        // THE EXACT KEY STRING, because the mechanism is the whole bug.
+        // BuildBatch treats a carried HeldModifiers as already physically down
+        // and does not press it, so the previous version sent a BARE Left arrow
+        // - which moves the caret and leaves the view where it was - and the
+        // test passed anyway because it asserted the same wrong mechanism the
+        // route used. Alt must appear IN the string to be pressed.
+        _keyboard.Received(1).Type($"{Alt}{LeftArrow}{Alt}");
     }
 
     [Test]
@@ -116,21 +119,41 @@ public sealed class NavigationRouteTests : IDisposable
 
         await Navigate(sessionId, "forward");
 
-        _keyboard.Received(1).Type(
-            RightArrow, Arg.Is<HeldModifiers>(held => held.Contains(Alt)));
+        _keyboard.Received(1).Type($"{Alt}{RightArrow}{Alt}");
     }
 
     [Test]
-    public async Task TheModifierIsReleased_SoLaterKeystrokesAreNotAltKeystrokes()
+    public async Task TheAltIsBalanced_SoNothingIsLeftHeldAfterTheRequest()
     {
-        // A modifier left down outlives the request and turns every subsequent
-        // keystroke in the run into Alt+key. This driver has been bitten by
-        // modifier persistence before.
+        // A modifier character toggles: the FIRST occurrence presses it and the
+        // second releases it. An odd number leaves Alt down for the rest of the
+        // process, which is measured - it took SendKeysToElement_ModifierAlt
+        // down on the guest, reporting a modifier still active.
+        //
+        // Counting is the measurement here, not merely "Alt appears": a string
+        // with one Alt would satisfy a Contains check and leave the key held.
         string sessionId = await NewSession();
 
         await Navigate(sessionId, "back");
 
-        _keyboard.Received().ReleaseHeld(Arg.Any<HeldModifiers>());
+        string sent = (string)_keyboard.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(IKeyboardInput.Type))
+            .GetArguments()[0]!;
+
+        sent.Count(character => character == Alt).ShouldBe(2);
+    }
+
+    [Test]
+    public async Task NoModifierIsLeftHeldAcrossRequests()
+    {
+        // ReleaseHeld is not called at all, and must not be: it sends a key-UP
+        // for a modifier this route never left down, which is a lone Alt keyup
+        // with no key-down before it.
+        string sessionId = await NewSession();
+
+        await Navigate(sessionId, "back");
+
+        _keyboard.DidNotReceive().ReleaseHeld(Arg.Any<HeldModifiers>());
     }
 
     [Test]
@@ -162,6 +185,6 @@ public sealed class NavigationRouteTests : IDisposable
         body.RootElement.GetProperty("value").GetProperty("message").GetString()
             .ShouldBe("Currently selected window has been closed");
 
-        _keyboard.DidNotReceive().Type(Arg.Any<string>(), Arg.Any<HeldModifiers>());
+        _keyboard.DidNotReceive().Type(Arg.Any<string>());
     }
 }
