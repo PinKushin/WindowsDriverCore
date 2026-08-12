@@ -1,3 +1,5 @@
+using WindowsDriverCore.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -36,7 +38,8 @@ public static class KeyboardRoutes
         ArgumentNullException.ThrowIfNull(app);
 
         app.MapPost("/session/{sessionId}/keys",
-            async (HttpContext context, IKeyboardInput keyboard, IWindowLocator windows) =>
+            async (HttpContext context, IKeyboardInput keyboard, IWindowLocator windows,
+                   ITerminationLog log) =>
         {
             DriverSession session = context.GetSession();
 
@@ -76,11 +79,15 @@ public static class KeyboardRoutes
             // Zeroing SPI_SETFOREGROUNDLOCKTIMEOUT was tried for this and does
             // NOT help - measured twice, once through the whole suite and once
             // through a probe with the patched binary in place.
-            // The result is deliberately discarded. There is nothing useful to do
-            // with it: refusing is the deadlock above, and the transcript already
-            // carries the request. A dedicated log event would be worth adding
-            // when something needs to distinguish the two cases.
-            _ = windows.BringToForeground(session.WindowHandle);
+            // RECORDED, still not acted upon. Refusing is the deadlock above, so
+            // the keys go out either way - but whether the raise worked is the
+            // difference between "typed into the application" and "typed into
+            // whatever was in front", and those are indistinguishable from the
+            // response alone. Five SendKeys tests failed with an EMPTY target in
+            // 20-27 ms, which is what the second case looks like, and nothing on
+            // the wire could tell them apart.
+            long raiseStarted = Stopwatch.GetTimestamp();
+            bool raised = windows.BringToForeground(session.WindowHandle);
 
             using JsonDocument body = await JsonDocument
                 .ParseAsync(context.Request.Body).ConfigureAwait(false);
@@ -99,6 +106,9 @@ public static class KeyboardRoutes
             // physically down for the next one, which is what the protocol
             // describes and what SendKeys_ModifierExplicitRelease asserts.
             // DELETE /session lifts whatever survives.
+            log.KeysDispatched(
+                raised, Stopwatch.GetElapsedTime(raiseStarted).TotalMilliseconds);
+
             if (!keyboard.Type(keys, session.Modifiers))
             {
                 return Results.Json(

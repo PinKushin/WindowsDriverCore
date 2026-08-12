@@ -135,6 +135,11 @@ public sealed class TextRequestLogListener : EventListener
                 $"  launch '{payload[0]}' -> pid {payload[1]} window 0x{Handle(payload[2])}" +
                 $"{Kind(payload[3])}{Because(payload[4])} {Cost(payload[5])} ms"),
 
+            (DriverEventSource.KeysDispatchedEventId, 2) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  keys -> {(payload[0] is true ? "raised" : "NOT RAISED, went to whatever had focus")}" +
+                $" {Cost(payload[1])} ms"),
+
             (DriverEventSource.WindowClosedEventId, 3) => string.Create(
                 CultureInfo.InvariantCulture,
                 $"  close window 0x{Handle(payload[0])} -> " +
