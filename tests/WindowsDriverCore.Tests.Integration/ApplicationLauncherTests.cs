@@ -245,6 +245,17 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void Launching_ThenStopping_LeavesNoWindowBehind()
     {
+        // NOTEPAD ON PURPOSE, and the only test here that still needs it.
+        //
+        // The point is that a process count CANNOT see this window: Notepad is
+        // single-instance and multi-window, so a second launch adds a window
+        // without adding a process. The WPF subject is one process per window,
+        // which would leave the assertion passing while testing nothing - so
+        // moving this one off Notepad would quietly delete its meaning.
+        //
+        // It is also safe to keep here: nothing is typed, so the close is clean,
+        // no kill follows, and none of the session-restore modals that made the
+        // other Notepad tests move appear.
         HashSet<int> before = ProcessIdsNamed("Notepad");
 
         LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
@@ -292,6 +303,12 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void StoppingAnApplicationWithUnsavedWork_LeavesNoPromptAndTakesNoKillWait()
     {
+        // STILL NOTEPAD, because the prompt is the subject and Notepad is what
+        // raises one. Moving this to the WPF subject was tried and reverted: the
+        // subject would need an unsaved-work prompt built into it, and adding
+        // controls to an application EVERY other integration test drives changes
+        // what those tests see. That is a change to shared meaning, and it is
+        // not worth making to tidy one modal.
         HashSet<int> before = ProcessIdsNamed("Notepad");
 
         LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
@@ -380,28 +397,67 @@ public sealed class ApplicationLauncherTests
         }
     }
 
+    /// <summary>
+    /// A genuinely classic application's window belongs to the process that was
+    /// started.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>THIS USED NOTEPAD AND WAS NOT TESTING A CLASSIC APPLICATION AT ALL.</b>
+    /// Measured 2026-08-12 on Windows 11 26200: System32\notepad.exe is a shim,
+    /// and starting it runs the packaged
+    /// Microsoft.WindowsNotepad_11.2606.15.0_x64__8wekyb3d8bbwe build instead.
+    /// There is no Win32 Notepad on Windows 11 any more, so this test exercised
+    /// the PACKAGED path - the one
+    /// <see cref="Launch_PackagedApplication_ReturnsAWindowOwnedByALiveProcess"/>
+    /// already covers thirty lines above - while its name promised the other.
+    /// The classic launch path had no coverage here at all.
+    /// </para>
+    /// <para>
+    /// <b>And it was the source of the modals.</b> Packaged Notepad restores its
+    /// session after an abnormal exit and reopens complaining it "Cannot find
+    /// the C:\SESSION:&lt;token&gt;.txt file" - its own /SESSION: argument read
+    /// back as a filename - alongside teaching tips and a sign-in prompt. Those
+    /// sat on a shared desktop after runs. Chasing each modal by automation id
+    /// is a losing game; using an application that raises none is not.
+    /// </para>
+    /// <para>
+    /// The repository ships a real Win32 application for exactly this purpose.
+    /// </para>
+    /// </remarks>
     [Test]
     public void Launch_ClassicApplication_ReturnsAWindowOwnedByThatProcess()
     {
-        HashSet<int> before = ProcessIdsNamed("Notepad");
+        string? classicApp = TestApp.Path;
 
-        LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
-
-        if (result.FailureMessage is not null)
+        if (classicApp is null)
         {
-            Assert.Ignore($"Notepad is not available on this machine: {result.FailureMessage}");
+            Assert.Ignore("The WPF test application has not been built.");
         }
+
+        HashSet<int> before = ProcessIdsNamed(TestApp.ProcessName);
+
+        LaunchResult result = _launcher.Launch(new ApplicationTarget(classicApp, null, null));
 
         try
         {
             result.Application.ShouldNotBeNull();
             _windows.Exists(result.Application.WindowHandle).ShouldBeTrue();
+
+            // A classic application hosts its own window, so the owning process
+            // and the hosting process are the SAME. That equality is the whole
+            // difference from the packaged case, where the frame belongs to
+            // ApplicationFrameHost and only GetHostedProcessId finds the app -
+            // and asserting it here is what makes this test cover the path its
+            // name claims.
             result.Application.ProcessId
                 .ShouldBe(_windows.GetHostedProcessId(result.Application.WindowHandle));
+            result.Application.ProcessId
+                .ShouldBe(_windows.GetOwningProcessId(result.Application.WindowHandle));
         }
         finally
         {
-            StopWhatWasStarted("Notepad", before, result.Application);
+            StopWhatWasStarted(TestApp.ProcessName, before, result.Application);
         }
     }
 
@@ -443,7 +499,7 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void Launch_InvalidWorkingDirectory_FailsBeforeStartingAnything()
     {
-        HashSet<int> before = ProcessIdsNamed("Notepad");
+        HashSet<int> before = ProcessIdsNamed(TestApp.ProcessName);
 
         LaunchResult result = _launcher.Launch(
             new ApplicationTarget(NotepadPath, null, @"C:\no\such\directory"));
@@ -458,7 +514,7 @@ public sealed class ApplicationLauncherTests
         // The DIFFERENCE, not the total. Asserting the machine has no Notepad at
         // all made this test a statement about the developer's desktop, and the
         // pre-kill that made it pass is what closed the owner's own window.
-        ProcessIdsNamed("Notepad").Except(before).ShouldBeEmpty(
+        ProcessIdsNamed(TestApp.ProcessName).Except(before).ShouldBeEmpty(
             "rejecting the request must not have started the application anyway");
     }
 
