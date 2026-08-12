@@ -44,8 +44,6 @@ public static class ActionRoutes
         "\"button\" in a pointer action JSON payload is undefined or is not an Integer greater than or equal to 0";
     private const string BadDuration =
         "\"duration\" in a pointer action JSON payload is not an Integer greater than or equal to 0";
-    private const string BadOrigin =
-        "\"origin\" in a action JSON payload is not equal to \"viewport\" or \"pointer\" and element is not an Object that represents a web element";
     private const string BadHeight =
         "\"height\" attribute is not a floating point value greater or equal to 1";
     private const string BadWidth =
@@ -112,7 +110,7 @@ public static class ActionRoutes
             // outcome into a sentence here is what failed the suite's
             // *Error_StaleElement tests character for character.
             return failure.ElementOutcome is { } outcome && failure.ElementId is { } elementId
-                ? ElementFault.For(outcome, session, elementId, registry, windows)
+                ? ElementFault.ForActionsOrigin(outcome, session, elementId, registry, windows)
                 : Results.Json(
                     JsonWireResponse.ForFault(WebDriverFault.UnknownError, failure.Message),
                     statusCode: WebDriverFault.UnknownError.HttpStatus);
@@ -131,7 +129,7 @@ public static class ActionRoutes
         if (!payload.TryGetProperty("actions", out JsonElement sources) ||
             sources.ValueKind != JsonValueKind.Array)
         {
-            return BadOrigin;
+            return ElementFault.BadOriginMessage;
         }
 
         int penSources = 0;
@@ -198,7 +196,7 @@ public static class ActionRoutes
             origin.ValueKind == JsonValueKind.String &&
             origin.GetString() is not ("viewport" or "pointer"))
         {
-            return BadOrigin;
+            return ElementFault.BadOriginMessage;
         }
 
         // width and height are a pair: one without the other is its own error,

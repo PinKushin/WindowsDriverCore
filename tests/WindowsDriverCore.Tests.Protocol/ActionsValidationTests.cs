@@ -10,8 +10,10 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using NUnit.Framework;
 using Shouldly;
+using WindowsDriverCore.Automation;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Protocol.Sessions;
 
 namespace WindowsDriverCore.Tests.Protocol;
 
@@ -44,6 +46,8 @@ public sealed class ActionsValidationTests : IDisposable
     private IApplicationLauncher _launcher = null!;
     private IWindowLocator _windows = null!;
     private ISyntheticPointer _injector = null!;
+    private IElementInspector _inspector = null!;
+    private IElementRegistry _registry = null!;
 
     /// <summary>
     /// Builds the server ONCE for the whole fixture, not per test.
@@ -84,6 +88,8 @@ public sealed class ActionsValidationTests : IDisposable
         // A protocol test is about the wire, not about the desktop. The fake
         // reports success so the route's own behaviour is what gets asserted.
         _injector = Substitute.For<ISyntheticPointer>();
+        _inspector = Substitute.For<IElementInspector>();
+        _registry = Substitute.For<IElementRegistry>();
 
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
@@ -91,6 +97,8 @@ public sealed class ActionsValidationTests : IDisposable
                 services.AddSingleton(_launcher);
                 services.AddSingleton(_windows);
                 services.AddSingleton(_injector);
+                services.AddSingleton(_inspector);
+                services.AddSingleton(_registry);
             }));
 
         _client = _factory.CreateClient();
@@ -119,6 +127,8 @@ public sealed class ActionsValidationTests : IDisposable
         _launcher.ClearReceivedCalls();
         _windows.ClearReceivedCalls();
         _injector.ClearReceivedCalls();
+        _inspector.ClearReceivedCalls();
+        _registry.ClearReceivedCalls();
 
         _launcher.Launch(Arg.Any<ApplicationTarget>())
             .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
@@ -269,5 +279,73 @@ public sealed class ActionsValidationTests : IDisposable
             Pointer("touch", """{"type":"pointerDown","button":0}"""));
 
         ((int)response.StatusCode).ShouldBe(500, "a refused contact is not a success");
+    }
+
+    private const string PenMoveToOrigin =
+        """
+        {"actions":[{"type":"pointer","id":"pen1","parameters":{"pointerType":"pen"},
+        "actions":[{"type":"pointerMove","duration":0,"x":0,"y":0,"origin":ORIGIN}]}]}
+        """;
+
+    /// <summary>
+    /// An Actions origin has its OWN wording, and it is not the element
+    /// commands'.
+    /// </summary>
+    /// <remarks>
+    /// Measured from the suite's own constants:
+    /// <c>ActionsNoSuchElement</c> is
+    /// <c>"specified in the Actions origin is unknown or does not exist"</c>
+    /// while the element commands' <c>NoSuchElement</c> is
+    /// <c>"An element could not be located on the page using the given search
+    /// parameters."</c> Routing the origin through the element-command fault
+    /// answers the second where the suite asserts the first. Both assertions
+    /// are <c>EndsWith</c>, so the identifying prefix is ours to choose.
+    /// </remarks>
+    [Test]
+    public async Task AnUnknownOriginElement_UsesTheActionsWording_NotTheElementCommandWording()
+    {
+        _inspector.ScreenBounds(Arg.Any<nint>(), "42")
+            .Returns(ElementRead.Failed<ElementBounds>(ElementReadOutcome.NotFound));
+
+        // Never issued, so it is unknown rather than stale.
+        _registry.TryConsume(Arg.Any<string>(), Arg.Any<string>()).Returns(false);
+
+        HttpResponseMessage response = await PostActions(
+            PenMoveToOrigin.Replace("ORIGIN", """{"ELEMENT":"42"}""", StringComparison.Ordinal));
+
+        (await MessageOf(response))
+            .ShouldEndWith("specified in the Actions origin is unknown or does not exist");
+    }
+
+    [Test]
+    public async Task AStaleOriginElement_SaysTheOriginIsNoLongerValid()
+    {
+        _inspector.ScreenBounds(Arg.Any<nint>(), "42")
+            .Returns(ElementRead.Failed<ElementBounds>(ElementReadOutcome.NotFound));
+
+        // Issued by this server, so the same outcome means stale rather than
+        // unknown - the distinction the registry exists to draw.
+        _registry.TryConsume(Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+
+        HttpResponseMessage response = await PostActions(
+            PenMoveToOrigin.Replace("ORIGIN", """{"ELEMENT":"42"}""", StringComparison.Ordinal));
+
+        (await MessageOf(response))
+            .ShouldEndWith("specified in the Actions origin is no longer valid");
+    }
+
+    [Test]
+    public async Task ANullOrigin_IsRejectedAsNotAWebElement()
+    {
+        // The suite's ActionsNullElement expectation is a SUFFIX of its
+        // ActionsArgumentOrigin message, so the one bad-origin rejection
+        // satisfies both tests. Answering "the origin names an element this
+        // session does not know" - which is what an unparseable origin used to
+        // produce - matches neither.
+        HttpResponseMessage response = await PostActions(
+            PenMoveToOrigin.Replace("ORIGIN", "null", StringComparison.Ordinal));
+
+        (await MessageOf(response))
+            .ShouldEndWith("element is not an Object that represents a web element");
     }
 }
