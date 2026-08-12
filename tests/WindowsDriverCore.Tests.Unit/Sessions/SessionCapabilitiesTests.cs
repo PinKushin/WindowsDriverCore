@@ -25,6 +25,69 @@ public sealed class SessionCapabilitiesTests
         return SessionCapabilities.Parse(document.RootElement);
     }
 
+    /// <summary>A Selenium 4 client can create a session at all.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the gate, and it was shut.</b> Selenium 4 dropped JSON Wire
+    /// entirely and sends <c>capabilities.alwaysMatch</c>; this parser read only
+    /// <c>desiredCapabilities</c>, so such a client was refused at
+    /// <c>POST /session</c> and never reached a single command. Serving it is
+    /// the most requested thing in WinAppDriver's tracker — ~42 reactions across
+    /// #1610, #1839, #1997 and #1543 — and a reason this driver exists.
+    /// </para>
+    /// <para>
+    /// The previous behaviour was deliberate: WinAppDriver does not understand
+    /// the W3C shape either. But matching the reference's LIMITATIONS is not the
+    /// goal; matching its contract is.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void W3CCapabilities_CreateASession_AndAreMarkedW3C()
+    {
+        CapabilityParseResult result = Parse(
+            """{"capabilities":{"alwaysMatch":{"app":"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}}}""");
+
+        result.Fault.ShouldBeNull("a Selenium 4 client must get a session");
+        result.Capabilities!.App.ShouldBe("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App");
+        result.Capabilities.Dialect.ShouldBe(ProtocolDialect.W3C);
+    }
+
+    /// <summary>
+    /// The dialect is decided by which key was used, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// THE CONTROL. Without it, "always report W3C" would satisfy the test above
+    /// and silently change what every existing JSON Wire client is answered
+    /// with — which is the compatibility suite and every WinAppDriver suite in
+    /// the world.
+    /// </remarks>
+    [Test]
+    public void DesiredCapabilities_StayJsonWire()
+    {
+        CapabilityParseResult result = Parse(
+            """{"desiredCapabilities":{"app":"Calculator"}}""");
+
+        result.Fault.ShouldBeNull();
+        result.Capabilities!.Dialect.ShouldBe(ProtocolDialect.JsonWire);
+    }
+
+    /// <summary>A body with neither shape is still rejected.</summary>
+    /// <remarks>
+    /// <c>firstMatch</c> alone is not accepted: it offers ALTERNATIVES to
+    /// negotiate between, and this driver has one platform to offer, so there is
+    /// nothing to choose and pretending to choose would be a lie the client acts
+    /// on.
+    /// </remarks>
+    [Test]
+    public void W3CWithoutAlwaysMatch_IsRejected()
+    {
+        CapabilityParseResult result = Parse(
+            """{"capabilities":{"firstMatch":[{"app":"whatever"}]}}""");
+
+        result.Capabilities.ShouldBeNull();
+        result.Fault.ShouldNotBeNull();
+    }
+
     [Test]
     public void App_IsAccepted()
     {
@@ -102,15 +165,23 @@ public sealed class SessionCapabilitiesTests
         result.Message.ShouldBe("Capability: appTopLevelWindow cannot be empty");
     }
 
+    /// <summary>
+    /// A W3C body still needs an application, like any other.
+    /// </summary>
+    /// <remarks>
+    /// <b>THIS TEST USED TO ASSERT THE OPPOSITE</b>, and deleting that assertion
+    /// is the point rather than an accident. It read
+    /// <c>W3CAlwaysMatchShape_IsNotUnderstood</c> and reasoned that accepting the
+    /// W3C shape "would accept sessions the real server rejects". True, and no
+    /// longer the goal: Selenium 4 speaks only W3C, cannot drive WinAppDriver at
+    /// all, and serving it is the most requested item in that tracker. Matching
+    /// the reference's CONTRACT is the aim; matching its limitations is not.
+    /// </remarks>
     [Test]
-    public void W3CAlwaysMatchShape_IsNotUnderstood()
+    public void W3CCapabilitiesWithoutAnApp_AreRejectedLikeAnyOther()
     {
-        // WinAppDriver reads desiredCapabilities and nothing else. Supporting the
-        // W3C shape as well would accept sessions the real server rejects, which
-        // is a compatibility difference in the direction that hides bugs: code
-        // written against us would fail against WinAppDriver.
         CapabilityParseResult result = Parse(
-            """{"capabilities":{"alwaysMatch":{"app":"Calculator"}}}""");
+            """{"capabilities":{"alwaysMatch":{"platformName":"windows"}}}""");
 
         result.Fault.ShouldBe(WebDriverFault.InvalidArgument);
         result.Message.ShouldBe(
