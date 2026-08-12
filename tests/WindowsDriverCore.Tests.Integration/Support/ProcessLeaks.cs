@@ -51,7 +51,35 @@ internal static class ProcessLeaks
         {
             try
             {
-                process.Kill();
+                // ASKED TO CLOSE BEFORE BEING KILLED, and the ordering is a fix
+                // rather than politeness. A packaged application treats a kill
+                // as a CRASH and restores its session at the next logon - which
+                // is how a run that "cleaned up" left a Notepad on the desktop
+                // afterwards showing a "Not a valid file name." modal from the
+                // restore it had just attempted. Observed again on 2026-08-12,
+                // from this method: the leftover appeared at the moment the run
+                // ended.
+                //
+                // The same reasoning is already written into
+                // ApplicationLauncherTests' teardown. It was applied there and
+                // not here, so the polite path existed for the fixture that had
+                // been noticed and not for the sweep that runs after every one.
+                if (process.CloseMainWindow())
+                {
+                    // A prompt is what a close raises when there is unsaved
+                    // work, and a prompt nobody answers is what makes the wait
+                    // expire and the kill happen.
+                    UnsavedWorkPrompt.DiscardIfAsked(process.MainWindowHandle);
+                    process.WaitForExit(3000);
+                }
+
+                if (!process.HasExited)
+                {
+                    // It ignored the request or never had a window to send one
+                    // to. Nothing gentler is left, and reporting the leak still
+                    // matters more than how it ends.
+                    process.Kill();
+                }
             }
             catch (InvalidOperationException)
             {
