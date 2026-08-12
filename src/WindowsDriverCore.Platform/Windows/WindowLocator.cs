@@ -170,6 +170,11 @@ public sealed class WindowLocator : IWindowLocator
     }
 
     /// <inheritdoc />
+    public bool IsTopLevel(nint handle) =>
+        Exists(handle) &&
+        Win32.GetAncestor(handle, Win32.GA_PARENT) == Win32.GetDesktopWindow();
+
+    /// <inheritdoc />
     public bool Maximize(nint handle)
     {
         if (!Exists(handle))

@@ -209,23 +209,75 @@ public static class WindowRoutes
                 ? value.GetString()
                 : null;
 
-            if (name is null)
+            // EMPTY counts as missing, not as an unparseable handle.
+            // SwitchWindowsError_EmptyValue sends "" and asserts
+            // "Missing Command Parameter: name"; treating it as a bad handle
+            // answered "the window could not be found" instead.
+            if (string.IsNullOrEmpty(name))
             {
                 return BadParameter("name");
             }
 
             // Hexadecimal, like every other window handle on this wire. Parsing
             // it as decimal would silently address a different window.
-            if (!nint.TryParse(
-                    name.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? name[2..] : name,
-                    System.Globalization.NumberStyles.HexNumber,
-                    CultureInfo.InvariantCulture,
-                    out nint handle) ||
-                !windows.Exists(handle))
+            //
+            // A MALFORMED handle is reported with the .NET parse message rather
+            // than as a missing window: SwitchWindowsError_InvalidValue sends
+            // "-1" and asserts, character for character,
+            // "String cannot contain a minus sign if the base is not 10." That
+            // is Convert.ToInt32's own wording surfacing through WinAppDriver,
+            // so it is reproduced by attempting the same conversion rather than
+            // by copying the sentence and hoping every other malformed input
+            // happens to match.
+            string digits = name.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                ? name[2..]
+                : name;
+
+            nint handle;
+            try
+            {
+                handle = (nint)Convert.ToInt64(digits, 16);
+            }
+            catch (Exception failure) when (
+                failure is ArgumentException or FormatException or OverflowException)
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(WebDriverFault.UnknownError, failure.Message),
+                    statusCode: WebDriverFault.UnknownError.HttpStatus);
+            }
+
+            if (!windows.Exists(handle))
             {
                 return Results.Json(
                     JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, SwitchFailedMessage),
                     statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
+            }
+
+            // A CHILD window is refused by name. SwitchWindowsError_NonTopLevelWindowHandle
+            // hands over the CoreWindow's handle, which exists and belongs to
+            // this very application - so every other check passes and only this
+            // one separates it from a legitimate switch.
+            if (!windows.IsTopLevel(handle))
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(
+                        WebDriverFault.UnknownError, $"{name} is not a top level window handle"),
+                    statusCode: WebDriverFault.UnknownError.HttpStatus);
+            }
+
+            // ANOTHER APPLICATION'S window is refused, and the packaged case is
+            // why this asks twice. A packaged app's frame is owned by
+            // ApplicationFrameHost while its content belongs to the app, so
+            // comparing only the owning process would reject the session's OWN
+            // window and break every legitimate switch.
+            if (windows.GetOwningProcessId(handle) != session.ProcessId &&
+                windows.GetHostedProcessId(handle) != session.ProcessId)
+            {
+                return Results.Json(
+                    JsonWireResponse.ForFault(
+                        WebDriverFault.UnknownError,
+                        "Window handle does not belong to the same process/application"),
+                    statusCode: WebDriverFault.UnknownError.HttpStatus);
             }
 
             session.WindowHandle = handle;
