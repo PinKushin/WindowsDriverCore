@@ -26,7 +26,7 @@ internal static class ProcessLeaks
     private static readonly string[] Launchable =
     [
         "Calculator", "CalculatorApp", "notepad", "Time", "charmap",
-        "SystemSettings", "WindowsDriverCore.TestApp.Wpf",
+        "SystemSettings", "WindowsDriverCore.TestApp.Wpf", "TestApp",
     ];
 
     private static HashSet<int> _presentBeforeTheRun = [];

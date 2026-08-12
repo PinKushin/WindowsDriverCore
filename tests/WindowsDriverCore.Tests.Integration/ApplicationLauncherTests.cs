@@ -7,6 +7,10 @@ using Shouldly;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
+using Interop.UIAutomationClient;
+using WindowsDriverCore.Automation;
+using WindowsDriverCore.Automation.Locators;
+using WindowsDriverCore.Automation.Uia;
 
 namespace WindowsDriverCore.Tests.Integration;
 
@@ -28,7 +32,6 @@ namespace WindowsDriverCore.Tests.Integration;
 public sealed class ApplicationLauncherTests
 {
     private const string CalculatorAumid = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
-    private const string NotepadPath = @"C:\Windows\System32\notepad.exe";
 
     private ApplicationLauncher _launcher = null!;
     private WindowLocator _windows = null!;
@@ -245,34 +248,46 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void Launching_ThenStopping_LeavesNoWindowBehind()
     {
-        // NOTEPAD ON PURPOSE, and the only test here that still needs it.
-        //
-        // The point is that a process count CANNOT see this window: Notepad is
-        // single-instance and multi-window, so a second launch adds a window
-        // without adding a process. The WPF subject is one process per window,
-        // which would leave the assertion passing while testing nothing - so
-        // moving this one off Notepad would quietly delete its meaning.
-        //
-        // It is also safe to keep here: nothing is typed, so the close is clean,
-        // no kill follows, and none of the session-restore modals that made the
-        // other Notepad tests move appear.
-        HashSet<int> before = ProcessIdsNamed("Notepad");
+        // A SECOND WINDOW IN THE SAME PROCESS is the condition, and it used to
+        // come from Notepad being single-instance and multi-window. The Win32
+        // subject provides it deliberately: its "New Window" button opens
+        // another top-level window without another process, so a process count
+        // cannot tell whether the first one closed. Without that second window
+        // the assertion below would pass on an application that simply exited,
+        // which is what moving this to a one-window subject would have done.
+        string? subject = Win32TestApp.Path;
 
-        LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
-
-        if (result.FailureMessage is not null)
+        if (subject is null)
         {
-            Assert.Ignore($"Notepad is not available on this machine: {result.FailureMessage}");
+            Assert.Ignore("The Win32 test application has not been built.");
         }
+
+        HashSet<int> before = ProcessIdsNamed(Win32TestApp.ProcessName);
+
+        LaunchResult result = _launcher.Launch(new ApplicationTarget(subject, null, null));
 
         result.Application.ShouldNotBeNull();
         nint window = result.Application.WindowHandle;
 
-        StopWhatWasStarted("Notepad", before, result.Application);
+        // TEARDOWN IN A FINALLY, and this is not tidiness. A subject launched
+        // with UseShellExecute=false inherits the runner's stdout and stderr, so
+        // an application left alive holds those pipes open and `dotnet test`
+        // never sees its output stream close - the run HANGS instead of
+        // reporting a failure. Measured: an exception from the helper below left
+        // the subject up and wedged a run for 77 minutes with no output at all,
+        // and killing the subject released the runner immediately.
+        try
+        {
+            OpenASecondWindow(window);
+        }
+        finally
+        {
+            StopWhatWasStarted(Win32TestApp.ProcessName, before, result.Application);
+        }
 
         _windows.Exists(window).ShouldBeFalse(
             "the window the launch produced must be gone; a process count cannot " +
-            "see it, because Notepad is single-instance and multi-window");
+            "see it, because the subject holds a second window in the same process");
     }
 
     /// <summary>
@@ -303,39 +318,79 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void StoppingAnApplicationWithUnsavedWork_LeavesNoPromptAndTakesNoKillWait()
     {
-        // STILL NOTEPAD, because the prompt is the subject and Notepad is what
-        // raises one. Moving this to the WPF subject was tried and reverted: the
-        // subject would need an unsaved-work prompt built into it, and adding
-        // controls to an application EVERY other integration test drives changes
-        // what those tests see. That is a change to shared meaning, and it is
-        // not worth making to tidy one modal.
-        HashSet<int> before = ProcessIdsNamed("Notepad");
+        // THE WIN32 SUBJECT, not Notepad. Its dialog is a separate owned window,
+        // which is the classic shape and the one the teardown helper had to
+        // learn; the WinUI in-window shape is still covered because that is what
+        // a packaged application raises.
+        string? subject = Win32TestApp.Path;
 
-        LaunchResult result = _launcher.Launch(new ApplicationTarget(NotepadPath, null, null));
-
-        if (result.FailureMessage is not null)
+        if (subject is null)
         {
-            Assert.Ignore($"Notepad is not available on this machine: {result.FailureMessage}");
+            Assert.Ignore("The Win32 test application has not been built.");
         }
+
+        HashSet<int> before = ProcessIdsNamed(Win32TestApp.ProcessName);
+
+        LaunchResult result = _launcher.Launch(new ApplicationTarget(subject, null, null));
 
         result.Application.ShouldNotBeNull();
         nint window = result.Application.WindowHandle;
 
-        TypeSomethingUnsaved(window);
-
-        Stopwatch teardown = Stopwatch.StartNew();
-        StopWhatWasStarted("Notepad", before, result.Application);
-        teardown.Stop();
+        // Same reason as above: if the typing helper throws, the subject must
+        // still be ended or the whole run wedges on its inherited pipes.
+        Stopwatch teardown;
+        try
+        {
+            TypeSomethingUnsaved(window);
+        }
+        finally
+        {
+            teardown = Stopwatch.StartNew();
+            StopWhatWasStarted(Win32TestApp.ProcessName, before, result.Application);
+            teardown.Stop();
+        }
 
         _windows.Exists(window).ShouldBeFalse("the window must be gone");
-        ProcessIdsNamed("Notepad").Except(before).ShouldBeEmpty(
-            "nothing the launch added may survive, including a restored instance");
+        ProcessIdsNamed(Win32TestApp.ProcessName).Except(before).ShouldBeEmpty(
+            "nothing the launch added may survive");
 
         // The prediction that separates the two. Answering the prompt is fast;
         // waiting it out is the five-second WaitForExit and then a kill.
         teardown.Elapsed.ShouldBeLessThan(
             TimeSpan.FromMilliseconds(4000),
             "the save prompt must be answered, not waited out and killed");
+    }
+
+    /// <summary>Opens a second window in the subject's own process.</summary>
+    /// <remarks>
+    /// <b>The condition, not decoration.</b> With one window the subject exits
+    /// when it closes, and "the window is gone" would pass for an application
+    /// that simply ended - which is indistinguishable from the behaviour under
+    /// test. The second window is what makes a process count unable to answer.
+    /// </remarks>
+    private void OpenASecondWindow(nint window)
+    {
+        _windows.BringToForeground(window).ShouldBeTrue(
+            "the subject must be in front before its button is clicked");
+
+        CUIAutomationClass automation = new();
+        UiaElementResolver resolver = new(automation);
+        UiaElementFinder finder = new(automation, resolver);
+        UiaElementInteractor interactor = new(automation, resolver);
+
+        FindResult found = finder.FindFirst(window, LocatorKind.Name, "New Window");
+        found.ElementIds.Count.ShouldBeGreaterThan(0, "the subject exposes a New Window button");
+
+        interactor.Click(window, found.ElementIds[0]).Outcome
+            .ShouldBe(ElementActionOutcome.Performed);
+
+        UiSettle.Until(
+            () => MainWindowWaiter.SnapshotTopLevelWindows()
+                .Count(candidate => _windows.Exists(candidate) &&
+                                    _windows.GetOwningProcessId(candidate) ==
+                                    _windows.GetOwningProcessId(window)) > 1,
+            TimeSpan.FromSeconds(5),
+            "a second window in the subject's process");
     }
 
     /// <summary>
@@ -359,7 +414,7 @@ public sealed class ApplicationLauncherTests
         UiSettle.Until(
             () => _windows.GetTitle(window).StartsWith('*'),
             TimeSpan.FromSeconds(10),
-            "Notepad to report unsaved changes in its title");
+            "the subject to report unsaved changes in its title");
     }
 
     [Test]
@@ -505,10 +560,10 @@ public sealed class ApplicationLauncherTests
     [Test]
     public void Launch_InvalidWorkingDirectory_FailsBeforeStartingAnything()
     {
-        HashSet<int> before = ProcessIdsNamed(TestApp.ProcessName);
+        HashSet<int> before = ProcessIdsNamed(Win32TestApp.ProcessName);
 
         LaunchResult result = _launcher.Launch(
-            new ApplicationTarget(NotepadPath, null, @"C:\no\such\directory"));
+            new ApplicationTarget(Win32TestApp.Path!, null, @"C:\no\such\directory"));
 
         result.Application.ShouldBeNull();
         result.FailureMessage.ShouldBe("The directory name is invalid");
@@ -520,7 +575,7 @@ public sealed class ApplicationLauncherTests
         // The DIFFERENCE, not the total. Asserting the machine has no Notepad at
         // all made this test a statement about the developer's desktop, and the
         // pre-kill that made it pass is what closed the owner's own window.
-        ProcessIdsNamed(TestApp.ProcessName).Except(before).ShouldBeEmpty(
+        ProcessIdsNamed(Win32TestApp.ProcessName).Except(before).ShouldBeEmpty(
             "rejecting the request must not have started the application anyway");
     }
 

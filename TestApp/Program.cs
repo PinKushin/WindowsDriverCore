@@ -47,6 +47,8 @@ internal static class Program
     private const int WM_DESTROY = 0x0002;
     private const int WM_CLOSE = 0x0010;
     private const int WM_COMMAND = 0x0111;
+    private const int WM_SETFOCUS = 0x0007;
+    private const int EN_CHANGE = 0x0300;
 
     private const uint WS_OVERLAPPEDWINDOW = 0x00CF0000;
     private const uint WS_CHILD = 0x40000000;
@@ -171,9 +173,34 @@ internal static class Program
                 break;
             }
 
+            case WM_SETFOCUS:
+            {
+                // KEYBOARD FOCUS GOES TO THE EDIT, not to the frame. A Win32
+                // window does not hand focus to a child on its own, so keys sent
+                // to the application landed on the frame, the edit never
+                // changed, and no EN_CHANGE was raised - which is exactly how a
+                // caller typing into this subject saw nothing happen.
+                Native.SetFocus(Native.GetDlgItem(hWnd, IDC_EDIT));
+                return IntPtr.Zero;
+            }
+
             case WM_COMMAND:
             {
                 long control = wParam.ToInt64() & 0xFFFF;
+                long notification = (wParam.ToInt64() >> 16) & 0xFFFF;
+
+                // THE MODIFIED MARKER. Every editor shows one, and a caller has
+                // to be able to prove its typing landed before trusting anything
+                // measured afterwards - typing goes to whatever holds the
+                // foreground, so "I sent keys" is not evidence they arrived.
+                if (control == IDC_EDIT && notification == EN_CHANGE)
+                {
+                    Native.SetWindowTextW(
+                        hWnd,
+                        TextOf(hWnd, IDC_EDIT).Length > 0
+                            ? "*WindowsDriverCore Test App"
+                            : "WindowsDriverCore Test App");
+                }
 
                 if (control == IDC_BUTTON)
                 {

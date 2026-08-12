@@ -36,14 +36,19 @@ public sealed class ProcessLeakDetectionTests
     {
         ProcessLeaks.Snapshot();
 
+        // OUR OWN SUBJECT, not Notepad. This test exists to be KILLED - that is
+        // the leak it simulates - and killing packaged Notepad makes Windows
+        // treat it as a crash and restore the session at the next logon, which
+        // reopens with a modal on a desktop several suites share. Any process
+        // serves the purpose, so it may as well be one that dies quietly.
         using Process leaked = Process.Start(
-            new ProcessStartInfo("notepad.exe") { UseShellExecute = true })!;
+            new ProcessStartInfo(Win32TestApp.Path!) { UseShellExecute = true })!;
 
         // Wait for it to be listed rather than assuming it is instant.
         UiSettle.Until(
-            () => Process.GetProcessesByName("notepad").Any(p => p.Id == leaked.Id),
+            () => Process.GetProcessesByName(Win32TestApp.ProcessName).Any(p => p.Id == leaked.Id),
             TimeSpan.FromSeconds(10),
-            "notepad to appear in the process list");
+            "the subject to appear in the process list");
 
         IReadOnlyList<string> reported = ProcessLeaks.TakeLeaks();
 
@@ -53,7 +58,7 @@ public sealed class ProcessLeakDetectionTests
 
         // And it must actually clean up, or every later run inherits the mess.
         UiSettle.Until(
-            () => !Process.GetProcessesByName("notepad").Any(p => p.Id == leaked.Id),
+            () => !Process.GetProcessesByName(Win32TestApp.ProcessName).Any(p => p.Id == leaked.Id),
             TimeSpan.FromSeconds(10),
             "the leaked process to be killed");
     }
@@ -64,13 +69,17 @@ public sealed class ProcessLeakDetectionTests
         // THE CONTROL, and the one that matters most. A developer's own Calculator
         // is not the suite's to kill, and a detector that cannot tell the
         // difference would reach outside its blast radius.
+        // OUR OWN SUBJECT, standing in for the developer's own application. It
+        // is killed at the end of this test, and killing packaged Notepad makes
+        // Windows restore its session at the next logon with a modal on a
+        // shared desktop - the reason nothing in this suite launches it now.
         using Process theirs = Process.Start(
-            new ProcessStartInfo("notepad.exe") { UseShellExecute = true })!;
+            new ProcessStartInfo(Win32TestApp.Path!) { UseShellExecute = true })!;
 
         UiSettle.Until(
-            () => Process.GetProcessesByName("notepad").Any(p => p.Id == theirs.Id),
+            () => Process.GetProcessesByName(Win32TestApp.ProcessName).Any(p => p.Id == theirs.Id),
             TimeSpan.FromSeconds(10),
-            "notepad to appear in the process list");
+            "the subject to appear in the process list");
 
         ProcessLeaks.Snapshot();
 
@@ -80,7 +89,7 @@ public sealed class ProcessLeakDetectionTests
                 entry => entry.Contains($"({theirs.Id})", StringComparison.Ordinal),
                 "a process that predates the snapshot was not started by this suite");
 
-            Process.GetProcessesByName("notepad").ShouldContain(
+            Process.GetProcessesByName(Win32TestApp.ProcessName).ShouldContain(
                 p => p.Id == theirs.Id, "and it must still be running");
         }
         finally
