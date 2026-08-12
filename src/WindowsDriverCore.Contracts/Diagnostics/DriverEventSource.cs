@@ -72,6 +72,9 @@ public sealed class DriverEventSource
     /// <summary>Event id for <see cref="PointerTargeted"/>.</summary>
     public const int PointerTargetedEventId = 8;
 
+    /// <summary>Event id for <see cref="WindowClosed"/>.</summary>
+    public const int WindowClosedEventId = 9;
+
     /// <inheritdoc />
     /// <remarks>
     /// <para>
@@ -197,6 +200,23 @@ public sealed class DriverEventSource
         }
 
         WriteEvent(ApplicationTerminatedEventId, processId, ended, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        WindowClosedEventId,
+        Level = EventLevel.Informational,
+        Message = "close window {0} -> gone {1} {2} ms")]
+    public void WindowClosed(nint windowHandle, bool gone, double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        // nint is not a type WriteEvent marshals, so the handle travels as a
+        // long and the listener formats it back to hex.
+        WriteEvent(WindowClosedEventId, (long)windowHandle, gone, elapsedMilliseconds);
     }
 
     /// <inheritdoc />
