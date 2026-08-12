@@ -98,7 +98,26 @@ public static class ScreenshotRoutes
     /// </remarks>
     private static void MapElementScreenshot(IEndpointRouteBuilder app)
     {
-        app.MapGet("/session/{sessionId}/element/{elementId}/screenshot",
+        // BOTH SPELLINGS, and the FIRST one is the one that matters.
+        //
+        // JSON Wire puts the element id after the command —
+        // /session/{id}/screenshot/{elementId} — and that is what Selenium 3's
+        // RemoteWebElement.GetScreenshot() actually sends. W3C moved it to
+        // /element/{id}/screenshot. This route was written from the W3C shape
+        // alone, so all three element-screenshot tests answered 404 with no JWP
+        // body while the protocol tests passed: they asserted the same wrong
+        // path the route declared, so the test could not tell the two apart.
+        //
+        // That is the founding mistake of this repository repeated verbatim —
+        // JWP is the contract, W3C is additive — and it is why the measured
+        // wire path outranks the specification that looks more modern.
+        MapElementScreenshotAt(app, "/session/{sessionId}/screenshot/{elementId}");
+        MapElementScreenshotAt(app, "/session/{sessionId}/element/{elementId}/screenshot");
+    }
+
+    private static void MapElementScreenshotAt(IEndpointRouteBuilder app, string pattern)
+    {
+        app.MapGet(pattern,
             static (HttpContext context,
                     IElementInspector inspector,
                     IElementRegistry registry,

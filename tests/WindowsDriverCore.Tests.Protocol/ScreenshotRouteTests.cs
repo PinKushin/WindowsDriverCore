@@ -190,7 +190,7 @@ public sealed class ScreenshotRouteTests : IDisposable
             .Returns(ElementRead.Success(new ElementBounds(310, 420, 50, 24)));
 
         HttpResponseMessage response = await _client.GetAsync(
-            new Uri($"/session/{sessionId}/element/42/screenshot", UriKind.Relative));
+            new Uri($"/session/{sessionId}/screenshot/42", UriKind.Relative));
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -213,7 +213,7 @@ public sealed class ScreenshotRouteTests : IDisposable
         _registry.TryConsume(Arg.Any<string>(), Arg.Any<string>()).Returns(true);
 
         HttpResponseMessage response = await _client.GetAsync(
-            new Uri($"/session/{sessionId}/element/42/screenshot", UriKind.Relative));
+            new Uri($"/session/{sessionId}/screenshot/42", UriKind.Relative));
 
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         body.RootElement.GetProperty("status").GetInt32().ShouldBe(10);
