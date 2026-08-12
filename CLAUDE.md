@@ -68,12 +68,17 @@ tests/…Unit  …Protocol  …Integration
 bench/…Benchmarks  …Fuzz
 ```
 
-Working: `/status`, unknown-command fallback, session create/list/delete,
-`/orientation`, element find (`/element`, `/elements`), CLI argument forms and
-base path, classic and packaged application launch.
+Working: `/status`, unknown-command fallback, session create/list/delete
+(including attach-by-window-handle), `/orientation`, element find (`/element`,
+`/elements`), CLI argument forms and base path, classic and packaged
+application launch, click/clear/value/SendKeys, mouse and touch/pen pointer
+input including `/actions`, `/keys`, implicit wait, XPath.
 
-Not working yet: element interaction, window routes, mouse/touch/Actions,
-implicit wait, XPath, screenshots. `docs/LIMITATIONS.md` is the live list.
+This paragraph is a rough sketch, not the source of truth — it stopped being
+updated as routes landed and drifted stale for a while, most recently
+2026-08-11. **`docs/LIMITATIONS.md` is the live, maintained list**; the
+209/290 score above is the actual measure of what works. Screenshots are the
+one route confirmed still unimplemented as of that score.
 
 ## Claims
 
@@ -96,8 +101,8 @@ no warm step**:
 | WinAppDriver 1.2.1 | **280/290** |
 | environmental failures | 9 (3 ModernApp, 5 browser/EdgeBase, 1 `GetLocation`) |
 | **reachable ceiling** | **281** |
-| **this driver** | **203/290** |
-| **the gap** | **77 tests** |
+| **this driver** | **209/290** (`d52882e`) |
+| **the gap** | **72 tests** |
 
 **Every earlier figure in this file was wrong, including ones measured
 repeatedly.** Two pieces of scaffolding introduced on 2026-08-10 in a single
@@ -262,9 +267,11 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 - **280/290 for WinAppDriver 1.2.1 on the rebuilt guest**, cold, no reset, no
   warm — Windows 10 19045, Alarms & Clock `10.1906.2182.0`, offline, static 4 GB.
   Nine of the ten failures are environmental, so the reachable ceiling is **281**.
-  **This driver scores 203/290 under the same conditions — a gap of 77.** Every
-  earlier figure for either driver was taken through scaffolding that moved the
-  result.
+  **This driver scores 209/290 under the same conditions (`d52882e`) — a gap of
+  72.** Every earlier figure for either driver was taken through scaffolding
+  that moved the result. The test-suite refactor commits after `d52882e`
+  (protocol fixture consolidation) do not change product behaviour and were
+  not re-measured against the guest for that reason.
 - **The backlog, read from a request transcript rather than a test list:** 80
   finds answering `no such element`, 18 `POST /actions` rejecting arguments with
   status 100, 10 session creations failing on absent Edge. Removing the reset and
