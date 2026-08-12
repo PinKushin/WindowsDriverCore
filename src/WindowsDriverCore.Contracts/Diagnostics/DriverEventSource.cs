@@ -75,6 +75,9 @@ public sealed class DriverEventSource
     /// <summary>Event id for <see cref="WindowClosed"/>.</summary>
     public const int WindowClosedEventId = 9;
 
+    /// <summary>Event id for <see cref="KeysDispatched"/>.</summary>
+    public const int KeysDispatchedEventId = 10;
+
     /// <inheritdoc />
     /// <remarks>
     /// <para>
@@ -217,6 +220,21 @@ public sealed class DriverEventSource
         // nint is not a type WriteEvent marshals, so the handle travels as a
         // long and the listener formats it back to hex.
         WriteEvent(WindowClosedEventId, (long)windowHandle, gone, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        KeysDispatchedEventId,
+        Level = EventLevel.Informational,
+        Message = "keys -> raised {0} {1} ms")]
+    public void KeysDispatched(bool raised, double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(KeysDispatchedEventId, raised, elapsedMilliseconds);
     }
 
     /// <inheritdoc />

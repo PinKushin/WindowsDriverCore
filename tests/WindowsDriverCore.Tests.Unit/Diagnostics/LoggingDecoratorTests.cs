@@ -256,6 +256,12 @@ public sealed class LoggingDecoratorTests
 
         public void WindowClosed(nint windowHandle, bool gone, double elapsedMilliseconds) =>
             WindowCloses.Add(new LoggedWindowClose(windowHandle, gone, elapsedMilliseconds));
+
+        public void KeysDispatched(bool raised, double elapsedMilliseconds)
+        {
+            // Recorded nowhere: no test asserts on it yet, and the point of the
+            // event is what a real run's transcript says.
+        }
     }
 
     private sealed class StubFinder(FindResult result) : IElementFinder

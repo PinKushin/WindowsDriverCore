@@ -240,4 +240,20 @@ public interface ITerminationLog
     /// </param>
     /// <param name="elapsedMilliseconds">Wall-clock cost of the close and the wait.</param>
     void WindowClosed(nint windowHandle, bool gone, double elapsedMilliseconds);
+
+    /// <summary>Records a keystroke dispatch and whether the window was raised first.</summary>
+    /// <param name="raised">
+    /// Whether the window actually came to the foreground. Synthesized keys go
+    /// to whatever holds focus, NOT to a handle, so a false here means the
+    /// keystrokes went somewhere else - and the request still answered success,
+    /// because refusing to type deadlocks a caller trying to dismiss a shell
+    /// surface it just opened.
+    /// </param>
+    /// <param name="elapsedMilliseconds">Wall-clock cost of the dispatch.</param>
+    /// <remarks>
+    /// <b>No key content, ever.</b> This is where a password would appear, so the
+    /// event carries only whether the raise worked. That constraint is the reason
+    /// the parameter list cannot grow to include what was typed.
+    /// </remarks>
+    void KeysDispatched(bool raised, double elapsedMilliseconds);
 }
