@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using WindowsDriverCore.Protocol.Errors;
 
 namespace WindowsDriverCore.Protocol.Responses;
@@ -26,6 +27,14 @@ public static class JsonWireResponse
     /// <returns>The envelope.</returns>
     public static SessionResponse<T> ForSession<T>(string sessionId, T value) =>
         new(sessionId, SuccessStatus, value);
+
+    /// <summary>A successful <c>POST /session</c>.</summary>
+    /// <param name="sessionId">The new session's id.</param>
+    /// <param name="capabilities">The capabilities to echo back.</param>
+    /// <returns>The envelope, identical on the wire to <see cref="ForSession"/>.</returns>
+    public static SessionCreatedResponse ForSessionCreated(
+        string sessionId, IReadOnlyDictionary<string, string> capabilities) =>
+        new(sessionId, SuccessStatus, capabilities);
 
     /// <summary>A session-scoped command that returns nothing.</summary>
     /// <param name="sessionId">The session id.</param>

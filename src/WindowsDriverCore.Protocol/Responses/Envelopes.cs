@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace WindowsDriverCore.Protocol.Responses;
@@ -10,6 +11,18 @@ namespace WindowsDriverCore.Protocol.Responses;
 /// </remarks>
 public sealed record ElementReference(
     [property: JsonPropertyName("ELEMENT")] string Element);
+
+/// <summary>A reference to an element, as W3C spells it.</summary>
+/// <param name="Element">The element id, a dot-separated UIA RuntimeId.</param>
+/// <remarks>
+/// <b>The same id under a different key.</b> W3C names the property with a fixed
+/// uuid so it cannot collide with an ordinary object member, and Selenium 4
+/// reads exactly that. A client sent the JSON Wire spelling sees an object it
+/// does not recognise as an element and fails on the NEXT command rather than
+/// this one, which is the confusing way round.
+/// </remarks>
+public sealed record W3CElementReference(
+    [property: JsonPropertyName("element-6066-11e4-a52e-4f735466cecf")] string Element);
 
 /// <summary>The <c>value</c> of <c>GET /element/{id}/location</c>.</summary>
 /// <param name="X">Left edge, <b>relative to the window</b>, not the screen.</param>
@@ -37,6 +50,20 @@ public sealed record ElementSize(
     [property: JsonPropertyName("height")] int Height,
     [property: JsonPropertyName("width")] int Width);
 
+/// <summary>An envelope whose <c>value</c> is worth translating between dialects.</summary>
+/// <remarks>
+/// <b>Non-generic on purpose.</b> The dialect filter sees responses as
+/// <see cref="object"/> and cannot pattern-match <c>SessionResponse&lt;T&gt;</c>
+/// without knowing every <c>T</c> — so it matches this instead. Nothing else
+/// reads <see cref="Payload"/>; it exists so the translation has one seam rather
+/// than a switch that grows a case per response type.
+/// </remarks>
+public interface IValueEnvelope : IJsonWireEnvelope
+{
+    /// <summary>The value about to be serialized, boxed.</summary>
+    object? Payload { get; }
+}
+
 /// <summary>A response to a session-scoped command that returns a value.</summary>
 /// <typeparam name="T">The value type.</typeparam>
 /// <param name="SessionId">The session the command ran against.</param>
@@ -45,7 +72,34 @@ public sealed record ElementSize(
 public sealed record SessionResponse<T>(
     [property: JsonPropertyName("sessionId")] string SessionId,
     [property: JsonPropertyName("status")] int Status,
-    [property: JsonPropertyName("value")] T Value) : IJsonWireEnvelope;
+    [property: JsonPropertyName("value")] T Value) : IValueEnvelope
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public object? Payload => Value;
+}
+
+/// <summary>The answer to a successful <c>POST /session</c>.</summary>
+/// <param name="SessionId">The new session.</param>
+/// <param name="Status">Always 0.</param>
+/// <param name="Value">The capabilities echoed back.</param>
+/// <remarks>
+/// <b>Byte-identical to <see cref="SessionResponse{T}"/> on the wire</b> — same
+/// three properties, same names, same order. It is a separate type only so the
+/// dialect filter can recognise session creation without inspecting the request
+/// path, which would have to account for the <c>/wd/hub</c> base path and would
+/// silently stop matching if that ever moved.
+/// </remarks>
+public sealed record SessionCreatedResponse(
+    [property: JsonPropertyName("sessionId")] string SessionId,
+    [property: JsonPropertyName("status")] int Status,
+    [property: JsonPropertyName("value")] IReadOnlyDictionary<string, string> Value)
+    : IValueEnvelope
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public object? Payload => Value;
+}
 
 /// <summary>A response to a session-scoped command that returns nothing.</summary>
 /// <param name="SessionId">The session the command ran against.</param>
@@ -61,7 +115,12 @@ public sealed record VoidSessionResponse(
 /// <param name="Value">The result of the command.</param>
 public sealed record ServerResponse<T>(
     [property: JsonPropertyName("status")] int Status,
-    [property: JsonPropertyName("value")] T Value) : IJsonWireEnvelope;
+    [property: JsonPropertyName("value")] T Value) : IValueEnvelope
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public object? Payload => Value;
+}
 
 /// <summary>A response carrying only a status, as <c>DELETE /session</c> does.</summary>
 /// <param name="Status">Always 0.</param>

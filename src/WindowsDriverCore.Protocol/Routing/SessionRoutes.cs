@@ -46,6 +46,14 @@ public static class SessionRoutes
                 .ConfigureAwait(false);
 
             CapabilityParseResult parsed = SessionCapabilities.Parse(body.RootElement);
+
+            // Recorded before the validation branch, so a W3C client that sends
+            // bad capabilities is REFUSED in W3C too. A fault shaped for the
+            // wrong dialect is the one a client cannot report usefully - it sees
+            // an unrecognised body and raises "unknown error" for a message that
+            // said exactly what was wrong.
+            ProtocolDialectContext.Remember(context, parsed.Dialect);
+
             if (parsed.Capabilities is null)
             {
                 // Validation before anything is started. Launching and then
@@ -68,7 +76,7 @@ public static class SessionRoutes
             // on the client's very next request.
             sessions.Add(created.Session);
 
-            return Results.Json(JsonWireResponse.ForSession(
+            return Results.Json(JsonWireResponse.ForSessionCreated(
                 created.Session.Id,
                 created.Session.Capabilities));
         });
@@ -80,7 +88,8 @@ public static class SessionRoutes
                     .ToList())));
 
         app.MapDelete("/session/{sessionId}",
-            (string sessionId,
+            (HttpContext context,
+             string sessionId,
              ISessionStore sessions,
              IElementRegistry elements,
              IElementHandleCache handles,
@@ -90,6 +99,16 @@ public static class SessionRoutes
             // Remove returns the session so teardown does not need a second
             // lookup, which could race another request deleting the same id.
             DriverSession? removed = sessions.Remove(sessionId);
+
+            // This route removes the session itself rather than going through
+            // RequiresSession, so nothing else has recorded which dialect to
+            // answer in. A W3C client would otherwise get a JSON Wire body for
+            // the one command it always calls - teardown - and report a failed
+            // quit for a session that shut down perfectly.
+            if (removed is not null)
+            {
+                ProtocolDialectContext.Remember(context, removed.Dialect);
+            }
 
             if (removed is null)
             {
