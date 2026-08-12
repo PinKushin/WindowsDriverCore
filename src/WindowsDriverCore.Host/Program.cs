@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,9 +47,63 @@ public partial class Program
     {
         ArgumentNullException.ThrowIfNull(args);
 
+        RegisterCrashReporting();
+
         ServerAddress address = ServerAddress.Parse(args);
         WebApplication app = Build(args, address);
         app.Run();
+    }
+
+    /// <summary>
+    /// Writes a local report when the process crashes, and points at it on
+    /// the way down.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>First thing in <see cref="Main"/>, before anything else.</b> A crash
+    /// during startup — construction of the UI Automation root object, capability
+    /// parsing, anything before <c>app.Run()</c> — has to be caught too, and
+    /// registering this after those would leave exactly that window uncovered.
+    /// </para>
+    /// <para>
+    /// <b>What this does NOT catch, and it matters.</b> ASP.NET Core's own
+    /// pipeline catches an exception thrown while handling a request and turns
+    /// it into a 500 response — that exception never reaches
+    /// <c>AppDomain.UnhandledException</c>, because something up the call stack
+    /// already handled it. This hook only fires for what nothing else caught:
+    /// a background thread, a fire-and-forget <c>Task</c>, startup before the
+    /// pipeline exists. A request handler that throws is a protocol bug to fix,
+    /// not a crash to report.
+    /// </para>
+    /// </remarks>
+    private static void RegisterCrashReporting()
+    {
+        CrashDumpWriter writer = new(CrashDumpWriter.DefaultDirectory, TimeProvider.System);
+
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            // ExceptionObject is object, not Exception - the CLR allows a
+            // non-Exception throw from unverifiable code, rare as that is. A
+            // report is still written rather than silently dropped: "unhandled
+            // non-Exception" is a fact worth having on disk too.
+            Exception exception = e.ExceptionObject as Exception
+                ?? new InvalidOperationException(
+                    $"Unhandled non-Exception object thrown: {e.ExceptionObject}");
+
+            string path = writer.Write(exception, e.IsTerminating);
+            Console.Error.WriteLine($"WindowsDriverCore crashed. Report: {path}");
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            string path = writer.Write(e.Exception, isTerminating: false);
+            Console.Error.WriteLine($"An unobserved task exception was recorded: {path}");
+
+            // Marked observed so the finalizer thread does not re-throw it and
+            // take the process down anyway - the report has already been
+            // written, and that second throw would just be a worse copy of it.
+            e.SetObserved();
+        };
     }
 
     /// <summary>
