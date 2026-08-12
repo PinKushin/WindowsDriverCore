@@ -78,6 +78,9 @@ public sealed class DriverEventSource
     /// <summary>Event id for <see cref="KeysDispatched"/>.</summary>
     public const int KeysDispatchedEventId = 10;
 
+    /// <summary>Event id for <see cref="InputDrained"/>.</summary>
+    public const int InputDrainedEventId = 11;
+
     /// <inheritdoc />
     /// <remarks>
     /// <para>
@@ -235,6 +238,21 @@ public sealed class DriverEventSource
         }
 
         WriteEvent(KeysDispatchedEventId, raised, elapsedMilliseconds);
+    }
+
+    /// <inheritdoc />
+    [Event(
+        InputDrainedEventId,
+        Level = EventLevel.Informational,
+        Message = "drain -> waited {0} {1} ms")]
+    public void InputDrained(bool waited, double elapsedMilliseconds)
+    {
+        if (!IsEnabled())
+        {
+            return;
+        }
+
+        WriteEvent(InputDrainedEventId, waited, elapsedMilliseconds);
     }
 
     /// <inheritdoc />

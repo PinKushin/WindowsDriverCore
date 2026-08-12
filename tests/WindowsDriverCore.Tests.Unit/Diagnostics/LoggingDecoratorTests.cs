@@ -262,6 +262,13 @@ public sealed class LoggingDecoratorTests
             // Recorded nowhere: no test asserts on it yet, and the point of the
             // event is what a real run's transcript says.
         }
+
+        public void InputDrained(bool waited, double elapsedMilliseconds)
+        {
+            // Same: this event exists to be READ in a guest transcript, where a
+            // drain that never ran was previously indistinguishable from one that
+            // waited. Nothing here asserts on it.
+        }
     }
 
     private sealed class StubFinder(FindResult result) : IElementFinder

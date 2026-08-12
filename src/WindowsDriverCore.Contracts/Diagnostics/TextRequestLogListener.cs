@@ -140,6 +140,14 @@ public sealed class TextRequestLogListener : EventListener
                 $"  keys -> {(payload[0] is true ? "raised" : "NOT RAISED, went to whatever had focus")}" +
                 $" {Cost(payload[1])} ms"),
 
+            // "DID NOT WAIT" is the line worth reading, and it is spelled loudly
+            // for the same reason "STILL THERE" is below: the request answers
+            // success either way, so a silent failure is invisible on the wire.
+            (DriverEventSource.InputDrainedEventId, 2) => string.Create(
+                CultureInfo.InvariantCulture,
+                $"  drain -> {(payload[0] is true ? "waited" : "DID NOT WAIT, the read may race the typing")}" +
+                $" {Cost(payload[1])} ms"),
+
             (DriverEventSource.WindowClosedEventId, 3) => string.Create(
                 CultureInfo.InvariantCulture,
                 $"  close window 0x{Handle(payload[0])} -> " +

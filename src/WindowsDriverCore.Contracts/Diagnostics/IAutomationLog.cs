@@ -256,4 +256,28 @@ public interface ITerminationLog
     /// the parameter list cannot grow to include what was typed.
     /// </remarks>
     void KeysDispatched(bool raised, double elapsedMilliseconds);
+
+    /// <summary>Records the wait for typed input to be consumed.</summary>
+    /// <param name="waited">
+    /// Whether the wait actually ran. FALSE is the interesting case and it is
+    /// currently invisible: <c>WaitForInputProcessed</c> returns false when the
+    /// window is gone, when the process id is zero, or when <c>OpenProcess</c> is
+    /// denied — and the caller carries on, because a missing wait is a race
+    /// while refusing the read is a certainty. So a drain that never ran and a
+    /// drain that waited produce the same transcript.
+    /// </param>
+    /// <param name="elapsedMilliseconds">
+    /// Wall-clock cost. Worth reading beside <paramref name="waited"/>: a TRUE
+    /// that cost 0 ms means the wait ran and answered immediately, which is a
+    /// different problem from the wait not running at all.
+    /// </param>
+    /// <remarks>
+    /// <b>Added 2026-08-12 to answer a question three theories failed to.</b> The
+    /// <c>SendKeysToElement_*</c> family reads an element's text 0.9 ms after the
+    /// keystroke that should have changed it, and nothing in the transcript said
+    /// whether the drain in between did anything. The same argument as
+    /// <see cref="WindowClosed"/>: a boolean the code already computes and throws
+    /// away is exactly the boolean an investigation later needs.
+    /// </remarks>
+    void InputDrained(bool waited, double elapsedMilliseconds);
 }

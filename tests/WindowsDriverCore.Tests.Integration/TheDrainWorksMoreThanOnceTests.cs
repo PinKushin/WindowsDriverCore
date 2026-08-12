@@ -115,6 +115,10 @@ public sealed class TheDrainWorksMoreThanOnceTests
         _interactor.SendKeys(_window, box, TheText);
 
         // The drain under test, called exactly as the /text route calls it.
+        //
+        // MUTATION-VERIFIED: removing this line fails BOTH tests here. One
+        // attempt read back 54 of 52 characters - more than were typed - so the
+        // Clear races too, not only the read.
         _windows.WaitForInputProcessed(_window);
 
         return _inspector.Text(_window, box).Value ?? string.Empty;

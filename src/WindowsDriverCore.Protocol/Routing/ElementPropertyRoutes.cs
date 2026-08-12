@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Diagnostics;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
@@ -120,12 +122,13 @@ public static class ElementPropertyRoutes
              IElementInspector inspector,
              IElementRegistry registry,
              IWindowLocator windows,
+             ITerminationLog? log,
              string elementId) =>
             {
                 DriverSession session = context.GetSession();
 
                 // Pay for typing here, and only when something was typed.
-                DrainTypedInput(session, windows);
+                DrainTypedInput(session, windows, log);
 
                 ElementRead<T> result = read(inspector, session.WindowHandle, elementId);
 
@@ -139,6 +142,7 @@ public static class ElementPropertyRoutes
     /// <summary>Waits for typed input to land, if any is in flight.</summary>
     /// <param name="session">The session, whose flag is cleared once drained.</param>
     /// <param name="windows">Used to wait on the application.</param>
+    /// <param name="log">Records whether the wait actually ran. Optional.</param>
     /// <remarks>
     /// <para>
     /// <b>Measured 2026-08-11, three candidate primitives, one survivor.</b>
@@ -156,7 +160,8 @@ public static class ElementPropertyRoutes
     /// and still races.
     /// </para>
     /// </remarks>
-    private static void DrainTypedInput(DriverSession session, IWindowLocator windows)
+    private static void DrainTypedInput(
+        DriverSession session, IWindowLocator windows, ITerminationLog? log)
     {
         if (!session.InputPending)
         {
@@ -166,7 +171,24 @@ public static class ElementPropertyRoutes
         // Cleared either way. A wait that fails - no message loop, or a process
         // this driver may not open - must not make every later read retry it.
         session.InputPending = false;
-        windows.WaitForInputProcessed(session.WindowHandle);
+
+        long started = Stopwatch.GetTimestamp();
+        bool waited = windows.WaitForInputProcessed(session.WindowHandle);
+
+        // THE RESULT IS NO LONGER DISCARDED, and that was a real defect by this
+        // repository's own rule: a return-value error signal is checked before
+        // reading dependent state.
+        //
+        // It still does not change what the route DOES - refusing the read
+        // outright is worse than a racy answer, and the reference does not refuse
+        // either. What changes is that a drain which never ran now says so.
+        // Measured 2026-08-12: the SendKeysToElement_* family reads text 0.9 ms
+        // after the keystroke that should have changed it, and nothing in the
+        // transcript could distinguish "waited" from "never ran".
+        //
+        // Read `waited` and the elapsed time TOGETHER. True at 0 ms is a wait
+        // that ran and answered instantly - a different problem from false.
+        log?.InputDrained(waited, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
 
     private static ElementRead<ElementLocation> ReadLocation(
