@@ -40,17 +40,18 @@ public static class ElementPropertyRoutes
         MapRead(app, "location_in_view", ReadLocation);
         MapRead(app, "size", ReadSize);
 
-        MapAttribute(app);
+        // W3C's replacement for location + size, and the route a Selenium 4
+        // client uses for BOTH - the specification deleted the other two. This
+        // is one of the few places this driver deliberately does more than the
+        // reference: WinAppDriver answers 501 here, which is why no Selenium 4
+        // test can read an element's geometry through it.
+        //
+        // Nothing in the compatibility suite requests /rect, so implementing it
+        // cannot cost a suite test. Matching a NOT-answer would have been
+        // faithfulness to a defect rather than to the protocol.
+        MapRead(app, "rect", ReadRect);
 
-        // W3C's replacement for location + size, which WinAppDriver never
-        // implemented. Reported the way it reports every unimplemented command:
-        // 501 with a plain-text body the client cannot parse, which is what
-        // produces its "Unexpected error. " prefix.
-        app.MapGet("/session/{sessionId}/element/{elementId}/rect",
-            static (HttpContext context) => Results.Text(
-                $"Unimplemented Command: {context.Request.Method}: {context.Request.Path}",
-                statusCode: StatusCodes.Status501NotImplemented))
-            .RequiresSession();
+        MapAttribute(app);
 
         return app;
     }
@@ -177,6 +178,26 @@ public static class ElementPropertyRoutes
             ? ElementRead.Success(
                 new ElementLocation(bounds.Value.X, bounds.Value.Y))
             : ElementRead.Failed<ElementLocation>(bounds.Outcome);
+    }
+
+    /// <summary>Reads one rectangle and reports it whole.</summary>
+    /// <remarks>
+    /// <b>Window-relative, the same source <c>/location</c> reads.</b> W3C states
+    /// coordinates in the top-level browsing context's frame; for a desktop
+    /// driver that frame is the window. Reading screen bounds here instead -
+    /// which <see cref="IElementInspector"/> will also answer - would have one
+    /// driver report two different positions for one element depending on which
+    /// route the client asked.
+    /// </remarks>
+    private static ElementRead<ElementRect> ReadRect(
+        IElementInspector inspector, nint window, string elementId)
+    {
+        ElementRead<ElementBounds> bounds = inspector.WindowRelativeBounds(window, elementId);
+
+        return bounds.Outcome == ElementReadOutcome.Read
+            ? ElementRead.Success(new ElementRect(
+                bounds.Value.X, bounds.Value.Y, bounds.Value.Width, bounds.Value.Height))
+            : ElementRead.Failed<ElementRect>(bounds.Outcome);
     }
 
     private static ElementRead<ElementSize> ReadSize(
