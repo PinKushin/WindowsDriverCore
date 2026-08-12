@@ -161,4 +161,26 @@ public interface IElementInspector
     /// process's DPI awareness happens to be.
     /// </remarks>
     ElementRead<ElementBounds> WindowRelativeBounds(nint window, string elementId);
+
+    /// <summary>The id of the element that currently has keyboard focus.</summary>
+    /// <param name="window">The session's window, which scopes the answer.</param>
+    /// <returns>
+    /// The focused element's id, or <see cref="string.Empty"/> when focus is
+    /// somewhere outside this session's window.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Focus elsewhere is a successful read of an empty id, not a fault.</b>
+    /// The compatibility suite opens the Start menu to take focus away and then
+    /// requires the active element to come back non-null with an EMPTY id -
+    /// <c>Assert.AreEqual(string.Empty, activeElement.Id)</c>. Answering "no
+    /// such element" there would be a different shape of response entirely.
+    /// </para>
+    /// <para>
+    /// Scoped to the window because UIA's focused element is global: without the
+    /// check, a session would report an element belonging to whatever
+    /// application the user happened to click on.
+    /// </para>
+    /// </remarks>
+    ElementRead<string> FocusedElementId(nint window);
 }
