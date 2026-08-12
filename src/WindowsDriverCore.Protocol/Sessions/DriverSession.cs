@@ -26,6 +26,11 @@ namespace WindowsDriverCore.Protocol.Sessions;
 /// the session is deleted: a desktop session addresses explorer, and an attached
 /// session addresses a window somebody else opened.
 /// </param>
+/// <param name="Dialect">
+/// Which protocol the client speaks, fixed when the session was created. Every
+/// response this session produces is shaped for it, and the routes never learn
+/// which one it is.
+/// </param>
 /// <param name="IsDesktop">
 /// Whether this session addresses the whole desktop rather than one
 /// application. A desktop session owns no application windows, and the suite
@@ -38,7 +43,8 @@ public sealed record DriverSession(
     int ProcessId,
     nint WindowHandle,
     bool OwnsApplication = false,
-    bool IsDesktop = false)
+    bool IsDesktop = false,
+    ProtocolDialect Dialect = ProtocolDialect.JsonWire)
 {
     /// <summary>
     /// The window the session is pointed at, which <c>POST /session/:id/window</c>

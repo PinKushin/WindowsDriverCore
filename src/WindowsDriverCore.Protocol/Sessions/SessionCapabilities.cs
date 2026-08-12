@@ -39,10 +39,17 @@ public enum ProtocolDialect
 /// different rejections share <see cref="WebDriverFault.InvalidArgument"/> but
 /// carry different messages, and clients match on the message.
 /// </param>
+/// <param name="Dialect">
+/// Which protocol the body was written in. Carried even on a REJECTION, because
+/// the refusal has to be shaped for the client that will read it — and a body
+/// too malformed to accept is exactly the one whose dialect is worth getting
+/// right.
+/// </param>
 public sealed record CapabilityParseResult(
     SessionCapabilities? Capabilities,
     WebDriverFault? Fault,
-    string? Message);
+    string? Message,
+    ProtocolDialect Dialect = ProtocolDialect.JsonWire);
 
 /// <summary>
 /// Capabilities supplied on <c>POST /session</c>.
@@ -137,7 +144,7 @@ public sealed record SessionCapabilities(
             }
             else
             {
-                return Rejected(BadCapabilitiesMessage);
+                return Rejected(BadCapabilitiesMessage, dialect);
             }
         }
 
@@ -159,17 +166,17 @@ public sealed record SessionCapabilities(
         // "prefer app" reading would produce.
         if ((app is null) == (topLevelWindow is null))
         {
-            return Rejected(BadCapabilitiesMessage);
+            return Rejected(BadCapabilitiesMessage, dialect);
         }
 
         if (app is not null && app.Length == 0)
         {
-            return Rejected(EmptyAppMessage);
+            return Rejected(EmptyAppMessage, dialect);
         }
 
         if (topLevelWindow is not null && topLevelWindow.Length == 0)
         {
-            return Rejected(EmptyTopLevelWindowMessage);
+            return Rejected(EmptyTopLevelWindowMessage, dialect);
         }
 
         return new CapabilityParseResult(
@@ -181,9 +188,10 @@ public sealed record SessionCapabilities(
                 Echo: echo,
                 Dialect: dialect),
             Fault: null,
-            Message: null);
+            Message: null,
+            Dialect: dialect);
     }
 
-    private static CapabilityParseResult Rejected(string message) =>
-        new(Capabilities: null, WebDriverFault.InvalidArgument, message);
+    private static CapabilityParseResult Rejected(string message, ProtocolDialect dialect) =>
+        new(Capabilities: null, WebDriverFault.InvalidArgument, message, dialect);
 }

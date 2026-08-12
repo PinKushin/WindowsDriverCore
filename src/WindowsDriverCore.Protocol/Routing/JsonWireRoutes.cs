@@ -30,6 +30,12 @@ public static class JsonWireRoutes
         RouteGroupBuilder logged = app.MapGroup(string.Empty);
         logged.AddEndpointFilter<JsonWireStatusFilter>();
 
+        // Added SECOND so it runs INSIDE the status filter, which therefore reads
+        // the status off the translated envelope. Both spellings report the same
+        // number, so the transcript is identical either way - but the ordering is
+        // the one that keeps it true if a future dialect ever disagrees.
+        logged.AddEndpointFilter<ProtocolDialectFilter>();
+
         logged.MapGet("/status", (IServerStatusProvider status) =>
             Results.Json(status.GetStatus()));
 

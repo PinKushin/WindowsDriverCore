@@ -51,6 +51,13 @@ public static class RequireSession
 
             http.Items[SessionItemKey] = session;
 
+            // The dialect was fixed when the session was created and every
+            // response it produces is shaped for it. Reading it off the REQUEST
+            // instead would let one client's classic command and its /actions
+            // call - which Selenium 3 sends in different dialects - come back in
+            // two different envelope shapes.
+            ProtocolDialectContext.Remember(http, session.Dialect);
+
             // ASP.NET Core has no synchronization context, so this is a formality
             // rather than a fix — but it is free, and suppressing CA2007 across
             // the protocol layer would hide the cases where it does matter.
