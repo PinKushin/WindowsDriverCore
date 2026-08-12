@@ -427,11 +427,25 @@ public sealed class PointerActionRunner
         // An element origin. The offset is from the element's CENTRE, which is
         // W3C's rule and not its top-left - getting that wrong puts every
         // element-relative gesture half a control away from where it belongs.
-        string? elementId = ElementId(origin);
+        //
+        // The KIND is checked before the keys are read. JsonElement.TryGetProperty
+        // THROWS on anything that is not an object, so a payload sending
+        // "origin": null - which the suite's ActionsError_NullElement does
+        // verbatim - took the whole request down as an unhandled exception and
+        // answered a 500 HTML page instead of a fault a client can read.
+        string? elementId = origin.ValueKind == JsonValueKind.Object
+            ? ElementId(origin)
+            : null;
         if (elementId is null)
         {
-            return (0, 0, PointerRefusal.Reason(
-                "The origin names an element this session does not know"));
+            // The BAD-ORIGIN sentence, not a private one. An origin that is
+            // null, or an object with no element key, is a malformed argument
+            // rather than a missing element - and the suite's ActionsNullElement
+            // expectation is a SUFFIX of its bad-origin message, so this one
+            // rejection satisfies both ActionsError_NullElement and
+            // ActionsError_BadPointerOrigin. The sentence this used to send
+            // matched neither.
+            return (0, 0, PointerRefusal.Reason(ElementFault.BadOriginMessage));
         }
 
         ElementRead<ElementBounds> bounds = _elements.ScreenBounds(window, elementId);

@@ -33,6 +33,75 @@ internal static class ElementFault
     /// </remarks>
     public const string WindowClosedMessage = "Currently selected window has been closed";
 
+    /// <summary>
+    /// What a bad <c>origin</c> in an Actions payload is told.
+    /// </summary>
+    /// <remarks>
+    /// Declared here rather than in <see cref="ActionRoutes"/> because
+    /// <see cref="PointerActionRunner"/> needs the same sentence for an origin
+    /// it cannot parse, and two copies of a string the suite compares character
+    /// for character is two chances to drift.
+    /// </remarks>
+    public const string BadOriginMessage =
+        "\"origin\" in a action JSON payload is not equal to \"viewport\" or \"pointer\" and element is not an Object that represents a web element";
+
+    /// <summary>
+    /// The fault for an Actions <c>origin</c> element that could not be read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An Actions origin has its own wording, and it is not the element
+    /// commands'.</b> Measured from the suite's own constants: an unknown origin
+    /// element wants <c>"specified in the Actions origin is unknown or does not
+    /// exist"</c> where an element command wants <c>"An element could not be
+    /// located on the page using the given search parameters."</c> Routing the
+    /// origin through <see cref="For"/> answers the second where the suite
+    /// asserts the first, and the tests use <c>EndsWith</c>, so the identifying
+    /// prefix is ours.
+    /// </para>
+    /// <para>
+    /// <b>The stale-versus-unknown decision is still the one rule.</b> Only the
+    /// sentence differs — the question of whether this server ever issued the id
+    /// is answered by the same registry call, in this same file, rather than
+    /// re-derived at the call site.
+    /// </para>
+    /// </remarks>
+    /// <param name="outcome">What the inspector reported.</param>
+    /// <param name="session">Scopes the issued-id record and names the window.</param>
+    /// <param name="elementId">The id the client put in the origin.</param>
+    /// <param name="registry">The record of ids this server has handed out.</param>
+    /// <param name="windows">Answers whether the session's window is still there.</param>
+    /// <returns>The response.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    internal static IResult ForActionsOrigin(
+        ElementReadOutcome outcome,
+        DriverSession session,
+        string elementId,
+        IElementRegistry registry,
+        IWindowLocator windows)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(elementId);
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(windows);
+
+        // A dead window outranks a bad origin, exactly as it does for the
+        // element commands - ActionsError_NoSuchWindow asserts the window
+        // message, not an origin one.
+        if (outcome == ElementReadOutcome.NoSuchWindow || !windows.Exists(session.WindowHandle))
+        {
+            return Fault(WebDriverFault.NoSuchWindow, WindowClosedMessage);
+        }
+
+        return registry.TryConsume(session.Id, elementId)
+            ? Fault(
+                WebDriverFault.StaleElementReference,
+                $"Element {elementId} specified in the Actions origin is no longer valid")
+            : Fault(
+                WebDriverFault.NoSuchElement,
+                $"Element {elementId} specified in the Actions origin is unknown or does not exist");
+    }
+
     /// <summary>The fault for an outcome that is not a successful read.</summary>
     /// <param name="outcome">What the inspector reported.</param>
     /// <param name="session">The session, which scopes the issued-id record and names the window.</param>
