@@ -2686,3 +2686,89 @@ From field evidence in `docs/PROJECT-KNOWLEDGE.md`, each currently undecided:
 - **Pattern-first click divergences** — occlusion, focus, and hover all behave
   differently from a real mouse click. Documented in advance rather than
   discovered through a red compatibility run.
+
+---
+
+## The `SendKeysToElement_*` family: measured 2026-08-12, cause narrowed to residue
+
+Recorded before any fix, because three earlier theories about this family were
+published and refuted and the raw data is what survives that.
+
+### The control was already in the results, and it is decisive
+
+Three consecutive guest runs (`c5cf728`, `b0de3d8`, `bd3df1f`; no reset, no warm,
+cold, Alarms `10.1906.2182.0`):
+
+| family | c5cf728 | b0de3d8 | bd3df1f |
+|---|---|---|---|
+| `SendKeys_*` (session-level, 12 tests) | **12/12** | **12/12** | **12/12** |
+| `SendKeysToElement_*` (element-level, 12 tests) | 8/12 | 10/12 | 8/12 |
+
+**The session-level family has never failed once.** It drives the same keyboard
+code, the same `IKeyboardInput`, the same modifier handling and the same drain.
+So the typing path is **not** the variable — if it were, both families would move
+together.
+
+That retires the three theories this family has already cost:
+modifier persistence, a send race, and foreground refusal
+(54/55 windows raised). All were about the typing path. The control says the
+typing path is fine.
+
+**What differs between the two families is only WHERE the keys land.** The
+session route types at the window; the element route resolves an element first
+and types at that.
+
+### Which tests fail is different every run, and the messages name residue
+
+`bd3df1f`, verbatim:
+
+```
+SendKeysToElement_Alphabet         Expected:<>.          Actual:<Alarm (1)>      dur 7.75 s
+SendKeysToElement_SymbolsKeys      Expected:<>.          Actual:<0123456789>     dur 0.04 s
+SendKeysToElement_ModifierControl  Expected:<789789789>. Actual:<789>            dur 0.11 s
+SendKeysToElement_ModifierAlt      Expected:<False>.     Actual:<True>           dur 0.05 s
+```
+
+**`Expected:<>` is the whole finding.** Those tests assert the field is EMPTY
+before or after they act, and they find text in it. `0123456789` is another
+test's input, not this one's. So the box carries residue across tests.
+
+`Alarm (1)` is not typed text at all — it is an alarm NAME, so that test is
+looking at a different control from the one it means, or the app is on a
+different page.
+
+`SendKeysToElement_ModifierControl` expected `789789789` and got `789`: a
+select-all-and-paste that pasted nothing. That is consistent with the same cause
+(the field or the clipboard not in the state the test set up) and is NOT
+consistent with keys being dropped, which would lose characters from the `789`
+too.
+
+### The 7.75 s duration ties this to a known cluster
+
+`SendKeysToElement_Alphabet` took 7.75 s where its siblings took 0.04-0.11 s.
+That is the shape recorded in
+`the-8s-cluster-is-a-page-recovery-cascade-not-slowness`: `TestInit()` burning
+three full implicit-wait cycles probing automation ids because Alarms is on the
+wrong page. **Why the app is on the wrong page was left open there, and this is
+the same question arriving from the other direction.**
+
+`TouchScrollOnElement_Vertical` flips on exactly the runs this family flips on
+(failed at `c5cf728`, passed at `b0de3d8`, failed at `bd3df1f`), so it is
+probably the same cause rather than a separate one.
+
+### Status of the explanation
+
+- **MEASURED** — session-level SendKeys never fails; element-level flaps; the
+  failing set changes run to run; the messages show another test's text and an
+  alarm name in fields asserted to be empty.
+- **HYPOTHESIS** — a preceding test leaves the application on a different page,
+  or leaves text in the box, and the next test reads the wrong control or a dirty
+  one. Not yet established, and *which* preceding test is not known.
+- **REFUTED, do not revisit** — modifier persistence, a send race, foreground
+  refusal. The session-level control rules out the entire typing path, not just
+  those three mechanisms.
+
+**This is not noise.** The user's framing is the correct one and is adopted here:
+there is dirty start state, and there is flake this driver causes. A test that
+passes 8 times out of 12 has a cause; the cause is simply not in the code that
+was suspected for three rounds.
