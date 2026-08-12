@@ -168,6 +168,73 @@ public sealed class UiaElementInteractorTests
         keyboard.Received(1).Type("hello");
     }
 
+    /// <summary>A failed raise is reported, not swallowed.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Synthesised keys go to whatever holds the FOREGROUND, not to a
+    /// handle.</b> So a raise that did not happen means the keystrokes landed in
+    /// another window — and this still answers <c>Performed</c>, because refusing
+    /// to type deadlocks a caller trying to dismiss a shell surface it just
+    /// opened. The outcome is therefore useless as a signal, and the path is the
+    /// only place the fact can live.
+    /// </para>
+    /// <para>
+    /// <b>Why it matters beyond tidiness.</b> The result was discarded, exactly
+    /// as the input drain's was, and that made a whole class of failure
+    /// invisible: `focused=48, unfocused=0` in a guest run measures
+    /// <c>SetFocus</c>, a different call, and the `keys -&gt; raised` counter
+    /// belongs to the session-level route — the family that never fails. Nothing
+    /// measured the raise on the element path, which is the family that flaps.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void TypingWhenTheWindowWouldNotComeForward_SaysSoInThePath()
+    {
+        IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
+        keyboard.Type(Arg.Any<string>()).Returns(true);
+
+        IWindowLocator refusing = Substitute.For<IWindowLocator>();
+        refusing.BringToForeground(Arg.Any<nint>()).Returns(false);
+
+        UiaElementInteractor typing = new(
+            _automation,
+            new UiaElementResolver(_automation),
+            windows: refusing,
+            keyboard: keyboard);
+
+        ElementAction action = typing.SendKeys(_window, Find("num5Button"), "hello");
+
+        // Still Performed. That is the measured reference behaviour and it is why
+        // the path has to carry the warning instead.
+        action.Outcome.ShouldBe(ElementActionOutcome.Performed);
+        action.Path.ShouldStartWith("keys (NOT RAISED");
+    }
+
+    /// <summary>The control: a raise that works is not labelled as a failure.</summary>
+    /// <remarks>
+    /// Without this, a path hard-coded to the warning would pass the test above.
+    /// The two together are what make the label mean anything.
+    /// </remarks>
+    [Test]
+    public void TypingWhenTheWindowDoesComeForward_IsNotLabelledAsAFailedRaise()
+    {
+        IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
+        keyboard.Type(Arg.Any<string>()).Returns(true);
+
+        IWindowLocator raising = Substitute.For<IWindowLocator>();
+        raising.BringToForeground(Arg.Any<nint>()).Returns(true);
+
+        UiaElementInteractor typing = new(
+            _automation,
+            new UiaElementResolver(_automation),
+            windows: raising,
+            keyboard: keyboard);
+
+        ElementAction action = typing.SendKeys(_window, Find("num5Button"), "hello");
+
+        action.Path.ShouldNotContain("NOT RAISED");
+    }
+
     [Test]
     public void ActingOnAnIdThatIsNotInTheTree_IsNotFound()
     {
