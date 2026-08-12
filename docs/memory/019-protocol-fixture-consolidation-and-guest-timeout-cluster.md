@@ -2,8 +2,9 @@
 
 **Date:** 2026-08-11
 **Status:** ALL 21 protocol fixtures converted and pushed (`cd8a91a`, `e8ee62c`,
-`90252c9`). Fixture-folding (point 2 below) and the guest timeout cluster
-(point 3) both still unstarted.
+`90252c9`). The guest timeout cluster (point 2) has been probed and traced to
+its actual cause — it is NOT driver latency, see the update at the bottom.
+Fixture-folding (point 3) still unstarted.
 
 ## 1. All 21 protocol fixtures now share one `WebApplicationFactory`
 
@@ -105,21 +106,31 @@ Slowest tests from the `b6d6e1a2` guest run:
  8,016 ms  SendKeysToElement_Alphabet
 ```
 
-Nothing in this suite legitimately takes 8-27 seconds. The tight clustering
-right around 8000-8100ms across the `*_NoSuchWindow` and `*_StaleElement`
-family is the signature of a fixed timeout budget being exhausted, not
-organic variance — same shape as the pattern already recorded: *"a wait that
-spends its whole budget never detected the thing"* (docs/LIMITATIONS.md, and
-mirrored in auto-memory as `a-full-timeout-means-not-detected`). Read it as
-looking for the wrong condition, never as a slow application.
+**UPDATE — probed, and the framing above was wrong.** Comparing per-test
+durations against WinAppDriver's own reference run for the SAME test names
+split this into two different things. Most of the "cluster" (the LongClick
+tests, the `*_StaleElement` family) is comparable to or FASTER than
+WinAppDriver once measured test-for-test — not a bug, partly explained by
+`Thread.Sleep` calls baked into the test's own client-side helper code
+(`AlarmClockBase.GetStaleElement()`), which cost both drivers equally.
 
-**Total suite wall-clock time is stable across seven measured runs
-(5:25-6:03), so this is not a whole-run slowdown.** It is specific tests
-individually eating a timeout, which the user first flagged from the "feel"
-of the VM running slow — the per-test durations bear it out even though the
-total does not.
+Three tests were the real signal — an almost exact +8000ms tax where
+WinAppDriver answers in 200-350ms: `GetElementDisplayedStateError_NoSuchWindow`,
+`FindElement_ByAccessibilityId`, `ClickElementError_ElementNotVisible`.
+Cross-referencing their exact TRX start/end times against the real request
+transcript (not test-source guessing) showed all three windows contain the
+identical sequence: `find AutomationId='AlarmButton' -> 0 match`, then
+`AlarmPivotItem -> 0`, then `CloseButton -> 0`, each burning a full ~2.6s
+implicit-wait cycle, before `CancelButton -> 1 match` finally succeeds.
 
-Not yet probed. Next step: pick one `*_NoSuchWindow` test (e.g.
-`GetElementDisplayedStateError_NoSuchWindow`) and trace what condition it is
-actually waiting on before assuming it is the same mechanism across the whole
-cluster.
+This is `AlarmClockBase.TestInit()` — Microsoft's own cross-version
+compatibility shim, which runs before every test and probes several possible
+automation ids because different Alarms & Clock releases used different ones
+for the same controls. When the app is on the main tab already, the first
+candidate matches instantly. When it is stuck on the Add/Edit Alarm page
+instead, three genuinely-absent ids each burn the full implicit wait before
+the fourth succeeds. **Not driver latency — those 404s are correct.** The
+open question is why the app was on the wrong page for these three tests
+when WinAppDriver's reference run was not; two of the three windows open
+right after a fresh session/launch. Full evidence chain in auto-memory:
+`the-8s-cluster-is-a-page-recovery-cascade-not-slowness`.
