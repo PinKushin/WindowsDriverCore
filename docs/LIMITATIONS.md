@@ -2772,3 +2772,62 @@ probably the same cause rather than a separate one.
 there is dirty start state, and there is flake this driver causes. A test that
 passes 8 times out of 12 has a cause; the cause is simply not in the code that
 was suspected for three rounds.
+
+### The drain is inert in the guest, and that is measurable in the transcript
+
+The `/text` read that fails is **0.9 ms after the keystroke that should have
+changed it**, from `transcript-bd3df1f58-184453.log`:
+
+```
+18:49:06.553   SendKeys -> Performed via keys 77.5 ms      <- Ctrl+A
+18:49:06.564   SendKeys -> Performed via keys 10.8 ms      <- Delete
+18:49:06.565   GET .../element/.../text -> 200 jwp 0 0.9 ms
+```
+
+`GET /text` goes through `ElementPropertyRoutes.MapRead`, which calls
+`DrainTypedInput`, and `POST /value` sets `session.InputPending = true`. So the
+drain was armed and cost approximately nothing. Every `/text` in that stretch is
+0.8-2.6 ms. **The wait that exists to prevent exactly this race did not wait.**
+
+`SendKeys -> Performed via keys` with **`focused=48, unfocused=0` across the whole
+run** — so `SetFocus` never declined once. Focus is not the variable either.
+
+### REFUTED: "WaitForInputIdle waits only once per process"
+
+MSDN says *"subsequent WaitForInputIdle calls return immediately, whether the
+process is idle or busy"*, which would have made the drain protect the first read
+of a run and nothing after. It predicted that repeated drains against one
+long-lived process would read back short.
+
+**Measured and refuted** — `TheDrainWorksMoreThanOnceTests`, six consecutive
+type-52-characters-drain-read cycles against one process, **52/52 every time**,
+with the fixture spending ~150 ms per cycle. The waits are real and they repeat.
+The test is kept: it is the control that makes the next hypothesis falsifiable,
+and it pins a documented behaviour that would otherwise have to be re-argued.
+
+### HYPOTHESIS: the drain fails silently on a PACKAGED application
+
+The subject that works is the repository's Win32 app — one process, and the
+window handle is the application's own. The subject that fails is Alarms & Clock
+behind an `ApplicationFrameWindow`.
+
+`WaitForInputProcessed` returns **`false`** on three paths — the window is gone,
+the process id is 0, or `OpenProcess` is denied — and
+
+```csharp
+session.InputPending = false;
+windows.WaitForInputProcessed(session.WindowHandle);   // result discarded
+```
+
+**discards the result**, which violates this repository's own rule that a
+return-value error signal must be checked before reading dependent state. So a
+drain that never ran is indistinguishable from one that waited.
+
+`OpenProcess` is asked for `PROCESS_QUERY_INFORMATION`, the stronger right;
+`PROCESS_QUERY_LIMITED_INFORMATION` is the one that succeeds against
+lower-privilege and AppContainer targets. A packaged app is exactly the case
+where the stronger right is refused.
+
+**Not yet established.** The next probe asks the guest directly: can this driver
+open the hosted Alarms process with those rights, and how long does
+`WaitForInputProcessed` actually take there?
