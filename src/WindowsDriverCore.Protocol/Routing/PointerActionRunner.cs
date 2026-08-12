@@ -191,6 +191,60 @@ public sealed class PointerActionRunner
 
         return null;
     }
+    /// <summary>
+    /// Puts a contact down, moves it, or lifts it — one phase per call.
+    /// </summary>
+    /// <param name="window">The session window, which the point must own.</param>
+    /// <param name="windowX">X, RELATIVE TO THE WINDOW.</param>
+    /// <param name="windowY">Y, relative to the window.</param>
+    /// <param name="phase">Which half of the gesture this is.</param>
+    /// <returns>The refusal, or null when the contact was injected.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The contact survives BETWEEN requests, which is what makes this
+    /// different from <see cref="Tap"/>.</b> <c>touch/down</c> and
+    /// <c>touch/up</c> are separate HTTP calls, so the injection device has to
+    /// outlive either one — it is a DI singleton for exactly that reason. A
+    /// per-request device would lift the contact the moment the down request
+    /// returned and the up would arrive with nothing held.
+    /// </para>
+    /// <para>
+    /// <b>Window-relative in, screen out.</b> The suite computes these from
+    /// <c>element.Location</c>, which this driver answers window-relative, so
+    /// treating them as screen pixels would put every contact at that offset
+    /// from the DESKTOP origin — up and to the left of the window, into whatever
+    /// happens to be there.
+    /// </para>
+    /// <para>
+    /// <b>The ownership guard is on DOWN only</b>, matching the existing pointer
+    /// path: a move follows a press that was already checked, and refusing each
+    /// frame would turn a drag that crosses an edge into a failure mid-gesture.
+    /// </para>
+    /// </remarks>
+    public PointerRefusal? Contact(
+        nint window, int windowX, int windowY, SyntheticContactPhase phase)
+    {
+        if (!_synthetic.CanInject(SyntheticPointerKind.Touch))
+        {
+            return PointerRefusal.Reason("This system cannot inject touch input");
+        }
+
+        (int x, int y, PointerRefusal? placement) = WindowOrigin(window, windowX, windowY);
+        if (placement is not null)
+        {
+            return placement;
+        }
+
+        if (phase == SyntheticContactPhase.Down && Refuse(window, x, y) is { } refusal)
+        {
+            return refusal;
+        }
+
+        return _synthetic.Inject([Plain(x, y, phase)])
+            ? null
+            : PointerRefusal.Reason($"The system refused a touch contact ({phase})");
+    }
+
 
     /// <summary>Taps a point, holding the contact for a duration.</summary>
     /// <param name="x">Screen x.</param>
