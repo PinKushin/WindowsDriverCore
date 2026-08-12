@@ -173,9 +173,18 @@ public partial class Program
         // test projects stay unchanged, and the wiring that adds the logging is
         // one line each in the composition root.
         builder.Services.AddSingleton<ApplicationLauncher>();
+        // TWO decorators, and the ORDER is the point. ContentReadyLauncher wraps
+        // the real launcher so the wait for the application's UI happens inside
+        // the launch, and LoggingApplicationLauncher wraps THAT so the cost the
+        // transcript reports is the cost the caller actually paid. Logging on
+        // the inside would report a launch as finished while the session was
+        // still waiting for content.
         builder.Services.AddSingleton<IApplicationLauncher>(provider =>
             new LoggingApplicationLauncher(
-                provider.GetRequiredService<ApplicationLauncher>(),
+                new ContentReadyLauncher(
+                    provider.GetRequiredService<ApplicationLauncher>(),
+                    provider.GetRequiredService<IUIAutomation>(),
+                    provider.GetRequiredService<TimeProvider>()),
                 provider.GetRequiredService<ILaunchLog>()));
         builder.Services.AddSingleton<ApplicationTerminator>();
         builder.Services.AddSingleton<IApplicationTerminator>(provider =>
