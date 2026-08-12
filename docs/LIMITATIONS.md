@@ -2894,3 +2894,37 @@ after typing is the element's own value, and the honest options are:
 
 None of these should be chosen without measuring, and the measurement has to be
 against a **UWP** subject, because a Win32 `EDIT` passes under all of them.
+
+#### Two subjects tried for a XAML measurement, and neither can serve
+
+Evaluating any candidate drain needs a subject where a working drain and a broken
+one predict **different** observations. The Win32 one does — mutation-removing the
+drain fails `TheDrainWorksMoreThanOnceTests`. Two attempts at a XAML subject did
+not, and both failures are worth recording because each looked like a result.
+
+**Calculator: insensitive to its own manipulation.** Typing three digits and
+reading the display back passed **with the drain removed**. Three injected
+characters land fast enough that waiting and not waiting agree — the effect size
+is below the resolution of the condition. Calculator cannot host a larger one
+either: its display caps the digits, so a 52-character condition would report
+truncation as a race. *This one nearly shipped as "the drain is fine on UWP".*
+
+Its first form was worse: it clicked Calculator's C button between iterations,
+the click did not take, and every iteration reported a race that was really an
+ineffective setup step. A setup that shares the mechanism under test cannot
+isolate it.
+
+**The WPF subject: unstable.** Retargeted to the WPF `TextBox` with 52
+characters, the run failed with `NoSuchWindow` — the application lost its window
+partway through, so the fixture measured its own subject dying rather than a
+race.
+
+**So there is currently no local experiment that can evaluate a candidate fix
+against a XAML control.** That is the blocker, and it is worth more than another
+guess at the primitive: a fix validated only on the Win32 subject would be
+validated by exactly the subject that passes under every candidate.
+
+The available validator is the guest compatibility suite itself, with a stated
+prediction — the `SendKeysToElement_*` family stops moving between runs — but a
+change to the element read path affects every element command, so it should be
+made deliberately and measured cold, not appended to a session's end.
