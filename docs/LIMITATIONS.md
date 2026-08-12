@@ -2831,3 +2831,66 @@ where the stronger right is refused.
 **Not yet established.** The next probe asks the guest directly: can this driver
 open the hosted Alarms process with those rights, and how long does
 `WaitForInputProcessed` actually take there?
+
+### ANSWERED: the drain runs, and it is not a synchronisation primitive
+
+Measured from `transcript-975188db0-191505.log`, the first run with the drain
+instrumented:
+
+```
+drain WAITED        : 101   (of those, under 1 ms: 80)
+drain DID NOT WAIT  : 0
+```
+
+**REFUTED: `OpenProcess` denied for a packaged application.** Not once in 101
+drains. The AppContainer theory was wrong, and so was the guess that
+`PROCESS_QUERY_INFORMATION` is too strong a right — the weaker
+`PROCESS_QUERY_LIMITED_INFORMATION` would have changed nothing.
+
+**MEASURED, and this is the actual defect: 79% of drains return in under a
+millisecond.** `WaitForInputIdle` answers *"is this process idle"*, and
+immediately after `SendInput` the process genuinely **is** idle — the injected
+keys are still in the system's raw input queue and have not been posted to the
+target thread yet. The wait ran, returned "idle", and waited for nothing.
+
+The guest probe agrees independently: against `charmap`, a plain Win32 GUI
+process, `WaitForInputIdle` returned IDLE in **0.0–4.5 ms** immediately after 52
+characters were injected.
+
+**So the drain is an accidental short delay, not a synchronisation.** It is still
+load-bearing — mutation-removing it fails both host tests, one reading back
+**54 of 52** characters — but what it buys is the few hundred microseconds of an
+`OpenProcess` plus a kernel transition. That is enough for a Win32 `EDIT` and not
+enough for a UWP XAML control, which is exactly the split between the subject
+that passes and the subject that flaps.
+
+#### What this rules out, and what is left
+
+| candidate | status |
+|---|---|
+| modifier persistence | REFUTED (earlier) |
+| a send race in the keyboard path | REFUTED — session-level `SendKeys_*` is 12/12 × 3 runs |
+| foreground refusal | REFUTED — `focused=48, unfocused=0` |
+| `WaitForInputIdle` waits only once per process | REFUTED — 6 repeated drains read 52/52 |
+| `OpenProcess` denied for a packaged app | REFUTED — 0 of 101 |
+| **`WaitForInputIdle` is the wrong question** | **MEASURED — 80/101 under 1 ms** |
+
+**The fix is not another primitive picked by argument.** This repository's own
+rule applies: *synchronise on the condition, never on the clock*. The condition
+after typing is the element's own value, and the honest options are:
+
+1. **Verify the write in `POST /value`** — it knows the text it sent, so it can
+   wait until the value reflects it, bounded by the reference's budget. Covers
+   literal text. Does **not** cover the failing case, which is `Ctrl+A` then
+   `Delete`, where the expected value is not derivable from the keys.
+2. **Wait for the value to settle** — poll until two consecutive reads agree.
+   Handles `Ctrl+A`/`Delete` (`"Alarm (1)"` → `""` → stable) but has the same race
+   at the front: two reads taken before the app processes anything also agree.
+3. **Wait for the input queue to drain on the target thread** —
+   `AttachThreadInput` plus `GetQueueStatus(QS_KEY)`, polled. Previously measured
+   as reporting zero pending while 51 keys were queued, but that measurement is
+   now suspect for the same reason `WaitForInputIdle` is: it may have been taken
+   before the keys reached the thread queue.
+
+None of these should be chosen without measuring, and the measurement has to be
+against a **UWP** subject, because a Win32 `EDIT` passes under all of them.
