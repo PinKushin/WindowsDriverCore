@@ -351,8 +351,21 @@ public sealed class ApplicationLauncherTests
         }
 
         _windows.Exists(window).ShouldBeFalse("the window must be gone");
-        ProcessIdsNamed(Win32TestApp.ProcessName).Except(before).ShouldBeEmpty(
-            "nothing the launch added may survive");
+
+        // POLLED, NOT CHECKED ONCE. WaitUntilGone above synchronises on the
+        // window HANDLE disappearing, which happens synchronously in response to
+        // WM_CLOSE - but the PROCESS can still be unwinding for a few more
+        // milliseconds after its HWND is destroyed. Checking ProcessIdsNamed with
+        // no wait races that gap directly.
+        //
+        // Measured 2026-08-13: once the foreground race earlier in this method
+        // was fixed, THIS assertion started failing 3 of 4 runs, always under
+        // 550 ms - too fast to be anything but this gap, since the window-gone
+        // check just above it had already passed.
+        UiSettle.Until(
+            () => !ProcessIdsNamed(Win32TestApp.ProcessName).Except(before).Any(),
+            TimeSpan.FromSeconds(1),
+            "the process to exit after its window closed");
 
         // The prediction that separates the two. Answering the prompt is fast;
         // waiting it out is the five-second WaitForExit and then a kill.
@@ -405,8 +418,27 @@ public sealed class ApplicationLauncherTests
     /// </remarks>
     private void TypeSomethingUnsaved(nint window)
     {
-        _windows.BringToForeground(window).ShouldBeTrue(
-            "typing into a window that is not in front sends the keys elsewhere");
+        // POLLED, NOT ASSERTED ON ONE ATTEMPT. Windows restricts foreground
+        // stealing to whoever currently owns the input queue, and a subject
+        // launched moments earlier - while another fixture's application still
+        // holds the foreground - is exactly the case where the FIRST attempt
+        // fails and a later one succeeds once the shell finishes handing it
+        // over. Measured 2026-08-12: this test failed twice in six full runs,
+        // both under 500 ms, which is too fast to be anything else in this
+        // method - the 10s title wait and the 4s teardown budget cannot fail
+        // that quickly.
+        //
+        // Synchronise on the condition, not the clock: BringToForeground already
+        // reports what actually happened (GetForegroundWindow() == handle), so
+        // this polls that same call rather than adding a second primitive.
+        // 1s, not the usual generous UiSettle budget: the measured failures were
+        // 315-405 ms, so a whole second is already several times that. This is
+        // a poll that returns the instant it succeeds, not a sleep - the bound
+        // only matters if the foreground genuinely never comes free.
+        UiSettle.Until(
+            () => _windows.BringToForeground(window),
+            TimeSpan.FromSeconds(1),
+            "the subject to actually take the foreground");
         _windows.WaitForInputProcessed(window);
 
         new SendInputKeyboard().Type("unsaved").ShouldBeTrue();
