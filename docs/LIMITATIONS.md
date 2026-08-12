@@ -2928,3 +2928,66 @@ The available validator is the guest compatibility suite itself, with a stated
 prediction — the `SendKeysToElement_*` family stops moving between runs — but a
 change to the element read path affects every element command, so it should be
 made deliberately and measured cold, not appended to a session's end.
+
+## The one flake in our OWN suite, and why it may be the same defect
+
+`StoppingAnApplicationWithUnsavedWork_LeavesNoPromptAndTakesNoKillWait` failed
+twice in six full integration runs on 2026-08-12 and passed in isolation both
+times. Order-dependent state, not a bad assertion.
+
+**The failure is FAST — 315 ms and 405 ms** — which rules out most of the test.
+Enumerating what can fail that quickly:
+
+| assertion | can it fail in ~400 ms |
+|---|---|
+| `BringToForeground(window).ShouldBeTrue()` | **yes** |
+| `new SendInputKeyboard().Type("unsaved").ShouldBeTrue()` | **yes** |
+| `result.Application.ShouldNotBeNull()` | yes, but the launch is otherwise reliable |
+| `UiSettle.Until(title starts with '*', 10 s)` | no — it would take 10 s |
+| `teardown.Elapsed < 4000 ms` | no — it would take over 4 s |
+
+So the failure is in **acquiring the foreground, or typing right after acquiring
+it**. The helper does:
+
+```csharp
+_windows.BringToForeground(window).ShouldBeTrue(...);
+_windows.WaitForInputProcessed(window);
+new SendInputKeyboard().Type("unsaved").ShouldBeTrue();
+```
+
+**`BringToForeground` is called once and its success is asserted immediately.**
+Nothing waits for the window to actually BE foreground, and Windows restricts
+foreground stealing — a subject launched moments earlier, with another fixture's
+application still holding the foreground, is exactly the case that fails
+intermittently. This repository's own rule applies: synchronise on the condition,
+not on a single attempt.
+
+### Why this may not be only a test defect
+
+`UiaElementInteractor.SendKeys` does the same two steps in the same order:
+
+```csharp
+_windows?.BringToForeground(window);   // result DISCARDED
+bool focused = TryFocus(element);      // recorded
+_keyboard.Type(keys);
+```
+
+**The foreground result is discarded there too.** Synthesised keys go to whatever
+holds the foreground, NOT to a handle — so a failed raise means the keystrokes
+landed in another window, and the request still answers 200. That is the same
+class of defect as the drain's discarded boolean, in the same method, and it is
+currently invisible: the transcript records `SendKeys -> Performed via keys`
+whether or not the window ever came forward.
+
+Note what the existing measurements do and do not cover. `focused=48,
+unfocused=0` is **`SetFocus`**, a different call — it says nothing about the
+raise. The `keys -> raised` counter belongs to the session-level `/keys` route,
+which is the family that never fails. **Nothing measures the raise on the element
+path, which is the family that flaps.**
+
+**HYPOTHESIS, and the next experiment is cheap:** log the `BringToForeground`
+result on the element SendKeys path, exactly as the drain now logs its wait, and
+read the next guest run. If raises are failing there, it explains typed text
+going missing without any drain being involved — and it would explain why the
+session-level family, which raises through a path that already records the
+result, is 12/12.
