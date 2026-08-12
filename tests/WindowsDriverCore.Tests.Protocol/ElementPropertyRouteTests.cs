@@ -273,15 +273,73 @@ public sealed class ElementPropertyRouteTests : IDisposable
             .ShouldBe("Attribute command takes exactly one argument namely the attribute name");
     }
 
+    /// <summary>
+    /// <c>/rect</c> answers location and size together.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This route replaced a 501.</b> WinAppDriver never implemented it, and
+    /// this fixture previously asserted the 501 to match. Matching a NOT-answer
+    /// is not compatibility: nothing in the compatibility suite requests
+    /// <c>/rect</c>, so implementing it costs no suite test — while a Selenium 4
+    /// client cannot read an element's position or size WITHOUT it, because W3C
+    /// deleted <c>/size</c> and <c>/location</c> in its favour.
+    /// </para>
+    /// <para>
+    /// <b>Window-relative, like <c>/location</c>.</b> W3C reports coordinates in
+    /// the top-level browsing context's frame; for a desktop driver that is the
+    /// window, not the screen. <c>/location</c> being window-relative is measured
+    /// against WinAppDriver, so answering <c>/rect</c> in screen coordinates
+    /// would have the same driver report two different positions for one element.
+    /// </para>
+    /// </remarks>
     [Test]
-    public async Task Rect_IsNotImplemented()
+    public async Task Rect_CarriesLocationAndSizeTogether_InWindowCoordinates()
     {
-        // W3C only. WinAppDriver answers 501 with a plain-text body, and the
-        // client's own "Unexpected error. " prefix depends on it not being JSON.
+        _inspector.WindowRelativeBounds(Window, ElementId)
+            .Returns(ElementRead.Success(new ElementBounds(203, 419, 97, 35)));
+
+        JsonElement value = (await BodyOf(await Get("rect"))).GetProperty("value");
+
+        value.GetProperty("x").GetInt32().ShouldBe(203);
+        value.GetProperty("y").GetInt32().ShouldBe(419);
+        value.GetProperty("width").GetInt32().ShouldBe(97);
+        value.GetProperty("height").GetInt32().ShouldBe(35);
+    }
+
+    [Test]
+    public async Task Rect_AgreesWithLocationAndSize_ForTheSameElement()
+    {
+        // The control on the paragraph above. Three routes read one rectangle,
+        // and a mistake in rect's own projection - width and height swapped,
+        // screen coordinates instead of window ones - shows up here as
+        // disagreement rather than as a plausible set of numbers.
+        _inspector.WindowRelativeBounds(Window, ElementId)
+            .Returns(ElementRead.Success(new ElementBounds(203, 419, 97, 35)));
+
+        JsonElement rect = (await BodyOf(await Get("rect"))).GetProperty("value");
+        JsonElement location = (await BodyOf(await Get("location"))).GetProperty("value");
+        JsonElement size = (await BodyOf(await Get("size"))).GetProperty("value");
+
+        rect.GetProperty("x").GetInt32().ShouldBe(location.GetProperty("x").GetInt32());
+        rect.GetProperty("y").GetInt32().ShouldBe(location.GetProperty("y").GetInt32());
+        rect.GetProperty("width").GetInt32().ShouldBe(size.GetProperty("width").GetInt32());
+        rect.GetProperty("height").GetInt32().ShouldBe(size.GetProperty("height").GetInt32());
+    }
+
+    [Test]
+    public async Task Rect_ForAnElementThatIsNotThere_FaultsLikeEveryOtherRead()
+    {
+        _inspector.WindowRelativeBounds(Window, ElementId)
+            .Returns(ElementRead.Failed<ElementBounds>(ElementReadOutcome.NotFound));
+
         HttpResponseMessage response = await Get("rect");
 
-        ((int)response.StatusCode).ShouldBe(501);
-        (await response.Content.ReadAsStringAsync()).ShouldStartWith("Unimplemented Command:");
+        // 404/7, the same answer /size and /location give. A new route that
+        // reports its failures its own way is how one driver ends up with three
+        // messages for one condition.
+        ((int)response.StatusCode).ShouldBe(404);
+        (await BodyOf(response)).GetProperty("status").GetInt32().ShouldBe(7);
     }
 
     [Test]

@@ -64,6 +64,24 @@ public interface IValueEnvelope : IJsonWireEnvelope
     object? Payload { get; }
 }
 
+/// <summary>The <c>value</c> of <c>GET /element/{id}/rect</c>.</summary>
+/// <param name="X">Left edge, <b>relative to the window</b>, as <see cref="ElementLocation"/>.</param>
+/// <param name="Y">Top edge, relative to the window.</param>
+/// <param name="Width">Width.</param>
+/// <param name="Height">Height.</param>
+/// <remarks>
+/// <b>x, y, width, height — and this order is the specification's, not a
+/// measurement.</b> Every other shape in this file was copied off the wire from
+/// WinAppDriver, which never implemented this route, so there was nothing to
+/// copy. Note it disagrees with <see cref="ElementSize"/>, which really does put
+/// height first because that is what the reference emits.
+/// </remarks>
+public sealed record ElementRect(
+    [property: JsonPropertyName("x")] int X,
+    [property: JsonPropertyName("y")] int Y,
+    [property: JsonPropertyName("width")] int Width,
+    [property: JsonPropertyName("height")] int Height);
+
 /// <summary>A response to a session-scoped command that returns a value.</summary>
 /// <typeparam name="T">The value type.</typeparam>
 /// <param name="SessionId">The session the command ran against.</param>
