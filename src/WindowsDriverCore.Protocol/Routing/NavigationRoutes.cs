@@ -82,10 +82,24 @@ public static class NavigationRoutes
                 // foreground window, not to a handle.
                 windows.BringToForeground(session.WindowHandle);
 
-                HeldModifiers held = new();
-                held.Hold(Alt);
-
-                if (!keyboard.Type(arrow, held))
+                // ALT IS PRESSED BY THE KEY STRING, not by HeldModifiers.
+                //
+                // BuildBatch treats a carried modifier as ALREADY PHYSICALLY
+                // DOWN and deliberately does not press it again - HeldModifiers
+                // is a carry-over mechanism for state a previous call left held,
+                // not an instruction to press. Passing a fresh HeldModifiers
+                // therefore sent the arrow UNMODIFIED, and the ReleaseHeld that
+                // followed sent a lone Alt key-up with no key-down before it,
+                // desynchronising modifier state for every later request in the
+                // run. Measured on the guest: the three navigation tests failed
+                // with a plain arrow, and SendKeysToElement_ModifierAlt then
+                // failed with a modifier stuck down.
+                //
+                // A modifier character INSIDE the string toggles: the first
+                // occurrence presses it, the second releases it. So Alt, arrow,
+                // Alt is press, tap, release - self-contained, with nothing left
+                // held when the request returns.
+                if (!keyboard.Type($"{Alt}{arrow}{Alt}"))
                 {
                     return Results.Json(
                         JsonWireResponse.ForFault(
@@ -93,11 +107,6 @@ public static class NavigationRoutes
                             $"The system refused the {suffix} gesture"),
                         statusCode: WebDriverFault.UnknownError.HttpStatus);
                 }
-
-                // Released explicitly. A modifier left down outlives the request
-                // and turns every later keystroke in the run into Alt+key -
-                // measured before on this driver's modifier handling.
-                keyboard.ReleaseHeld(held);
 
                 return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
             }).RequiresSession();
