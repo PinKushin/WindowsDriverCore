@@ -104,10 +104,19 @@ public sealed class ApplicationLauncher : IApplicationLauncher
 
         if (processId == 0)
         {
-            // Activation rejected the AUMID: the package is not installed, or it
-            // does not declare that application id. From the client's side the
-            // app could not be found, so it gets the same message.
-            return LaunchResult.Failure(FileNotFoundMessage);
+            // ACTIVATION'S OWN REASON, NOT A SUBSTITUTE FOR IT. The suite
+            // asserts these character for character:
+            // CreateSessionError_InvalidAppIdModernApp sends
+            // "Microsoft.BadAppId!App" and expects
+            // "Value does not fall within the expected range." - E_INVALIDARG's
+            // stock wording, surfaced through WinAppDriver rather than composed
+            // by it.
+            //
+            // Marshal.GetExceptionForHR is what produces those sentences, so
+            // asking it is what reproduces every one of them; hard-coding the
+            // one the suite happens to check would answer that input correctly
+            // and every other activation failure wrongly.
+            return LaunchResult.Failure(ActivationFailureMessage());
         }
 
         nint window = await _waiter
@@ -134,6 +143,23 @@ public sealed class ApplicationLauncher : IApplicationLauncher
                 Started: !processesBefore.Contains(owningProcess != 0 ? owningProcess : processId)));
     }
 
+    /// <summary>The message belonging to the last activation HRESULT.</summary>
+    /// <remarks>
+    /// Falls back to the file-not-found wording when there is no HRESULT to
+    /// report - a classic process that produced no id, which has no COM error
+    /// behind it.
+    /// </remarks>
+    private string ActivationFailureMessage()
+    {
+        if (_lastActivationHResult >= 0)
+        {
+            return FileNotFoundMessage;
+        }
+
+        return System.Runtime.InteropServices.Marshal
+            .GetExceptionForHR(_lastActivationHResult)?.Message ?? FileNotFoundMessage;
+    }
+
     /// <summary>
     /// Whether an app value names a packaged application rather than an
     /// executable.
@@ -147,12 +173,30 @@ public sealed class ApplicationLauncher : IApplicationLauncher
     internal static bool IsPackagedApplication(string app) =>
         app.Contains('!', StringComparison.Ordinal) && !Path.IsPathRooted(app);
 
-    private static int StartProcess(ApplicationTarget target) =>
+    private int StartProcess(ApplicationTarget target) =>
         IsPackagedApplication(target.App)
             ? ActivatePackagedApplication(target)
             : StartClassicProcess(target);
 
-    private static int ActivatePackagedApplication(ApplicationTarget target)
+    /// <summary>
+    /// The HRESULT of the last packaged activation, or 0 when none has failed.
+    /// </summary>
+    /// <remarks>
+    /// <b>Because the code is the message.</b> The compatibility suite asserts
+    /// on activation failures character for character -
+    /// CreateSessionError_InvalidAppIdModernApp expects
+    /// "Value does not fall within the expected range.", which is E_INVALIDARG's
+    /// stock wording surfacing through WinAppDriver rather than a sentence
+    /// WinAppDriver wrote. Flattening every activation failure to "the system
+    /// cannot find the file specified" throws away the one thing the caller
+    /// needs.
+    ///
+    /// Instance state rather than a return value only because StartProcess is
+    /// shared with the classic path, which has no HRESULT to report.
+    /// </remarks>
+    private int _lastActivationHResult;
+
+    private int ActivatePackagedApplication(ApplicationTarget target)
     {
         // Through object deliberately: the coclass does not declare the
         // interface, so a direct cast will not compile. Going via object makes
@@ -175,6 +219,7 @@ public sealed class ApplicationLauncher : IApplicationLauncher
         // Incidentally this is where the previous implementation's mysterious
         // "Value does not fall within the expected range" came from: that is
         // E_INVALIDARG's stock message, surfaced without ever being identified.
+        _lastActivationHResult = hr;
         return hr < 0 ? 0 : (int)processId;
     }
 

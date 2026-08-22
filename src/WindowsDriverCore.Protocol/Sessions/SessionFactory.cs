@@ -120,12 +120,37 @@ public sealed class SessionFactory
             candidate = candidate[2..];
         }
 
-        if (!nint.TryParse(
-                candidate,
-                NumberStyles.HexNumber,
-                CultureInfo.InvariantCulture,
-                out nint handle)
-            || !_windows.Exists(handle))
+        // A MALFORMED handle is a different failure from a missing one, and the
+        // suite tells them apart. CreateSessionFromExistingWindowHandleError_
+        // InvalidValue sends "-1" and asserts, character for character,
+        // "String cannot contain a minus sign if the base is not 10." That is
+        // Convert.ToInt32's own wording surfacing through WinAppDriver rather
+        // than a sentence WinAppDriver wrote.
+        //
+        // So the conversion is ATTEMPTED and its message reported, exactly as
+        // WindowRoutes already does for SwitchWindowsError_InvalidValue. Copying
+        // the sentence instead would answer this one input correctly and every
+        // other malformed one wrongly.
+        //
+        // "-1" is not a window that is absent; it is a string that is not a
+        // handle. Answering "no such window" conflates a caller who named a
+        // window that has since closed with a caller whose value was never a
+        // handle at all.
+        nint handle;
+        try
+        {
+            handle = (nint)Convert.ToInt64(candidate, 16);
+        }
+        catch (Exception failure) when (
+            failure is ArgumentException or FormatException or OverflowException)
+        {
+            return new SessionCreateResult(
+                Session: null,
+                WebDriverFault.UnknownError,
+                failure.Message);
+        }
+
+        if (!_windows.Exists(handle))
         {
             return new SessionCreateResult(
                 Session: null,
