@@ -270,6 +270,59 @@ public sealed class CreateSessionRouteTests : IDisposable
         _launcher.DidNotReceive().Launch(Arg.Any<ApplicationTarget>());
     }
 
+    /// <summary>
+    /// A MALFORMED handle reports the parse failure, not a missing window.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured from the suite, character for character.</b>
+    /// <c>CreateSessionFromExistingWindowHandleError_InvalidValue</c> sends
+    /// <c>appTopLevelWindow = "-1"</c> and asserts the message is
+    /// <c>"String cannot contain a minus sign if the base is not 10."</c> — that
+    /// is <c>Convert.ToInt32</c>'s own wording surfacing through WinAppDriver,
+    /// not a sentence WinAppDriver composed.
+    /// </para>
+    /// <para>
+    /// <b>The distinction this pins down:</b> "-1" is not a window that is
+    /// absent, it is a string that is not a handle. Answering
+    /// <c>no such window</c> for it conflates a caller who named a window that
+    /// has closed with a caller whose value was never a handle at all — and the
+    /// suite tells those apart.
+    /// </para>
+    /// <para>
+    /// <c>WindowRoutes</c> already does exactly this for
+    /// <c>SwitchWindowsError_InvalidValue</c>, by ATTEMPTING the conversion
+    /// rather than copying the sentence, so that every other malformed input
+    /// gets its own correct message instead of this one by luck.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task CreateSession_AttachToAHandleThatIsNotHex_ReportsTheParseMessage()
+    {
+        HttpResponseMessage response = await CreateSession(new { appTopLevelWindow = "-1" });
+
+        JsonElement produced = await BodyOf(response);
+        produced.GetProperty("value").GetProperty("message").GetString()
+            .ShouldBe("String cannot contain a minus sign if the base is not 10.");
+    }
+
+    /// <summary>An absent window still reports an absent window.</summary>
+    /// <remarks>
+    /// The control for the test above. Without it, reporting the parse message
+    /// for everything would pass that one while destroying the measured
+    /// behaviour for a handle that is well-formed and simply gone.
+    /// </remarks>
+    [Test]
+    public async Task CreateSession_AttachToAWellFormedHandleThatIsGone_StillReportsNoSuchWindow()
+    {
+        _windows.Exists(Arg.Any<nint>()).Returns(false);
+
+        HttpResponseMessage response = await CreateSession(new { appTopLevelWindow = "DEADBEEF" });
+
+        (await BodyOf(response)).GetProperty("value").GetProperty("message").GetString()
+            .ShouldBe("Cannot find active window specified by capabilities: appTopLevelWindow");
+    }
+
     [Test]
     public async Task CreateSession_AttachToAMissingWindow_ReportsNoSuchWindow()
     {

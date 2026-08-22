@@ -581,7 +581,27 @@ public sealed class ApplicationLauncherTests
         elapsed.Stop();
 
         result.Application.ShouldBeNull();
-        result.FailureMessage.ShouldBe("The system cannot find the file specified");
+
+        // ACTIVATION'S OWN WORDING, WHICH IS NOT "file not found".
+        //
+        // This asserted the file-not-found message until 2026-08-22, and that
+        // was this repository's invention rather than a measurement. The suite
+        // says otherwise: CreateSessionError_InvalidAppIdModernApp sends
+        // "Microsoft.BadAppId!App" and expects
+        // "Value does not fall within the expected range." - E_INVALIDARG's
+        // stock wording, surfaced through WinAppDriver rather than composed by
+        // it.
+        //
+        // MEASURED here, both shapes of bad AUMID return the same HRESULT:
+        //
+        //   Microsoft.BadAppId!App                 -> Value does not fall within the expected range.
+        //   NotAPackage_00000000000!App            -> Value does not fall within the expected range.
+        //   Calculator_8wekyb3d8bbwe!NoSuchAppId   -> This app does not support the contract specified... (0x80270254)
+        //
+        // The third is why the message is taken from the HRESULT rather than
+        // hard-coded: a bad application id inside a REAL package is a different
+        // failure and says so.
+        result.FailureMessage.ShouldBe("Value does not fall within the expected range.");
 
         // Well inside the ten-second window timeout. If activation silently
         // succeeded and we fell through to waiting, this would take much longer
