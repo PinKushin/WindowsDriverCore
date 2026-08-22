@@ -1,0 +1,109 @@
+name: Probe windows-11-arm
+
+# A THROWAWAY MEASUREMENT, NOT A BUILD. Delete it once it has answered.
+#
+# The question: can CI ever run the UI half of this suite on a GitHub-HOSTED
+# runner? windows-latest is Windows SERVER, which ships without the Store and
+# without the inbox UWP apps, so 119 of 122 integration skips are one cause -
+# Calculator does not exist there. A self-hosted runner would fix that and is
+# refused: this repository is PUBLIC, and GitHub's own guidance is not to pair
+# self-hosted runners with public repos.
+#
+# windows-11-arm is the only CLIENT Windows image GitHub hosts. Being a client
+# SKU it is the only hosted option that could plausibly carry Calculator. Two
+# things are unknown and neither is worth guessing at:
+#
+#   1. does GitHub's image actually retain the inbox UWP apps
+#   2. does an x64 COM/UIA stack run acceptably under ARM64 emulation
+#
+# Manual trigger only. It builds nothing and gates nothing.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: What does the ARM client image actually have
+    runs-on: windows-11-arm
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Identify the image
+        shell: pwsh
+        run: |
+          $os = Get-CimInstance Win32_OperatingSystem
+          "Caption        : $($os.Caption)"
+          "Version        : $($os.Version)"
+          "BuildNumber    : $($os.BuildNumber)"
+          # ProductType 1 = Workstation/client, 3 = Server. THIS is the fact that
+          # decides whether inbox UWP apps can be present at all.
+          "ProductType    : $($os.ProductType)  (1 = client, 3 = server)"
+          "Architecture   : $env:PROCESSOR_ARCHITECTURE"
+
+      - name: Are the inbox UWP apps here
+        shell: pwsh
+        run: |
+          # The whole question. Named individually rather than by a wildcard so
+          # the output says which ones, not just a count.
+          foreach ($name in 'Microsoft.WindowsCalculator','Microsoft.WindowsAlarms','Microsoft.WindowsStore') {
+            $pkg = Get-AppxPackage -Name $name -ErrorAction SilentlyContinue
+            if ($pkg) { "PRESENT : $name -> $($pkg.PackageFullName)" }
+            else      { "ABSENT  : $name" }
+          }
+
+      - name: Is there an interactive desktop and a usable UIA tree
+        shell: pwsh
+        run: |
+          # A UI test needs a real session, not just an OS. Server runners DO
+          # have one, so this is not expected to fail - it is here so that a
+          # failure is distinguishable from "the apps are missing".
+          Add-Type -AssemblyName UIAutomationClient
+          $root = [System.Windows.Automation.AutomationElement]::RootElement
+          if ($root) { "UIA root: $($root.Current.Name) [$($root.Current.ClassName)]" }
+          else { "UIA root: NULL - no usable automation tree" }
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Does this solution even build here
+        shell: pwsh
+        run: |
+          # Every project targets net10.0-windows and the automation layer is raw
+          # IUIAutomation COM interop. Whether that restores and builds on ARM64
+          # is the second unknown, and it is cheaper to answer than to reason
+          # about.
+          dotnet restore WindowsDriverCore.slnx
+          dotnet build WindowsDriverCore.slnx --no-restore --configuration Release
+
+      - name: Do the integration tests find their subjects
+        shell: pwsh
+        # Never fails the job. This step exists to REPORT a count, and a red X
+        # here would say nothing that the count does not say better.
+        continue-on-error: true
+        run: |
+          dotnet test tests/WindowsDriverCore.Tests.Integration/WindowsDriverCore.Tests.Integration.csproj `
+            --no-build --configuration Release `
+            --filter "TestCategory!=Comparison" `
+            --logger "trx;LogFileName=arm-integration.trx"
+
+      - name: The number that decides it
+        if: always()
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem -Recurse -Filter arm-integration.trx | Select-Object -First 1
+          if (-not $trx) { "no trx - the test step did not produce results"; exit 0 }
+
+          [xml]$results = Get-Content $trx.FullName
+          $c = $results.TestRun.ResultSummary.Counters
+          "passed  : $($c.passed)"
+          "failed  : $($c.failed)"
+          "skipped : $([int]$c.total - [int]$c.executed)"
+          "total   : $($c.total)"
+          ""
+          "windows-latest (Server 2025) passes 56 of 178 with 122 skipped."
+          "If this number is not clearly higher, the ARM client image buys nothing"
+          "and the UI half of this suite cannot run on a hosted runner at all."
