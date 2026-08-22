@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using WindowsDriverCore.Automation;
@@ -250,10 +251,106 @@ public sealed class PointerActionRunner
             return refusal;
         }
 
-        return _synthetic.Inject([Plain(x, y, phase)])
-            ? null
-            : PointerRefusal.Reason($"The system refused a touch contact ({phase})");
+        // AN UPDATE IS INTERPOLATED FROM WHERE THE CONTACT ACTUALLY IS, exactly
+        // as a move inside /actions is - and for the same measured reason. A
+        // window manager samples the pointer across its own message loop, so a
+        // single frame teleporting 100 px is not a gesture it can follow.
+        //
+        // The /actions drag was fixed this way and Touch_DragAndDrop and
+        // Pen_DragAndDrop passed. This path - the multi-request
+        // /touch/down, /touch/move, /touch/up trio - still injected one frame
+        // per request, and TouchDownMoveUp_DragAndDrop and MouseDownMoveUp both
+        // failed with the window never moving: "Expected any value except
+        // {X=290,Y=154}. Actual: {X=290,Y=154}".
+        //
+        // WinAppDriver gets this for free by being slow: three separate HTTP
+        // round trips give the window manager time and intermediate samples that
+        // this driver, answering in single-digit milliseconds, does not.
+        if (phase == SyntheticContactPhase.Update &&
+            _contacts.TryGetValue(window, out (int X, int Y) from))
+        {
+            PointerRefusal? moved = Move(
+                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, DragDuration);
+
+            if (moved is not null)
+            {
+                return moved;
+            }
+
+            _contacts[window] = (x, y);
+            return null;
+        }
+
+        if (!_synthetic.Inject([Plain(x, y, phase)]))
+        {
+            return PointerRefusal.Reason($"The system refused a touch contact ({phase})");
+        }
+
+        // Tracked so the NEXT update knows where it is starting from. Removed on
+        // lift, because a move after an up is a hover and has no path to walk -
+        // and because leaving it would make this dictionary grow for the
+        // server's lifetime.
+        if (phase == SyntheticContactPhase.Up)
+        {
+            _contacts.TryRemove(window, out _);
+        }
+        else
+        {
+            _contacts[window] = (x, y);
+        }
+
+        return null;
     }
+
+    /// <summary>
+    /// Where each window's multi-request touch contact currently is, in screen
+    /// pixels.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>State on a singleton, deliberately and narrowly.</b> A gesture built
+    /// from <c>/touch/down</c>, <c>/touch/move</c> and <c>/touch/up</c> spans
+    /// three HTTP requests, so the path between two points is not derivable from
+    /// either request alone — the driver has to remember where the finger was.
+    /// The <c>/actions</c> route needs none of this because a whole sequence
+    /// arrives in one payload.
+    /// </para>
+    /// <para>
+    /// <b>Keyed by WINDOW rather than held as a single field, because this type
+    /// is a singleton shared by every session.</b> One field would let two
+    /// sessions dragging at once interpolate from each other's finger — a bug
+    /// that would only appear under concurrent use and would be very hard to
+    /// attribute. A contact belongs to the window it was pressed on.
+    /// </para>
+    /// <para>
+    /// <b>An absent entry means no contact is down</b>, which is also the state
+    /// after a lift. An update with no entry falls through to a single frame
+    /// rather than interpolating from a stale point — a finger that was never
+    /// pressed has no path.
+    /// </para>
+    /// </remarks>
+    private readonly ConcurrentDictionary<nint, (int X, int Y)> _contacts = new();
+
+    /// <summary>Forgets every tracked contact, unconditionally.</summary>
+    /// <remarks>
+    /// <para>
+    /// A test seam, not a production operation — the same reason and the same
+    /// shape as <see cref="Sessions.ISessionStore.Clear"/> and
+    /// <see cref="Sessions.IElementRegistry.Clear"/>. This type is a singleton,
+    /// so a <c>/touch/down</c> in one test is still down for the next one, and a
+    /// fixture that shares a server needs to be able to say "no finger is on the
+    /// screen" between tests.
+    /// </para>
+    /// <para>
+    /// <b>Production does not need it, and that is worth stating rather than
+    /// assuming.</b> An entry survives only a gesture that pressed and never
+    /// lifted, is keyed by window so it cannot affect a different one, and is
+    /// overwritten by that window's next <c>down</c>. The dictionary is bounded
+    /// by the number of windows with a contact outstanding, which is normally
+    /// zero.
+    /// </para>
+    /// </remarks>
+    public void ForgetContacts() => _contacts.Clear();
 
 
     /// <summary>Taps a point, holding the contact for a duration.</summary>
