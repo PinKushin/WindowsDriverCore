@@ -3118,6 +3118,64 @@ and was reverted. `b2dd934` remains the best measured state.
 
 ### Where to look next, and where NOT to
 
+### ANSWERED: `ERROR_INVALID_PARAMETER`, and it is duration-dependent
+
+The refusal now carries its Win32 cause, and the answer is not what the
+timeout theory predicted. From `982eb32`, the compatibility suite's OWN
+exception text:
+
+```
+TouchDownMoveUp_DragAndDrop
+System.InvalidOperationException: The system refused a touch contact (Up)
+  (ERROR_INVALID_PARAMETER - the frame was rejected)
+```
+
+**`ERROR_INVALID_PARAMETER`, not `ERROR_TIMEOUT`.** The lift frame is rejected
+outright rather than the contact being reported as timed out — the shape of
+"this frame names a contact that no longer exists".
+
+**The variable is time, and nothing else.** `b2dd934` injected the SAME ten
+frames to the SAME destination coordinates with no pacing and lifted cleanly.
+Frames, coordinates and window are all controlled; only elapsed time differs.
+
+| move duration | lift |
+|---|---|
+| ~2 ms (`b2dd934`) | 200 |
+| ~156 ms (`6c392f7`) | `ERROR_INVALID_PARAMETER` |
+| ~314 ms (`7f02766`) | `ERROR_INVALID_PARAMETER` |
+| ~414 ms (`43d510b`) | `ERROR_INVALID_PARAMETER` |
+
+**STOP RE-TUNING THE DURATION.** Three of those four rows are duration changes
+and the threshold hunt was abandoned deliberately at `6c392f7` after 100 ms
+(measured 156 ms on the guest) failed too. A fifth value is not evidence, and
+finding a number that happens to work would leave a magic constant with no
+explanation behind it.
+
+### The next experiment, and it is not a duration
+
+**HYPOTHESIS, untested: the contact is thread-affine.** `/touch/down`,
+`/touch/move` and `/touch/up` are three separate HTTP requests, and ASP.NET is
+free to serve them on different thread-pool threads. If `InjectTouchInput`'s
+contact state is per-thread, a contact opened on one thread and lifted on
+another is genuinely invalid — which is exactly `ERROR_INVALID_PARAMETER` — and
+the duration correlation follows without the OS dropping anything: a fast
+gesture is likelier to reuse the same pooled thread, a slow one likelier to
+migrate.
+
+That predicts something the duration theory does not: the failure should track
+**thread identity**, not elapsed time. Log the managed thread id in the touch
+routes and read the transcript — same thread across all three requests when the
+lift succeeds, different when it fails. If it holds, the fix is to marshal
+injection for a gesture onto one thread rather than to pick a smaller number.
+
+**Do not test this on the host.** It injects real touch at screen coordinates;
+it belongs on the guest, and a local probe already had to be abandoned twice —
+once for a wrong hand-rolled `POINTER_TOUCH_INFO` (every case, including the
+control, failed at DOWN) and once because the guest agent runs Windows
+PowerShell 5.1, which cannot load this project's .NET 10 assemblies at all.
+
+### Older note, superseded above
+
 The remaining question is why a synthetic touch contact cannot survive a long
 move.
 
