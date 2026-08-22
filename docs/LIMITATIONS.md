@@ -3174,6 +3174,39 @@ once for a wrong hand-rolled `POINTER_TOUCH_INFO` (every case, including the
 control, failed at DOWN) and once because the guest agent runs Windows
 PowerShell 5.1, which cannot load this project's .NET 10 assemblies at all.
 
+### REFUTED: the contact is thread-affine
+
+Measured at `18294d7`. The refusal was made to name both threads when they
+differ, so a same-thread result refutes the idea outright — and that is what
+came back:
+
+```
+The system refused a touch contact (Up) (ERROR_INVALID_PARAMETER - the frame was rejected)
+```
+
+No thread clause, meaning the contact was opened and lifted on the **same**
+thread. So `ASP.NET` serving the three requests on different pool threads is not
+the cause, and thread-marshalling would fix nothing.
+
+**What is now controlled, and refuted, for this one failure:** the error is not a
+timeout, the frame count is not it, the coordinates are not it, the trailing
+pacing gap is not it, and the thread is not it. Duration remains the only
+variable that moves the result, and re-tuning it has been tried three times.
+
+### The next candidate, untested
+
+**A slow drag may put the target into a modal move loop.** `DefWindowProc`
+handles a title-bar drag by entering a nested message loop that captures the
+pointer. A fast synthetic move may never trip whatever threshold starts it,
+while a slow one does — which would explain the duration correlation without any
+contact being dropped, and would explain why the window never ends up moved: the
+drag begins and the lift that should finish it is refused.
+
+It predicts something checkable that duration alone does not: during a failing
+drag the target window should be in a modal loop, observable from outside via
+`GetGUIThreadInfo` (`GUI_INMOVESIZE`). That is a real observation rather than
+another number to try, and it is where this should resume.
+
 ### Older note, superseded above
 
 The remaining question is why a synthetic touch contact cannot survive a long
