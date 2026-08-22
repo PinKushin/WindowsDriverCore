@@ -3318,3 +3318,42 @@ investigation from the four already spent here, and it is where this resumes.
 has consumed roughly fifteen probe and guest runs. The refutations are permanent
 and the search space is much smaller, but the return per run has been poor and
 that is worth weighing before the next one.
+
+
+### REVERTED: starting the pointer at the viewport origin
+
+`Pen_Click_OriginPointer` and `Touch_Click_OriginPointer` fail with this driver's
+own guard refusing a point:
+
+```
+(101,33) is outside the application window, so the input was not dispatched
+```
+
+The reasoning looked sound. W3C starts a fresh pointer at (0,0) **of the
+viewport**, the viewport here is the window, and the suite feeds a
+window-relative `element.Location` into a pointer-origin move — so the
+accumulated position, held in screen coordinates, should start at the window's
+top-left rather than at a raw (0,0). A `viewport` origin already converted
+correctly; a `pointer` origin added its offset to zero and produced a desktop
+coordinate.
+
+**Measured, and it did not work.** Score went 262 → 259:
+
+- The two target tests still failed, at **(115,87)** instead of (101,33) — the
+  arithmetic moved and is still wrong, so the premise is incomplete at best.
+- `ActionsError_NoSuchWindow` **regressed**: the early window-placement call now
+  fires first and answers *"The session window could not be placed, so a viewport
+  coordinate has no meaning"* where the suite asserts *"Currently selected window
+  has been closed"*.
+
+Reverted at `9f768cb`. The W3C reading may still be right — a correct change that
+is insufficient looks identical to a wrong one from the score alone, and this one
+also carried a message regression. What it is NOT is a fix, and keeping it for
+the reasoning while it costs three tests would be keeping a story rather than a
+result.
+
+**Before trying again:** find out where (115,87) comes from. If the window is at
+x=208, a start at the window's left cannot produce x=115, so either
+`WindowOrigin(window, 0, 0)` does not return the window's top-left or the offsets
+are not what the suite is assumed to send. That is one transcript line away and
+was not checked before committing — which is why this cost a run.
