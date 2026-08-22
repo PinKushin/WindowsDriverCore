@@ -3357,3 +3357,72 @@ x=208, a start at the window's left cannot produce x=115, so either
 `WindowOrigin(window, 0, 0)` does not return the window's top-left or the offsets
 are not what the suite is assumed to send. That is one transcript line away and
 was not checked before committing — which is why this cost a run.
+
+
+## The drag: what actually works, and what does not
+
+**DRAGGING WORKS.** This was obscured for four investigations by looking only at
+the failing test. Measured at `538f908`:
+
+| test | path | outcome |
+|---|---|---|
+| `Touch_DragAndDrop` | `/actions` | **Passed** |
+| `Pen_DragAndDrop` | `/actions` | **Passed** |
+| `Touch_Scroll_*`, `Pen_Scroll_*`, `Touch_Flick`, `Pen_Flick` | `/actions` | **Passed** |
+| `TouchDownMoveUp_SingleTap` | `/touch/*` | **Passed** |
+| `TouchDownMoveUp_DragAndDrop` | `/touch/*` | **Failed** |
+| `MouseDownMoveUp` | `/moveto` + `/click` | **Failed** |
+
+So the capability exists and is proven. **Only the multi-request path fails**, and
+only when it drags — a tap on the same path works.
+
+### The difference, narrowed
+
+`/actions` receives down, move and up in ONE request and injects them in one
+continuous loop. `/touch/down|move|up` receives three requests.
+
+- **Unpaced** (`TimeSpan.Zero`): the lift succeeds, the window does not move.
+- **Paced** (`DragDuration`): the lift is refused with
+  `ERROR_INVALID_PARAMETER`, and the window does not move.
+
+Both use the SAME `Move()` with the SAME interpolation. `/actions` paces frames
+~100 ms apart (1000 ms ÷ 10 frames) and works; the multi-request path paces them
+~32 ms apart and fails — so it is not the frame rate either.
+
+### REFUTED, properly this time: thread affinity
+
+An earlier check reported threads only WHEN THEY DIFFERED, found none, and
+retired the idea. That was a negative from an instrument that only sometimes
+looks. Re-instrumented to report all three phases always:
+
+```
+The system refused a touch contact (Up) (ERROR_INVALID_PARAMETER)
+  [down on thread 7, moved on 9, lifting on 7]
+```
+
+**Down and lift on the SAME thread, and the lift is still refused.** A dedicated
+single-threaded injection pump was then built so every frame of every gesture
+goes down one thread — and the drag still failed identically. Both the diagnostic
+and the fix say the same thing, so this is closed. The pump was reverted rather
+than kept: it did not do what it was built for, and keeping it would be keeping
+unproven complexity.
+
+### What is left
+
+A bare hold — down, wait 400 ms, up, crossing two request boundaries — **works**.
+A paced move of 320 ms between the same two boundaries **fails**. The contact
+survives silence but not injected UPDATE frames, and no timing, threading or
+frame-rate explanation survives contact with both facts.
+
+**The pragmatic option, not yet taken:** the `/touch/*` trio describes a gesture,
+and nothing in the protocol requires each phase to be injected at the instant its
+request arrives. Recording down and move as intent and replaying the whole
+gesture on `up` would use the `/actions` code path that already passes. It is a
+real semantic change — a client that presses, observes, then lifts would see
+nothing in between — and it should be a deliberate decision rather than a quiet
+one, which is why it is written down here instead of done.
+
+**Cost, recorded honestly:** roughly twenty probe and guest runs across two
+sessions for two suite tests. What that bought is a much smaller search space and
+five permanent refutations, but the return per run has been poor and the next
+attempt should start from the table above rather than from a fresh theory.

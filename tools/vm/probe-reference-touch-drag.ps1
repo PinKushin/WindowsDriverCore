@@ -96,7 +96,27 @@ function MeasureDriver($driverName, $exePath) {
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             $status = 'ok'
             try { PostRaw "/session/$session/touch/$phase" "{`"x`":$tx,`"y`":$ty}" | Out-Null }
-            catch { $status = "FAILED: $($_.Exception.Message)" }
+            catch {
+                # THE BODY, READ OFF THE RESPONSE STREAM. The fault message is
+                # where the driver reports WHY - the Win32 error and the thread
+                # each phase ran on - and "500 Internal Server Error" alone hides
+                # exactly that.
+                #
+                # $_.ErrorDetails.Message is empty here: this is Windows
+                # PowerShell 5.1, where Invoke-RestMethod does not populate it for
+                # a 500 with a JSON body. That cost a probe run. The stream is
+                # the reliable source.
+                $status = "FAILED: $($_.Exception.Message)"
+                $resp = $_.Exception.Response
+                if ($resp) {
+                    try {
+                        $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+                        $body = $reader.ReadToEnd()
+                        $reader.Close()
+                        if ($body) { $status = "FAILED: $body" }
+                    } catch { }
+                }
+            }
             $sw.Stop()
 
             $timings[$phase] = $sw.Elapsed.TotalMilliseconds
