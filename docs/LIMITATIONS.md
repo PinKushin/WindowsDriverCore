@@ -3240,3 +3240,81 @@ changes and neither moved the test; a third value is not evidence.
 all. It was deliberately left alone: that is a Platform primitive shared with
 the click ladder, so changing it and a touch behaviour in one run would make a
 moved score unattributable.
+
+## The touch drag is not a timing problem — measured against the reference
+
+Four probe runs and a direct comparison with WinAppDriver on the same guest, same
+window, same gesture. Everything the previous section chased is now closed.
+
+### What the reference does, observably
+
+```
+                 /touch/down   /touch/move   /touch/up    window moved
+WinAppDriver       199.7 ms      169.8 ms     182.4 ms        YES
+this driver          8.6 ms        6.9 ms       1.8 ms         NO
+```
+
+The reference spends ~200 ms on **every** phase and holds the contact ~370 ms
+across the gesture. Ours completes in 17 ms.
+
+### REFUTED: the contact cannot survive a long gesture
+
+A bare hold — down, wait, up, no move at all:
+
+```
+hold ms        0    50   100   200   400   800
+ours          ok    ok    ok    ok    ok   REFUSED
+reference     ok    ok    ok    ok    ok    ok
+```
+
+Ours survives 400 ms. The drag whose lift was refused had a move of **156 ms**.
+So the earlier refusals were never a simple lifetime limit, and the reference
+holding ~370 ms successfully rules out "long gestures are impossible" outright.
+
+### REFUTED: giving the window manager time fixes it
+
+The reference's shape reproduced exactly — down, 150 ms dwell, one move frame,
+150 ms dwell, up:
+
+```
+target       move?   up result
+client        no       ok
+client        yes      ok
+title bar     no       ok
+title bar     yes      ok
+
+does it MOVE the window?   before x=208 y=87 -> after x=208 y=87   NO
+```
+
+**The whole gesture succeeds and the window does not move.** Contact survives,
+lift accepted, timing matched to the reference — and nothing drags.
+
+### What that leaves
+
+**The difference is in WHAT is injected, not WHEN.** Every timing hypothesis is
+now closed by measurement:
+
+| candidate | status |
+|---|---|
+| ERROR_TIMEOUT / contact expiry | REFUTED — error is `ERROR_INVALID_PARAMETER`; 400 ms holds fine |
+| frame count | REFUTED |
+| coordinates | REFUTED |
+| trailing pacing gap | REFUTED |
+| thread affinity | REFUTED — same thread |
+| too fast for the window manager | **REFUTED — reference timing reproduced, still no move** |
+
+Touch injection itself works: taps land, `Touch_Click_*` and
+`TouchDownMoveUp_SingleTap` pass. **Only dragging fails.** So a synthetic contact
+this driver produces is not being recognised as a window-drag gesture, while the
+reference's is.
+
+**The next question is about the frame's contents, not its schedule** — contact
+area, pressure, orientation, `touchFlags`, or whether a UWP title bar needs
+intermediate samples a single jump never provides. That is a different
+investigation from the four already spent here, and it is where this resumes.
+
+**Cost note, recorded deliberately:** this is one suite test
+(`TouchDownMoveUp_DragAndDrop`, plus `MouseDownMoveUp` for a separate reason) and
+has consumed roughly fifteen probe and guest runs. The refutations are permanent
+and the search space is much smaller, but the return per run has been poor and
+that is worth weighing before the next one.
