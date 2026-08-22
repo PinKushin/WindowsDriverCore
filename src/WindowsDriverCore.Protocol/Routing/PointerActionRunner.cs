@@ -269,30 +269,30 @@ public sealed class PointerActionRunner
         if (phase == SyntheticContactPhase.Update &&
             _contacts.TryGetValue(window, out (int X, int Y) from))
         {
-            // THE PATH IS WALKED, BUT NO WALL CLOCK IS SPENT, and the difference
-            // between this and the /actions path is the whole reason both exist.
+            // THE PATH IS WALKED AND THE MOVE TAKES TIME, because a window
+            // manager needs both: samples along the way, and a message loop that
+            // actually runs before the finger lifts.
             //
-            // In /actions the duration is SEMANTIC: down, move and up all arrive
-            // in ONE request, so without pacing the entire gesture completes in
-            // microseconds and the window manager never samples it. The client
-            // said "this move takes a second" and meant it.
+            // TWO MEASUREMENTS GOT THIS TO ITS CURRENT SHAPE, and the wrong
+            // conclusion was drawn from the first.
             //
-            // Here down, move and up are THREE separate HTTP requests, already
-            // separated by round trips, and the client stated no duration at all.
-            // Spending 300 ms inside the move invents a delay the reference never
-            // spends - and MEASURED at 7f02766, it broke the gesture outright:
+            // 7f02766, paced over DragDuration with a trailing gap:
+            //   /touch/down 1.9 ms | /touch/move 314.0 ms | /touch/up 500 jwp 13
+            //   "The system refused a touch contact (Up)"
             //
-            //   POST /touch/down ->  200          1.9 ms
-            //   POST /touch/move ->  200        314.0 ms   <- paced
-            //   POST /touch/up   ->  500 jwp 13   0.8 ms   <- "refused a touch contact (Up)"
+            // b2dd934, TimeSpan.Zero:
+            //   /touch/down 2.1 ms | /touch/move 2.2 ms | /touch/up 200
+            //   The lift worked and the window still did not move - the whole
+            //   gesture took 4 ms and the application's message loop never ran.
             //
-            // The very next down/up pair in the same session succeeded in under a
-            // millisecond, so the injector was not broken - only the lift that
-            // followed a 300 ms occupancy was. Zero keeps the interpolated frames,
-            // which are what the window manager needs, and drops the invented
-            // wait, which is what it choked on.
+            // So the duration was never the problem. The TRAILING gap was: the
+            // pacing loop slept after its last frame too, leaving the contact
+            // unrefreshed across that interval plus the HTTP hop, and the lift
+            // arrived to a contact the system had already dropped. Pacing now
+            // happens BETWEEN frames only, which is what makes spending the
+            // duration safe here.
             PointerRefusal? moved = Move(
-                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, TimeSpan.Zero);
+                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, DragDuration);
 
             if (moved is not null)
             {
@@ -573,8 +573,20 @@ public sealed class PointerActionRunner
         // follow. The duration is SEMANTIC here rather than a timeout: the
         // client asked for a move lasting a second because that is what the
         // application needs to see.
-        long frameTicks = duration > TimeSpan.Zero
-            ? duration.Ticks / FramesPerMove
+        // DIVIDED BY THE GAPS, NOT THE FRAMES. Ten frames have nine intervals
+        // between them, and pacing after the tenth is dead time at the end of
+        // the move rather than part of it.
+        //
+        // That trailing gap is not merely wasteful, it BREAKS a multi-request
+        // touch drag. Measured at 7f02766: the last frame injected, the loop
+        // then slept one more interval, the request returned, and the
+        // /touch/up that followed was refused - "The system refused a touch
+        // contact (Up)", 500 jwp 13 - because the contact had gone unrefreshed
+        // across that gap plus the HTTP hop. The gaps DURING the loop were the
+        // same length and were fine; only the trailing one, which no frame
+        // followed, was fatal.
+        long frameTicks = duration > TimeSpan.Zero && FramesPerMove > 1
+            ? duration.Ticks / (FramesPerMove - 1)
             : 0;
 
         // Interpolated, because a drag is the PATH and not the endpoints. An
@@ -593,7 +605,8 @@ public sealed class PointerActionRunner
                 return PointerRefusal.Reason("The system refused a contact update");
             }
 
-            if (frameTicks > 0)
+            // Never after the LAST frame - see the frameTicks comment above.
+            if (frameTicks > 0 && frame < FramesPerMove)
             {
                 // Paced against the clock rather than slept blindly, so the
                 // cost of injecting a frame comes out of the interval instead of
