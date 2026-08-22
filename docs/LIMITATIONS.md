@@ -3077,3 +3077,59 @@ session and element paths, `SetFocus` declining, "`WaitForInputIdle` waits once
 per process", `OpenProcess` denial for a packaged app). The eighth — the process-
 level drain answering a proxy question instead of the actual property — is the
 one that held, and is now fixed at the mechanism it was diagnosed at.
+
+## The multi-request touch drag: interpolation landed, the lift is still unsolved
+
+`TouchDownMoveUp_DragAndDrop` (and `MouseDownMoveUp`, which is a different code
+path — see below). Three guest measurements, and the middle one produced a
+theory the third refuted.
+
+### What is fixed
+
+`/touch/move` interpolates the path instead of teleporting. The runner tracks
+the contact between the three separate requests, keyed by window. Before, a
+drag injected one frame jumping 100 px, which no window manager can follow.
+
+### The three measurements
+
+| commit | `/touch/move` | `/touch/up` | drag works |
+|---|---|---|---|
+| `a085cd6` | ~1 ms, one frame | 200 | no — teleport |
+| `7f02766` | **314 ms**, paced over `DragDuration` | **500 jwp 13** | no — lift refused |
+| `b2dd934` | 2.2 ms, `TimeSpan.Zero` | 200 | no — whole gesture 4 ms |
+| `43d510b` | **414 ms**, paced, no trailing gap | **500 jwp 13** | no — lift refused |
+
+### REFUTED: "the trailing sleep after the last frame kills the contact"
+
+`7f02766` refused the lift, and the pacing loop was found to sleep after *every*
+frame including the last — leaving the contact unrefreshed for one interval plus
+the HTTP hop. Plausible, and wrong. `43d510b` removed exactly that trailing gap
+and the lift was refused again, at 500 jwp 13, identically.
+
+**So the duration is what breaks it, not the gap.** A move of ~2 ms lifts fine;
+a move of 300–400 ms does not, whether or not it ends on an injected frame. The
+next injected `down`/`up` pair in the same session always succeeds in under a
+millisecond, so the injector is not left broken — only the lift that follows a
+long move.
+
+`43d510b` also cost three tests (261 → 258: `Launch_ClassicApp`,
+`CreateSessionWithWorkingDirectoryAndArguments`, `TouchScrollOnElement_Vertical`)
+and was reverted. `b2dd934` remains the best measured state.
+
+### Where to look next, and where NOT to
+
+The remaining question is why a synthetic touch contact cannot survive a long
+move. `ISyntheticPointer.Inject` is the layer to read: if it creates or resets a
+synthetic pointer device per call rather than holding one for the gesture's
+lifetime, then a long move is not "one contact moving" but a burst of
+independent contacts, and the lift has nothing to lift. That would explain every
+row in the table and has not been checked.
+
+**Do not simply re-tune the duration.** Two of the four runs above were duration
+changes and neither moved the test; a third value is not evidence.
+
+`MouseDownMoveUp` is a SEPARATE defect in a different place —
+`SendInputPointer.MoveTo` sends a single absolute jump, with no interpolation at
+all. It was deliberately left alone: that is a Platform primitive shared with
+the click ladder, so changing it and a touch behaviour in one run would make a
+moved score unattributable.
