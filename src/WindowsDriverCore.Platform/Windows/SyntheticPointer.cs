@@ -85,10 +85,20 @@ public sealed class SyntheticPointer : ISyntheticPointer
             : InjectPen(contacts);
     }
 
-    private static bool InjectTouch(IReadOnlyList<SyntheticContact> contacts)
+    /// <inheritdoc />
+    /// <remarks>
+    /// Instance state on a type whose injection methods are otherwise static,
+    /// which is deliberate: the value belongs to the caller that just got a
+    /// false back, and making it static would let two concurrent gestures
+    /// overwrite each other's reason.
+    /// </remarks>
+    public int LastInjectionError { get; private set; }
+
+    private bool InjectTouch(IReadOnlyList<SyntheticContact> contacts)
     {
         if (!EnsureTouchInitialised())
         {
+            LastInjectionError = Marshal.GetLastWin32Error();
             return false;
         }
 
@@ -120,10 +130,20 @@ public sealed class SyntheticPointer : ISyntheticPointer
             frame[index].rcContact.Bottom = contact.Y + 2;
         }
 
-        return Win32.InjectTouchInput((uint)frame.Length, frame);
+        if (Win32.InjectTouchInput((uint)frame.Length, frame))
+        {
+            return true;
+        }
+
+        // CAPTURED IMMEDIATELY, before anything else can overwrite it. Any
+        // intervening managed call may issue its own syscall and replace the
+        // thread's last error, which is how a captured-too-late error code
+        // becomes a confident wrong answer.
+        LastInjectionError = Marshal.GetLastWin32Error();
+        return false;
     }
 
-    private static bool InjectPen(IReadOnlyList<SyntheticContact> contacts)
+    private bool InjectPen(IReadOnlyList<SyntheticContact> contacts)
     {
         nint device = PenDevice();
         if (device == 0)
@@ -150,7 +170,13 @@ public sealed class SyntheticPointer : ISyntheticPointer
         frame[0].penInfo.tiltX = contact.TiltX;
         frame[0].penInfo.tiltY = contact.TiltY;
 
-        return Win32.InjectSyntheticPointerInput(device, frame, (uint)frame.Length);
+        if (Win32.InjectSyntheticPointerInput(device, frame, (uint)frame.Length))
+        {
+            return true;
+        }
+
+        LastInjectionError = Marshal.GetLastWin32Error();
+        return false;
     }
 
     private static bool EnsureTouchInitialised()
