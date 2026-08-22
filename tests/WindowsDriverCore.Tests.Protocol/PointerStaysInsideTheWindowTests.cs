@@ -126,6 +126,48 @@ public sealed class PointerStaysInsideTheWindowTests : IDisposable
     }
 
     /// <summary>
+    /// A POINTER origin starts at the viewport, not at the desktop corner.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured on the guest:</b> <c>Pen_Click_OriginPointer</c> and
+    /// <c>Touch_Click_OriginPointer</c> both failed with
+    /// <c>"(101,33) is outside the application window, so the input was not
+    /// dispatched"</c> — this driver's own guard refusing a point that is
+    /// perfectly inside the window, because the two origins did not agree about
+    /// what their numbers meant.
+    /// </para>
+    /// <para>
+    /// <b>The suite feeds a WINDOW-RELATIVE number into a pointer-origin
+    /// move.</b> It reads <c>element.Location</c>, which this driver answers
+    /// window-relative (measured against WinAppDriver), subtracts the pointer's
+    /// starting position of zero, and moves by the difference. W3C starts a
+    /// pointer at the viewport origin, and in this driver the viewport is the
+    /// window — so a move of (101,33) from the start lands 101 across and 33
+    /// down INSIDE the window.
+    /// </para>
+    /// <para>
+    /// A viewport move already converted correctly; a pointer move added its
+    /// offset to a raw (0,0) and produced a DESKTOP coordinate. Same intended
+    /// point, two coordinate systems, and the guard caught the disagreement -
+    /// which is the guard doing its job, not a false positive.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task APointerOrigin_StartsAtTheWindow_NotTheDesktopCorner()
+    {
+        _windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
+
+        await TapFromPointerOrigin(120, 40).ConfigureAwait(false);
+
+        // The SAME answer a viewport move of (120,40) produces: (500,300) +
+        // (120,40). Predicting the identical point is the assertion - the two
+        // origins describing one place is exactly what was broken.
+        _injector.Received().Inject(Arg.Is<IReadOnlyList<SyntheticContact>>(
+            contacts => contacts.Count == 1 && contacts[0].X == 620 && contacts[0].Y == 340));
+    }
+
+    /// <summary>
     /// THE GUARD. A point the window does not own is never dispatched.
     /// </summary>
     [Test]
@@ -146,6 +188,38 @@ public sealed class PointerStaysInsideTheWindowTests : IDisposable
         // The measurement that matters. The status could be right while the
         // contact went out anyway, and then the guard would be decoration.
         _injector.DidNotReceive().Inject(Arg.Any<IReadOnlyList<SyntheticContact>>());
+    }
+
+    /// <summary>A tap whose move is relative to the POINTER rather than the viewport.</summary>
+    private async Task<JsonDocument> TapFromPointerOrigin(int x, int y)
+    {
+        string session = await NewSession().ConfigureAwait(false);
+
+        object payload = new
+        {
+            actions = new[]
+            {
+                new
+                {
+                    type = "pointer",
+                    id = "finger1",
+                    parameters = new { pointerType = "touch" },
+                    actions = new object[]
+                    {
+                        new { type = "pointerMove", duration = 0, origin = "pointer", x, y },
+                        new { type = "pointerDown", button = 0 },
+                        new { type = "pointerUp", button = 0 },
+                    },
+                },
+            },
+        };
+
+        HttpResponseMessage response = await _client
+            .PostAsJsonAsync(new Uri($"/session/{session}/actions", UriKind.Relative), payload)
+            .ConfigureAwait(false);
+
+        return JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync().ConfigureAwait(false));
     }
 
     private async Task<JsonDocument> Tap(int x, int y)

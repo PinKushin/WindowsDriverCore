@@ -139,8 +139,30 @@ public sealed class PointerActionRunner
         // Where the contact is now. W3C treats a pointer as having a position
         // between actions, so a pointerDown with no preceding move happens
         // wherever the previous action left it.
-        int x = 0;
-        int y = 0;
+        //
+        // IT STARTS AT THE VIEWPORT ORIGIN, NOT AT THE DESKTOP CORNER, and this
+        // read (0,0) until 2026-08-22. W3C puts a fresh pointer at (0,0) OF THE
+        // VIEWPORT, and in this driver the viewport is the window - the same
+        // rule the "viewport" origin below already follows.
+        //
+        // Held in SCREEN coordinates because that is what injection takes, so
+        // the viewport origin expressed in screen terms is the window's
+        // top-left. Starting from a raw (0,0) meant a pointer-origin move
+        // produced a DESKTOP coordinate while a viewport move produced a screen
+        // one, and the two disagreed about the same intended point.
+        //
+        // MEASURED: Pen_Click_OriginPointer and Touch_Click_OriginPointer both
+        // failed with "(101,33) is outside the application window, so the input
+        // was not dispatched" - this driver's own guard refusing a point that is
+        // well inside the window. The guard was right; the arithmetic was not.
+        (int startX, int startY, PointerRefusal? origin) = WindowOrigin(window, 0, 0);
+        if (origin is not null)
+        {
+            return origin;
+        }
+
+        int x = startX;
+        int y = startY;
         bool down = false;
 
         foreach (JsonElement step in steps.EnumerateArray())
