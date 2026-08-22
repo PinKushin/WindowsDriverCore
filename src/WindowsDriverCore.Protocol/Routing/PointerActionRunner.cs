@@ -269,8 +269,30 @@ public sealed class PointerActionRunner
         if (phase == SyntheticContactPhase.Update &&
             _contacts.TryGetValue(window, out (int X, int Y) from))
         {
+            // THE PATH IS WALKED, BUT NO WALL CLOCK IS SPENT, and the difference
+            // between this and the /actions path is the whole reason both exist.
+            //
+            // In /actions the duration is SEMANTIC: down, move and up all arrive
+            // in ONE request, so without pacing the entire gesture completes in
+            // microseconds and the window manager never samples it. The client
+            // said "this move takes a second" and meant it.
+            //
+            // Here down, move and up are THREE separate HTTP requests, already
+            // separated by round trips, and the client stated no duration at all.
+            // Spending 300 ms inside the move invents a delay the reference never
+            // spends - and MEASURED at 7f02766, it broke the gesture outright:
+            //
+            //   POST /touch/down ->  200          1.9 ms
+            //   POST /touch/move ->  200        314.0 ms   <- paced
+            //   POST /touch/up   ->  500 jwp 13   0.8 ms   <- "refused a touch contact (Up)"
+            //
+            // The very next down/up pair in the same session succeeded in under a
+            // millisecond, so the injector was not broken - only the lift that
+            // followed a 300 ms occupancy was. Zero keeps the interpolated frames,
+            // which are what the window manager needs, and drops the invented
+            // wait, which is what it choked on.
             PointerRefusal? moved = Move(
-                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, DragDuration);
+                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, TimeSpan.Zero);
 
             if (moved is not null)
             {
