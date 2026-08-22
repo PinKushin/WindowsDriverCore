@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
 using WindowsDriverCore.Platform.Windows;
@@ -175,10 +176,168 @@ public sealed class UiaElementInteractor : IElementInteractor
                 (_, true) => "keys",
             };
 
-            return _keyboard.Type(keys)
-                ? ElementAction.Performed(path)
-                : ElementAction.Failed(ElementActionOutcome.NotInteractable);
+            if (!_keyboard.Type(keys))
+            {
+                return ElementAction.Failed(ElementActionOutcome.NotInteractable);
+            }
+
+            // THE WRITE NOW WAITS FOR ITS OWN EFFECT, rather than answering the
+            // instant SendInput returns and leaving the wait to whichever READ
+            // happens to run next.
+            //
+            // MEASURED 2026-08-12 in the guest transcript: GET /text landed
+            // 0.9 ms after the keystroke that should have changed it, and the
+            // process-level drain that was supposed to prevent that
+            // (WaitForInputIdle) answered "idle" in under a millisecond 80 of
+            // 101 times - because right after SendInput the process GENUINELY
+            // is idle, the injected keys are still in the system's raw input
+            // queue and have not reached the target thread yet. That primitive
+            // answers "is the process idle", which is the wrong question.
+            //
+            // This asks the RIGHT question: has the element's own reported
+            // value actually changed to reflect what was just typed. Only for
+            // elements with ValuePattern - the same gate Clear() and SetValue()
+            // already use - because that is the property SendKeys writes, and
+            // a UI Automation client reading anything else after typing is
+            // reading a side effect this method has no way to name.
+            if (Has(element, UiaPropertyIds.IsValuePatternAvailable))
+            {
+                SettleValue(element);
+            }
+
+            return ElementAction.Performed(path);
         });
+    }
+
+    /// <summary>How long to wait for a typed value to stop changing.</summary>
+    /// <remarks>
+    /// Bounds a FAILURE, not the ordinary case. The loop returns the instant the
+    /// value settles - measured against the Win32 subject that is nowhere near
+    /// this budget - and only an application that never processes the keystrokes
+    /// at all waits this long. Matches <c>ContentReadyLauncher.Budget</c>, the
+    /// other settle-style wait in this layer, rather than inventing a second
+    /// number with no relation to it.
+    /// </remarks>
+    private static readonly TimeSpan SettleBudget = TimeSpan.FromMilliseconds(1000);
+
+    /// <summary>
+    /// Waits for an element's own reported value to stop changing after typing.
+    /// </summary>
+    /// <param name="element">The element that was just typed into.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Requires an observed CHANGE before it will accept stability.</b> Two
+    /// consecutive reads of the value the element already held, taken before the
+    /// application has processed a single queued keystroke, would satisfy a
+    /// naive "same twice in a row" check immediately - the exact front-race this
+    /// project's own notes on candidate fixes warned about. Waiting for at least
+    /// one change first is what tells "nothing has happened yet" apart from
+    /// "the typing already landed and produced this value".
+    /// </para>
+    /// <para>
+    /// An element whose typed content coincidentally equals what was already
+    /// there - typing the same text twice - never satisfies the "changed" half
+    /// and spends the whole budget. That is a known, accepted cost of a
+    /// condition-based wait: it is bounded, and it is the same trade every other
+    /// budget in this codebase makes.
+    /// </para>
+    /// </remarks>
+    private static void SettleValue(IUIAutomationElement element)
+    {
+        string? Read()
+        {
+            try
+            {
+                return element.GetCurrentPropertyValue(UiaPropertyIds.ValueValue) as string;
+            }
+            catch (COMException)
+            {
+                // Gone already. Nothing left to settle, and the caller finds
+                // out about the dead element on its next command, same as
+                // everywhere else in this file. Returning the sentinel here
+                // is what lets WaitForValueToSettle treat "the element died"
+                // as "stop polling" without knowing anything about COM.
+                return DeadElement;
+            }
+        }
+
+        WaitForValueToSettle(Read, SettleBudget);
+    }
+
+    /// <summary>
+    /// Marks a read that could not happen because the element is gone.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see langword="null"/>, which is a genuine value a
+    /// <c>ValuePattern</c> can legitimately report. Conflating the two would
+    /// make a dead element indistinguishable from an element that settled on
+    /// an empty value, and <see cref="WaitForValueToSettle"/> needs to tell
+    /// them apart to stop polling immediately rather than spending its whole
+    /// budget on a window that has already closed.
+    /// </remarks>
+    private const string DeadElement = "\0WindowsDriverCore.DeadElement\0";
+
+    /// <summary>
+    /// Polls <paramref name="read"/> until two consecutive calls agree AND at
+    /// least one call has disagreed with the first — or the budget runs out.
+    /// </summary>
+    /// <param name="read">
+    /// Reads the value currently under test. Injected so this loop — which is
+    /// where the actual synchronisation decision lives — can be exercised with
+    /// a scripted sequence and no COM interop at all.
+    /// </param>
+    /// <param name="budget">How long to keep polling before giving up.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Requiring an observed CHANGE before accepting stability is the whole
+    /// point, and it is the part every other candidate got wrong.</b> Two
+    /// consecutive reads of the value the element already held, taken before
+    /// the application has processed a single queued keystroke, satisfy a
+    /// naive "same twice in a row" check on the very first two calls — the
+    /// exact front-race this project's own notes on candidate fixes warned
+    /// about, and the reason <c>WaitForInputIdle</c> answered "idle" 80 times
+    /// out of 101 in under a millisecond: it asked a proxy question instead of
+    /// watching the actual property change.
+    /// </para>
+    /// <para>
+    /// An element whose typed content coincidentally equals what was already
+    /// there never satisfies the "changed" half and spends the whole budget.
+    /// That is a known, accepted cost of a condition-based wait: it is
+    /// bounded, and it is the trade every other budget in this codebase makes.
+    /// </para>
+    /// </remarks>
+    internal static void WaitForValueToSettle(Func<string?> read, TimeSpan budget)
+    {
+        string? baseline = read();
+        if (ReferenceEquals(baseline, DeadElement))
+        {
+            return;
+        }
+
+        string? previous = baseline;
+        bool changed = false;
+
+        long deadline = Stopwatch.GetTimestamp() + (long)(budget.TotalSeconds * Stopwatch.Frequency);
+
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            string? current = read();
+            if (ReferenceEquals(current, DeadElement))
+            {
+                return;
+            }
+
+            if (!changed)
+            {
+                changed = !string.Equals(current, baseline, StringComparison.Ordinal);
+            }
+            else if (string.Equals(current, previous, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            previous = current;
+        }
     }
 
     /// <summary>
