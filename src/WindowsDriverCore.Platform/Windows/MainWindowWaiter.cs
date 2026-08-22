@@ -444,7 +444,8 @@ public sealed class MainWindowWaiter
         {
             if (!before.Contains(handle) &&
                 Win32.IsWindowVisible(handle) &&
-                Win32.GetWindow(handle, Win32.GW_OWNER) == 0)
+                Win32.GetWindow(handle, Win32.GW_OWNER) == 0 &&
+                !IsOurs(handle))
             {
                 appeared.Add(handle);
             }
@@ -453,6 +454,41 @@ public sealed class MainWindowWaiter
         }, 0);
 
         return PreferTitled(appeared);
+    }
+
+    /// <summary>Whether a window belongs to this driver's own process.</summary>
+    /// <param name="window">A candidate window.</param>
+    /// <returns><see langword="true"/> when we own it.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>MEASURED 2026-08-22, and it cost an entire compatibility run.</b> One
+    /// run scored 41/290 where the same commit scored 261 on a re-run, with
+    /// every test after the second minute failing on
+    /// "No connection could be made... 127.0.0.1:4723" - the driver was gone.
+    /// The transcript shows the moment:
+    /// </para>
+    /// <code>
+    /// launch a classic app -> window 0x2307F0 (ConsoleWindowClass) 21.6 ms
+    /// </code>
+    /// <para>
+    /// A console, not Notepad. The stage above already warns that "a window that
+    /// did not exist a moment ago" is a guess a busy desktop can get wrong; what
+    /// it did not account for is that THIS PROCESS has windows too, and a driver
+    /// started with a console can produce one at any moment. The session then
+    /// owned our console, and ending a session ends what it owns.
+    /// </para>
+    /// <para>
+    /// Checked here rather than only in the terminator because adopting our own
+    /// window is wrong on its own terms - every command in that session would
+    /// have been addressed at the driver's console rather than at the
+    /// application. The terminator has the matching guard so that neither
+    /// mistake alone is fatal.
+    /// </para>
+    /// </remarks>
+    private static bool IsOurs(nint window)
+    {
+        Win32.GetWindowThreadProcessId(window, out uint owner);
+        return (int)owner == Environment.ProcessId;
     }
 
     /// <summary>
