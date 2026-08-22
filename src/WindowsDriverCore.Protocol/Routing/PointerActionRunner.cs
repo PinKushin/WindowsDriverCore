@@ -267,7 +267,7 @@ public sealed class PointerActionRunner
         // round trips give the window manager time and intermediate samples that
         // this driver, answering in single-digit milliseconds, does not.
         if (phase == SyntheticContactPhase.Update &&
-            _contacts.TryGetValue(window, out (int X, int Y) from))
+            _contacts.TryGetValue(window, out (int X, int Y, int Thread) from))
         {
             // THE PATH IS WALKED, BUT NO WALL CLOCK IS SPENT, and the difference
             // between this and the /actions path is the whole reason both exist.
@@ -292,21 +292,22 @@ public sealed class PointerActionRunner
             // which are what the window manager needs, and drops the invented
             // wait, which is what it choked on.
             PointerRefusal? moved = Move(
-                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, TimeSpan.Zero);
+                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, DragDuration);
 
             if (moved is not null)
             {
                 return moved;
             }
 
-            _contacts[window] = (x, y);
+            _contacts[window] = (x, y, from.Thread);
             return null;
         }
 
         if (!_synthetic.Inject([Plain(x, y, phase)]))
         {
             return PointerRefusal.Reason(
-                $"The system refused a touch contact ({phase}){Because(_synthetic.LastInjectionError)}");
+                $"The system refused a touch contact ({phase})" +
+                $"{Because(_synthetic.LastInjectionError)}{AcrossThreads(window)}");
         }
 
         // Tracked so the NEXT update knows where it is starting from. Removed on
@@ -319,7 +320,21 @@ public sealed class PointerActionRunner
         }
         else
         {
-            _contacts[window] = (x, y);
+            // THE THREAD THAT OPENED THE CONTACT IS RECORDED WITH IT.
+            //
+            // HYPOTHESIS UNDER TEST: InjectTouchInput's contact state may be
+            // per-thread. down, move and up are three separate HTTP requests and
+            // ASP.NET may serve them on different thread-pool threads, so a
+            // contact opened on one and lifted on another would be genuinely
+            // invalid - which is exactly the ERROR_INVALID_PARAMETER measured at
+            // 982eb32 - and the duration correlation would follow without the OS
+            // dropping anything, because a fast gesture is likelier to reuse the
+            // same pooled thread.
+            //
+            // Recorded rather than acted on: this makes the refusal name both
+            // threads, so the next failure says whether they differ instead of
+            // leaving it to be argued.
+            _contacts[window] = (x, y, Environment.CurrentManagedThreadId);
         }
 
         return null;
@@ -352,7 +367,7 @@ public sealed class PointerActionRunner
     /// pressed has no path.
     /// </para>
     /// </remarks>
-    private readonly ConcurrentDictionary<nint, (int X, int Y)> _contacts = new();
+    private readonly ConcurrentDictionary<nint, (int X, int Y, int Thread)> _contacts = new();
 
     /// <summary>Forgets every tracked contact, unconditionally.</summary>
     /// <remarks>
@@ -509,6 +524,22 @@ public sealed class PointerActionRunner
             ? null
             : PointerRefusal.Reason(
                 $"({x},{y}) is outside the application window, so the input was not dispatched");
+
+    /// <summary>Names the threads a gesture spanned, when it spanned more than one.</summary>
+    /// <param name="window">The window whose contact is being lifted.</param>
+    /// <returns>A trailing clause, or empty when there is nothing to say.</returns>
+    /// <remarks>
+    /// <b>Reports only the difference, not the identity.</b> A thread id on its
+    /// own is noise in a transcript; two that disagree at the moment an
+    /// injection is refused is the whole hypothesis. Empty when no contact is
+    /// tracked or when the gesture stayed on one thread, so this adds nothing to
+    /// the ordinary case.
+    /// </remarks>
+    private string AcrossThreads(nint window) =>
+        _contacts.TryGetValue(window, out (int X, int Y, int Thread) contact) &&
+        contact.Thread != Environment.CurrentManagedThreadId
+            ? $" [contact opened on thread {contact.Thread}, lifting on {Environment.CurrentManagedThreadId}]"
+            : string.Empty;
 
     /// <summary>Names the Win32 reason an injection was refused.</summary>
     /// <param name="error">The captured error, or 0 when there is none.</param>
