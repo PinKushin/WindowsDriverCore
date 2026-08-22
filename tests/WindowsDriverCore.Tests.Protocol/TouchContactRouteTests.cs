@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -13,6 +14,7 @@ using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Protocol.Routing;
 
 namespace WindowsDriverCore.Tests.Protocol;
 
@@ -73,6 +75,15 @@ public sealed class TouchContactRouteTests : IDisposable
 
         _injector.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
         _injector.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
+
+        // NO FINGER IS ON THE SCREEN AT THE START OF A TEST. PointerActionRunner
+        // is a singleton and tracks a contact between the separate /touch/down,
+        // /touch/move and /touch/up requests, so without this a test that
+        // pressed leaves the contact down for whichever test runs next - and a
+        // move then interpolates a whole drag where the test expected one frame.
+        // Measured: adding contact tracking turned Move_InjectsAnUpdate and
+        // AMoveIsNotGuarded_SoADragMayLeaveTheWindow red purely on test order.
+        _factory.Services.GetRequiredService<PointerActionRunner>().ForgetContacts();
     }
 
     [OneTimeTearDown]
@@ -136,6 +147,89 @@ public sealed class TouchContactRouteTests : IDisposable
 
         _injector.Received(1).Inject(Arg.Is<IReadOnlyList<SyntheticContact>>(
             contacts => contacts[0].Phase == SyntheticContactPhase.Update));
+    }
+
+    /// <summary>
+    /// A move while a contact is DOWN walks the path, rather than teleporting.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured on the guest at <c>a085cd6</c>:</b>
+    /// <c>TouchDownMoveUp_DragAndDrop</c> and <c>MouseDownMoveUp</c> both failed
+    /// with the window never moving — <c>Expected any value except
+    /// {X=290,Y=154}. Actual: {X=290,Y=154}</c>. A window manager samples the
+    /// pointer across its own message loop, so one frame teleporting 100 px is
+    /// not a gesture it can follow. The same defect was measured and fixed for
+    /// the <c>/actions</c> path, where the drag tests now pass.
+    /// </para>
+    /// <para>
+    /// <b>The frame COUNT is the assertion, not merely that an update was
+    /// injected.</b> The pre-existing <c>Move_InjectsAnUpdate</c> above passes
+    /// against the single-frame implementation this replaces — it has to, since
+    /// it moves with no contact down. Only counting frames distinguishes a walked
+    /// path from a jump.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task MoveWhileDown_WalksThePath_RatherThanTeleporting()
+    {
+        string sessionId = await NewSession();
+
+        await Touch(sessionId, "down", 30, 40);
+        _injector.ClearReceivedCalls();
+
+        await Touch(sessionId, "move", 130, 140);
+
+        // Many frames, not one. The exact count is the runner's own pacing
+        // decision and is deliberately not pinned here - asserting it would make
+        // this test fail for a tuning change that breaks nothing.
+        int frames = _injector.ReceivedCalls()
+            .Count(call => call.GetMethodInfo().Name == nameof(ISyntheticPointer.Inject));
+
+        frames.ShouldBeGreaterThan(
+            1,
+            "a drag must walk its path; one frame is the teleport the guest measured");
+    }
+
+    /// <summary>The path ends where the caller asked, not short of it.</summary>
+    /// <remarks>
+    /// Interpolation that never reaches its destination would still satisfy the
+    /// frame count above while leaving the window in the wrong place.
+    /// </remarks>
+    [Test]
+    public async Task MoveWhileDown_FinishesAtTheRequestedPoint()
+    {
+        string sessionId = await NewSession();
+
+        await Touch(sessionId, "down", 30, 40);
+        await Touch(sessionId, "move", 130, 140);
+
+        // Window origin is 100,200 in this fixture, so 130,140 lands at 230,340.
+        _injector.Received().Inject(Arg.Is<IReadOnlyList<SyntheticContact>>(
+            contacts => contacts[0].Phase == SyntheticContactPhase.Update &&
+                        contacts[0].X == 230 &&
+                        contacts[0].Y == 340));
+    }
+
+    /// <summary>A lift ends the gesture, so the next move has no path to walk.</summary>
+    /// <remarks>
+    /// The control on the tracking itself. Without it, a contact position that
+    /// was never cleared would make an ordinary hover interpolate from wherever
+    /// the last drag happened to end — and on a singleton shared by every
+    /// session, that stale point could belong to a different client entirely.
+    /// </remarks>
+    [Test]
+    public async Task AMoveAfterTheContactLifts_IsASingleFrameAgain()
+    {
+        string sessionId = await NewSession();
+
+        await Touch(sessionId, "down", 30, 40);
+        await Touch(sessionId, "up", 30, 40);
+        _injector.ClearReceivedCalls();
+
+        await Touch(sessionId, "move", 130, 140);
+
+        _injector.Received(1).Inject(Arg.Any<IReadOnlyList<SyntheticContact>>());
     }
 
     [Test]

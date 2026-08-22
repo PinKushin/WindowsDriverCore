@@ -204,13 +204,17 @@ public static class ActionRoutes
         bool hasWidth = step.TryGetProperty("width", out JsonElement width);
         bool hasHeight = step.TryGetProperty("height", out JsonElement height);
 
-        if (hasWidth != hasHeight)
-        {
-            return MissingWidthOrHeight;
-        }
-
-
-
+        // EACH VALUE IS JUDGED BEFORE THE PAIR IS, and that order is measured
+        // rather than chosen. The suite pins both halves with two adjacent
+        // tests: ActionsError_BadPointerTouch_Width sends width:-1 ALONE - so
+        // the pair is incomplete too - and expects the bad-value message, while
+        // ActionsError_BadPointerTouch_Width_MissingHeight sends a VALID
+        // width:1 alone and expects the missing-pair message.
+        //
+        // Checking the pair first answers "specified together" for both, which
+        // passes the second test and fails the first. Measured at a085cd6:
+        // exactly those two tests failed, with the pairing message where the
+        // reference sends the value message.
         if (hasWidth && !IsAtLeast(width, 1))
         {
             return BadWidth;
@@ -219,6 +223,11 @@ public static class ActionRoutes
         if (hasHeight && !IsAtLeast(height, 1))
         {
             return BadHeight;
+        }
+
+        if (hasWidth != hasHeight)
+        {
+            return MissingWidthOrHeight;
         }
 
         if (step.TryGetProperty("pressure", out JsonElement pressure) && !IsBetween(pressure, 0, 1))

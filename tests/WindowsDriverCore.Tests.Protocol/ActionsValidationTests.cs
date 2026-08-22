@@ -222,6 +222,53 @@ public sealed class ActionsValidationTests : IDisposable
             .ShouldBe("\"width\" and \"height\" attributes need to be specified together");
     }
 
+    /// <summary>
+    /// An INVALID width alone reports the bad value, not the missing pair.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured from the reference, and the ordering is the whole point.</b>
+    /// The suite pins both orderings with two adjacent tests:
+    /// <c>ActionsError_BadPointerTouch_Width</c> sends <c>width: -1</c> — alone,
+    /// so the pair is also incomplete — and expects
+    /// <c>"width" attribute is not a floating point value greater or equal to 1</c>,
+    /// while <c>ActionsError_BadPointerTouch_Width_MissingHeight</c> sends a
+    /// VALID <c>width: 1</c> alone and expects the missing-pair message.
+    /// </para>
+    /// <para>
+    /// So the per-attribute value check runs BEFORE the pairing check. Checking
+    /// the pair first answers "specified together" for both inputs, which passes
+    /// the missing-height test and fails this one — exactly what the guest
+    /// measured at <c>a085cd6</c>.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AnInvalidWidthAlone_ReportsTheBadValue_NotTheMissingPair()
+    {
+        HttpResponseMessage response = await PostActions(
+            Pointer("touch", """{"type":"pointerDown","button":0,"width":-1}"""));
+
+        (await MessageOf(response))
+            .ShouldBe("\"width\" attribute is not a floating point value greater or equal to 1");
+    }
+
+    /// <summary>The same, for height.</summary>
+    /// <remarks>
+    /// <c>ActionsError_BadPointerTouch_Height</c>. Its own test rather than a
+    /// case of the one above, because the two attributes are checked by separate
+    /// branches and a fix that reordered only the width branch would leave this
+    /// one reporting the pairing message.
+    /// </remarks>
+    [Test]
+    public async Task AnInvalidHeightAlone_ReportsTheBadValue_NotTheMissingPair()
+    {
+        HttpResponseMessage response = await PostActions(
+            Pointer("touch", """{"type":"pointerDown","button":0,"height":-1}"""));
+
+        (await MessageOf(response))
+            .ShouldBe("\"height\" attribute is not a floating point value greater or equal to 1");
+    }
+
     [Test]
     public async Task AMousePointer_IsNotSupported()
     {
