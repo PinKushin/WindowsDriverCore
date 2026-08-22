@@ -38,6 +38,36 @@ public sealed class ApplicationTerminator : IApplicationTerminator
     /// Separating the DECISION from the ACTION makes the dangerous half
     /// assertable at no risk.
     /// </remarks>
+    /// <summary>Whether a process id is this driver's own process.</summary>
+    /// <param name="processId">The id a session wants ended.</param>
+    /// <returns><see langword="true"/> only for our own process.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>MEASURED 2026-08-22: the driver killed itself and took a whole
+    /// compatibility run with it.</b> One run scored 41/290 where the same
+    /// commit scored 261 on a re-run, every test after the second minute failing
+    /// with "No connection could be made... 127.0.0.1:4723".
+    /// </para>
+    /// <para>
+    /// The transcript named it. A classic launch adopted the wrong window -
+    /// <c>launch 'notepad.exe' -&gt; window 0x2307F0 (ConsoleWindowClass)</c> -
+    /// because <see cref="Windows.MainWindowWaiter"/>'s last resort is "any
+    /// top-level window that did not exist before the launch", and this driver
+    /// runs with a console of its own. The session owned that window, and
+    /// ending a session ends what it owns.
+    /// </para>
+    /// <para>
+    /// The real fix is in the waiter, which no longer adopts our own windows.
+    /// This is the second guard, and it is the one that holds if the first is
+    /// ever wrong again: no route by which a session comes to own our window
+    /// should be able to end us. Same argument as
+    /// <see cref="IsTheDesktopShell"/> - ending the shell takes the desktop,
+    /// ending ourselves takes every live session on the machine.
+    /// </para>
+    /// </remarks>
+    internal static bool IsThisProcess(int processId) =>
+        processId > 0 && processId == Environment.ProcessId;
+
     internal static bool IsTheDesktopShell(int processId) =>
         processId > 0 && processId == ShellProcessId();
 
@@ -133,6 +163,16 @@ public sealed class ApplicationTerminator : IApplicationTerminator
         // Measured 2026-08-11: the suite opens Explorer windows every run and
         // six or seven survived, because the only safe thing this could do was
         // nothing. Closing the window is both safe and correct.
+        // OURSELVES, BEFORE ANYTHING ELSE AND WITHOUT TOUCHING THE WINDOW.
+        //
+        // Not merely "do not Kill" - a WM_CLOSE to our own window would end the
+        // driver just as effectively, so this returns before the close below
+        // rather than only guarding the kill.
+        if (IsThisProcess(processId))
+        {
+            return false;
+        }
+
         bool isTheShell = IsTheDesktopShell(processId);
 
         if (window != 0 && Win32.IsWindow(window))
