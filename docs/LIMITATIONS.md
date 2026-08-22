@@ -3037,3 +3037,43 @@ falsify this one.** A Win32 `EDIT` is too fast, Calculator's condition is too
 small and its display caps, and the WPF subject lost its window mid-run. Until
 one exists, any drain change would be validated by subjects that pass under every
 candidate, which is how the current drain looked correct for two days.
+
+### FIXED: `SendKeysToElement_*` is 12/12 across two independent guest runs
+
+Implemented at `eb1b4c1` / merged at `a085cd6`. `UiaElementInteractor.SendKeys`
+now waits for the element's own `ValuePattern` value to stop changing before
+returning, instead of leaving that to whichever route runs next. Full mechanism
+and the `WaitForValueToSettle` algorithm are documented at the commit; this
+entry records the guest confirmation.
+
+```
+              c5cf728  b0de3d8  bd3df1f  975188d  3362c89  a085cd6  a085cd6
+                                                             (run 1)  (run 2)
+SendKeys_*      12/12    12/12    12/12       -        -    12/12    12/12
+SendKeysTo...    8/12    10/12    8/12        -    (mixed)  12/12    12/12
+Overall score     248      252      254      253      254      257      259
+```
+
+**Two consecutive full runs, both 12/12, is the bar this investigation set for
+itself.** Every prior measurement of this family — five separate runs — showed a
+different failing subset. One clean run was not going to be trusted here; two
+were run deliberately before writing this up as fixed, per this project's own
+rule that reproducibility only counts when the confound has actually changed.
+
+**`TouchScrollOnElement_Vertical` passed in both runs too.** It had flapped on
+exactly the same runs as the SendKeys family throughout this investigation, with
+a standing note that it was "probably the same cause." That held.
+
+**One new failure appeared in run 1 that is plainly unrelated:**
+`CreateSessionWithWorkingDirectoryAndArguments` — `An element could not be
+located`, a session-creation find-timing issue with no code path anywhere near
+`SendKeys`. Consistent with the "dirty start state" category already
+established for this suite. Not chased further.
+
+**The investigation, start to finish:** eight candidates were proposed across
+this and the prior session; seven were refuted by direct measurement rather than
+argument (modifier persistence, a send race, foreground refusal on both the
+session and element paths, `SetFocus` declining, "`WaitForInputIdle` waits once
+per process", `OpenProcess` denial for a packaged app). The eighth — the process-
+level drain answering a proxy question instead of the actual property — is the
+one that held, and is now fixed at the mechanism it was diagnosed at.
