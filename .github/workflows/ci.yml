@@ -86,6 +86,19 @@ jobs:
       # while measuring nothing about coverage. Passed count is the quantity
       # that matters and it held steady at 23.
       #
+      # RAISED 23 -> 50 on 2026-08-22, on the first green run this workflow ever
+      # had. It sat at 23 while 56 tests were actually passing, which meant a
+      # third of the suite could stop running without the build noticing - the
+      # exact drift a ratchet exists to catch, left wide open by a floor nobody
+      # moved.
+      #
+      # 50 rather than 56 deliberately. Two observations exist, not one: 53
+      # passing in the last red run and 56 in the first green one. Several
+      # ClickLadder fixtures skip according to which page Settings happens to
+      # show, so the count has a genuine wobble in it and a floor set to the
+      # high-water mark would fail on the next unlucky run. 50 locks in almost
+      # all of the coverage and still leaves room for that wobble.
+      #
       # The floor may only ever be raised, and raising it means moving a fixture
       # onto the WPF test subject — the only application present on both a
       # developer desktop and a Server runner, which is the argument for having
@@ -99,7 +112,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $floor = 23
+          $floor = 50
           $trx = Get-ChildItem -Recurse -Filter integration.trx | Select-Object -First 1
           if (-not $trx) { throw "No integration.trx: the test step did not run." }
 
