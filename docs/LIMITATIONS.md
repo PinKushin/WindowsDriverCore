@@ -2407,10 +2407,15 @@ that exists on both a developer desktop and a Server runner.
 - The fix is to move coverage onto the WPF subject, not to fight the image. A
   ratchet in `ci.yml` fails the build if the skip count rises above today's 93,
   so the debt can only shrink.
-- Store-app and packaged-launch coverage needs a **client** Windows machine. A
-  self-hosted runner on the Hyper-V VM would cover those *and* supply the matched
-  WinAppDriver baseline that every comparison number in this repository currently
-  lacks.
+- Store-app and packaged-launch coverage needs a **client** Windows machine, and
+  **there is no way to get one on CI** — settled in `docs/DECISIONS.md` #1. A
+  self-hosted runner on the Hyper-V guest is refused twice over: the repository is
+  public, and networking that guest lets the Store update its apps, which is the
+  confound that already destroyed a baseline. No Windows 10 hosted runner exists
+  and Windows 11 measures app drift rather than capability (112/290 for
+  WinAppDriver itself). **This paragraph previously recommended the self-hosted
+  runner; it was wrong and is corrected here rather than deleted, because the
+  idea is obvious enough to be had again.**
 
 **A skip reads as a pass.** This repository has now hit that three times: two
 fixtures that silently found no subject in Settings, and an entire CI job.
