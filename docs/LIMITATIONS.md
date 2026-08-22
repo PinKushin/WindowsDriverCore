@@ -3119,11 +3119,27 @@ and was reverted. `b2dd934` remains the best measured state.
 ### Where to look next, and where NOT to
 
 The remaining question is why a synthetic touch contact cannot survive a long
-move. `ISyntheticPointer.Inject` is the layer to read: if it creates or resets a
-synthetic pointer device per call rather than holding one for the gesture's
-lifetime, then a long move is not "one contact moving" but a burst of
-independent contacts, and the lift has nothing to lift. That would explain every
-row in the table and has not been checked.
+move.
+
+**Already checked and NOT the answer:** `SyntheticPointer.InjectTouch` uses
+`InjectTouchInput` with a one-time `InitializeTouchInjection`, not a device
+created per call, and the contact's `pointerId` is a stable `0` across every
+frame. So a long move really is one contact being updated, not a burst of
+independent ones.
+
+What the measurements pin down: every `Inject` during the move SUCCEEDS — the
+move returns 200, and a failed frame would return `The system refused a contact
+update` instead. The contact is alive across all ten frames and dies between the
+last frame and the lift, and it does so whether that interval is one pacing gap
+plus an HTTP hop (`7f02766`) or an HTTP hop alone (`43d510b`).
+
+`InjectTouchInput` has a documented inactivity timeout, but the gaps here are
+well inside it and the gaps *during* the loop are the same size as the one
+before the lift. That is the contradiction to resolve, and it wants a direct
+probe on the guest — inject a down, a paced series of updates, and an up, with
+`GetLastError` captured on the failing call — rather than another change to the
+driver. `GetLastError` is not currently captured anywhere on this path, which is
+why four runs have produced a boolean and no reason.
 
 **Do not simply re-tune the duration.** Two of the four runs above were duration
 changes and neither moved the test; a third value is not evidence.
