@@ -105,9 +105,17 @@ jobs:
       # built it. A change that drops coverage fails here instead of passing
       # quietly.
       #
-      # The rest needs a client Windows machine: a self-hosted runner on the
-      # Hyper-V VM would cover the Store-app fixtures AND give the matched
-      # WinAppDriver baseline the comparison numbers currently lack.
+      # The rest CANNOT be covered on CI at all, and that is settled - see
+      # docs/DECISIONS.md #1. A self-hosted runner on the Hyper-V guest was the
+      # obvious idea and is refused twice over: this repository is PUBLIC, where
+      # GitHub's own guidance is not to pair the two, and giving that guest a
+      # network lets the Store update its apps - which is the confound that
+      # already destroyed a baseline when Alarms & Clock renamed
+      # AlarmSaveButton to PrimaryButton mid-investigation.
+      #
+      # The guest is a MEASUREMENT INSTRUMENT and needs pinned versions and no
+      # network; CI is a REGRESSION GATE where drift is tolerable. They are
+      # different jobs and CI does not need to do the guest's.
       - name: Fail if the suite skipped its way to green
         if: always()
         shell: pwsh

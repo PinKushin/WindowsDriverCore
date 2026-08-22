@@ -2407,10 +2407,15 @@ that exists on both a developer desktop and a Server runner.
 - The fix is to move coverage onto the WPF subject, not to fight the image. A
   ratchet in `ci.yml` fails the build if the skip count rises above today's 93,
   so the debt can only shrink.
-- Store-app and packaged-launch coverage needs a **client** Windows machine. A
-  self-hosted runner on the Hyper-V VM would cover those *and* supply the matched
-  WinAppDriver baseline that every comparison number in this repository currently
-  lacks.
+- Store-app and packaged-launch coverage needs a **client** Windows machine, and
+  **there is no way to get one on CI** — settled in `docs/DECISIONS.md` #1. A
+  self-hosted runner on the Hyper-V guest is refused twice over: the repository is
+  public, and networking that guest lets the Store update its apps, which is the
+  confound that already destroyed a baseline. No Windows 10 hosted runner exists
+  and Windows 11 measures app drift rather than capability (112/290 for
+  WinAppDriver itself). **This paragraph previously recommended the self-hosted
+  runner; it was wrong and is corrected here rather than deleted, because the
+  idea is obvious enough to be had again.**
 
 **A skip reads as a pass.** This repository has now hit that three times: two
 fixtures that silently found no subject in Settings, and an entire CI job.
@@ -3426,3 +3431,55 @@ one, which is why it is written down here instead of done.
 sessions for two suite tests. What that bought is a much smaller search space and
 five permanent refutations, but the return per run has been poor and the next
 attempt should start from the table above rather than from a fresh theory.
+
+
+### The reference's per-phase cost is deliberate, and copying it does not help
+
+Measured in one session on the guest, WinAppDriver's own cost:
+
+```
+GET  /status                     37.5 ms      <- baseline, injects nothing
+GET  /window_handle              68.8 ms
+GET  /window/current/position    72.3 ms
+POST /timeouts                   73.3 ms
+POST /touch/down                179.9 ms      <- ~100 ms ABOVE baseline
+POST /touch/move                153.4 ms
+POST /touch/up                  171.9 ms
+```
+
+**Two things follow, and the first kills a shortcut.** The extra cost is spread
+EVENLY across all three phases, so the reference does not record the gesture and
+replay it on the lift — that idea was proposed here as a pragmatic option and is
+now refuted rather than merely distasteful. And ~100 ms above its own baseline is
+deliberate work, not WinAppDriver's general slowness.
+
+**Copying that shape did not work.** Sustaining the contact with 60 Hz refresh
+frames for 100 ms per phase — down held, move paced — produced
+`down 130.0 ms, move 154.7 ms`, close to the reference, and the window still did
+not move; the lift was still refused.
+
+### Five approaches, none of which drags
+
+| approach | lift | window moved |
+|---|---|---|
+| one frame per request, unpaced | ok | **no** |
+| paced move (300 ms) | refused | no |
+| probe-level dwell either side of a single move | ok | **no** |
+| sustained down + paced move, at reference timings | refused | no |
+| single-threaded injection pump | refused | no |
+
+`/actions` does it reliably with the same injector, the same coordinate
+conversion and the same `Move()`. `TouchDownMoveUp_SingleTap` passes on the
+multi-request path, so the coordinates and the injection are both right — the
+suite sends window-relative values and this driver converts them correctly.
+
+**What is left is structural, not behavioural.** Every difference in timing,
+threading, frame rate and coordinates has been measured and excluded. The
+remaining difference between the working path and the failing one is that one
+serves the whole gesture inside a single request and the other does not — and no
+account of *why that should matter to the OS* has survived a test yet.
+
+**Stopping here deliberately.** Roughly twenty-five runs across two sessions on
+two suite tests. The refutations are permanent and the problem is far better
+characterised than it was, but the return per run is poor and continuing to guess
+is not the way through. The next attempt should start from this table.
