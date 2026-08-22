@@ -114,4 +114,24 @@ public interface ISyntheticPointer
     /// </param>
     /// <returns>True if the system accepted the frame.</returns>
     bool Inject(IReadOnlyList<SyntheticContact> contacts);
+
+    /// <summary>
+    /// The Win32 error from the most recent failed <see cref="Inject"/>, or 0.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Added because four guest measurements produced a boolean and no
+    /// reason.</b> A touch lift following a long move is refused, the lift after
+    /// a short move is not, and every frame in between succeeds — a contradiction
+    /// that cannot be resolved from a true/false. The P/Invokes already declare
+    /// <c>SetLastError</c>; nothing ever read it.
+    /// </para>
+    /// <para>
+    /// <b>Read it only immediately after a false return.</b> It is not cleared on
+    /// success, so a stale value from an earlier failure is still there — which is
+    /// fine for the one use it has, naming the reason in the refusal that is being
+    /// built right then, and wrong for anything else.
+    /// </para>
+    /// </remarks>
+    int LastInjectionError { get; }
 }

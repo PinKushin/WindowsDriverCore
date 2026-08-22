@@ -305,7 +305,8 @@ public sealed class PointerActionRunner
 
         if (!_synthetic.Inject([Plain(x, y, phase)]))
         {
-            return PointerRefusal.Reason($"The system refused a touch contact ({phase})");
+            return PointerRefusal.Reason(
+                $"The system refused a touch contact ({phase}){Because(_synthetic.LastInjectionError)}");
         }
 
         // Tracked so the NEXT update knows where it is starting from. Removed on
@@ -408,7 +409,8 @@ public sealed class PointerActionRunner
         {
             if (!_synthetic.Inject([Plain(x, y, SyntheticContactPhase.Update)]))
             {
-                return PointerRefusal.Reason("The system refused a contact update");
+                return PointerRefusal.Reason(
+                    $"The system refused a contact update{Because(_synthetic.LastInjectionError)}");
             }
 
             Thread.Sleep(HoldFrameMilliseconds);
@@ -508,6 +510,26 @@ public sealed class PointerActionRunner
             : PointerRefusal.Reason(
                 $"({x},{y}) is outside the application window, so the input was not dispatched");
 
+    /// <summary>Names the Win32 reason an injection was refused.</summary>
+    /// <param name="error">The captured error, or 0 when there is none.</param>
+    /// <returns>A trailing clause, or empty when nothing is known.</returns>
+    /// <remarks>
+    /// <b>Four guest measurements produced a boolean and no reason.</b> A touch
+    /// lift after a long move is refused while the lift after a short move is
+    /// not, and every frame in between succeeds - which is a contradiction that
+    /// a true/false cannot resolve. The two codes named here are the ones worth
+    /// recognising on sight: ERROR_TIMEOUT means the contact was dropped for
+    /// going unrefreshed, and ERROR_INVALID_PARAMETER means the frame itself was
+    /// rejected. Anything else is reported as a number rather than guessed at.
+    /// </remarks>
+    private static string Because(int error) => error switch
+    {
+        0 => string.Empty,
+        87 => " (ERROR_INVALID_PARAMETER - the frame was rejected)",
+        1121 => " (ERROR_TIMEOUT - the contact was dropped before this frame)",
+        _ => $" (Win32 error {error})",
+    };
+
     private static SyntheticContact Plain(int x, int y, SyntheticContactPhase phase) =>
         new(SyntheticPointerKind.Touch, x, y, phase);
 
@@ -590,7 +612,8 @@ public sealed class PointerActionRunner
             if (!_synthetic.Inject(
                 [new SyntheticContact(kind, stepX, stepY, SyntheticContactPhase.Update)]))
             {
-                return PointerRefusal.Reason("The system refused a contact update");
+                return PointerRefusal.Reason(
+                    $"The system refused a contact update{Because(_synthetic.LastInjectionError)}");
             }
 
             if (frameTicks > 0)
