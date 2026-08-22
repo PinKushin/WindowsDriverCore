@@ -3483,3 +3483,75 @@ account of *why that should matter to the OS* has survived a test yet.
 two suite tests. The refutations are permanent and the problem is far better
 characterised than it was, but the return per run is poor and continuing to guess
 is not the way through. The next attempt should start from this table.
+
+
+## ANSWERED: the reference uses a DIFFERENT INJECTION API
+
+Roughly thirty hypotheses were refuted before this was checked, and it was the
+cheap check all along — not "how does WinAppDriver do it" but **which API does it
+call**. That is a fact about the platform, not about their implementation, and it
+took one look at an import table.
+
+WinAppDriver's touch goes through `MitaLite.Foundation.dll`, which contains
+**two** injection paths:
+
+```csharp
+internal class InputDeviceTouch : InputDevice
+{
+    public InputDeviceTouch()
+    {
+        injector = InputInjector.TryCreate();
+        injector.InitializeTouchInjection(InjectedInputVisualizationMode.Default);
+    }
+}
+```
+
+and, separately, a legacy fallback:
+
+```csharp
+[DllImport("api-ms-win-rtcore-ntuser-wmpointer-l1-1-0.dll", SetLastError = true)]
+public static extern bool InjectTouchInput(uint count, PointerTouchInfo[] info);
+```
+
+**The first is `Windows.UI.Input.Preview.Injection.InputInjector` — WinRT — held
+as a LONG-LIVED DEVICE OBJECT** (it has `Dispose` and a finalizer). The injector
+*is* the session, so a contact persists across separated calls by construction.
+
+**This driver only has the second one.** We call raw Win32 `InjectTouchInput` per
+burst, which is precisely MitaLite's legacy fallback.
+
+### Why that explains everything
+
+| observation | explanation |
+|---|---|
+| `/actions` drags reliably | one request is one continuous burst |
+| taps work on `/touch/*` | down and up are adjacent, no gap to survive |
+| a drag over three requests dies | the Win32 API has no session object to hold the contact |
+| ten `/touch/move` requests refuse the lift at ANY duration | separated bursts, not elapsed time |
+| a bare hold survives 800 ms | no bursts at all — nothing to lose continuity between |
+| the reference spends ~100 ms per phase | its own overhead, not the mechanism |
+
+Every timing, threading, frame-rate, coordinate and lifetime hypothesis was
+chasing a consequence. **The press point was verified correct** (`208+20=228`
+against a real screen rectangle of `Left:228`), the contact demonstrably survives
+800 ms gaps *and* produces real taps (Calculator's display reads `8`), and the
+split reproduces identically on Windows 11 — so it was never the guest, the app
+version, or the coordinates.
+
+### What a fix costs, and why it is not done here
+
+`InputInjector` needs **Windows 10 1809 (10.0.17763)** and a WinRT projection,
+which means a Windows-SDK-versioned TFM. **This driver's stated compatibility
+floor is Windows 10 1607**, matching WinAppDriver's own — so adopting it
+wholesale would raise the floor.
+
+MitaLite's answer is the shape to copy: **use the WinRT injector when it can be
+created and keep the Win32 path as the fallback**, which is exactly why
+`InputInjector.TryCreate()` returns null rather than throwing. That is a real
+design change touching project TFMs and the `ISyntheticPointer` contract, and it
+belongs to the owner rather than to the end of an investigation.
+
+**Decompiler note:** `MitaLite.Foundation.dll` was copied to a temp directory
+well outside every repository, inspected with `ilspycmd`, and deleted. Nothing
+decompiled was copied into this repository — only the two facts above, which are
+API names.
