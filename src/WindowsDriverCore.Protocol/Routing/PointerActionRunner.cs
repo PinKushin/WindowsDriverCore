@@ -277,20 +277,29 @@ public sealed class PointerActionRunner
             // microseconds and the window manager never samples it. The client
             // said "this move takes a second" and meant it.
             //
-            // Here down, move and up are THREE separate HTTP requests, already
-            // separated by round trips, and the client stated no duration at all.
-            // Spending 300 ms inside the move invents a delay the reference never
-            // spends - and MEASURED at 7f02766, it broke the gesture outright:
+            // Here down, move and up are THREE separate HTTP requests, and the
+            // client stated no duration at all - so the pacing is this driver's
+            // choice rather than the caller's instruction.
             //
-            //   POST /touch/down ->  200          1.9 ms
-            //   POST /touch/move ->  200        314.0 ms   <- paced
-            //   POST /touch/up   ->  500 jwp 13   0.8 ms   <- "refused a touch contact (Up)"
+            // THIS COMMENT USED TO ARGUE THE OPPOSITE and was wrong twice over.
+            // It said pacing "invents a delay the reference never spends", and
+            // it cited a measurement where pacing broke the lift.
             //
-            // The very next down/up pair in the same session succeeded in under a
-            // millisecond, so the injector was not broken - only the lift that
-            // followed a 300 ms occupancy was. Zero keeps the interpolated frames,
-            // which are what the window manager needs, and drops the invented
-            // wait, which is what it choked on.
+            // The reference DOES spend it. Measured in one session on the guest:
+            //
+            //   GET  /status        37.5 ms    <- baseline, injects nothing
+            //   POST /timeouts      73.3 ms
+            //   POST /touch/move   153.4 ms    <- ~100 ms above its own baseline
+            //
+            // And the broken lift was never the pacing. It was the Win32
+            // injector having no session to hold a contact between requests;
+            // with the WinRT injector in place the same pacing lifts cleanly and
+            // the window actually moves. See WinRtTouchInjector.
+            //
+            // Without the pacing the window manager gets the whole path in a
+            // single burst and does not register a drag - measured here, MOVED:
+            // NO at TimeSpan.Zero and MOVED: YES at DragDuration, everything else
+            // held constant.
             PointerRefusal? moved = Move(
                 SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, DragDuration);
 
