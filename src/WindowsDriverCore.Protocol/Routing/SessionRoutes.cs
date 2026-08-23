@@ -164,13 +164,37 @@ public static class SessionRoutes
             return Results.Json(JsonWireResponse.ForServerVoid());
         });
 
-        // Orientation is fixed. WinAppDriver answers LANDSCAPE for every session
-        // regardless of the window, which the recording confirms — there is no
-        // rotation concept on the desktop.
-        app.MapGet("/session/{sessionId}/orientation", (HttpContext context) =>
-            Results.Json(JsonWireResponse.ForSession(
-                context.GetSession().Id,
-                "LANDSCAPE")))
+        // Orientation is fixed. WinAppDriver answers LANDSCAPE for every LIVE
+        // session regardless of the window, which the recording confirms — there
+        // is no rotation concept on the desktop.
+        //
+        // BUT THE WINDOW HAS TO BE THERE. GetOrientationError_NoSuchWindow reads
+        // the orientation of a session whose window has been closed and expects
+        // the no-such-window fault; this answered 200 LANDSCAPE and the suite
+        // reported "Exception should have been thrown".
+        //
+        // The session filter cannot catch it: the SESSION still exists and only
+        // the window is gone, so the check belongs here. Same shape as
+        // NavigationRoutes, for a milder version of the same reason — navigation
+        // refuses because a keystroke would otherwise land in somebody else's
+        // application, and this refuses because reporting the orientation of a
+        // window that does not exist is a statement about a window that does not
+        // exist.
+        app.MapGet("/session/{sessionId}/orientation",
+            (HttpContext context, IWindowLocator windows) =>
+            {
+                DriverSession session = context.GetSession();
+
+                if (!windows.Exists(session.WindowHandle))
+                {
+                    return Results.Json(
+                        JsonWireResponse.ForFault(
+                            WebDriverFault.NoSuchWindow, ElementFault.WindowClosedMessage),
+                        statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
+                }
+
+                return Results.Json(JsonWireResponse.ForSession(session.Id, "LANDSCAPE"));
+            })
             .RequiresSession();
 
         return app;
