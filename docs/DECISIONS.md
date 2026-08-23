@@ -79,3 +79,62 @@ driver at once, and no score would be attributable to either.
 
 Ported, it also stops being a drift measurement and starts being a gate, which
 is the job CI actually has.
+
+---
+
+## 2. The driver never invents a duration, and 50 ms is the ceiling when it must
+
+**2026-08-22.** Two owner directions, one about who decides and one about how
+much.
+
+### Who decides how long a gesture takes
+
+> "i figured when it came to dragging the consumer should say how long the drag
+> will be, not the driver"
+
+So `/actions` spends exactly the `duration` the client stated — no floor, no
+padding. The multi-request `/touch/down` → `/touch/move` → `/touch/up` trio
+carries no duration at all, and the client has ALREADY expressed the drag's
+length by how far apart it sent the three requests. Anything the driver adds
+there is added on top of a duration nobody asked for.
+
+That leaves exactly one thing the driver must choose for itself: the gap between
+the frames WITHIN one move, because a burst the system coalesces into a single
+jump is not a gesture. It is a separation, not a duration, and it is named
+`FrameSeparation` for that reason.
+
+### How much, and why 50
+
+> "80ms really, we cant get that down to like 50ms?"
+>
+> "when you cna get stuff to run in 50ms or less it appears instant to most
+> human observers"
+
+**50 ms, and the reason is perceptual rather than mechanical.** The measured
+floor is lower — the sweep in `tools/probe-minimum-drag-pacing.ps1` puts the
+threshold between 2 and 4 ms per frame — so the constant is set by where a delay
+stops being noticeable, not by where the gesture stops working.
+
+The 80 ms it replaced was **not a measurement**. It fell out of reusing the
+`/actions` frame-interval constant as `10 frames × 8 ms`, which is an accident
+of implementation. The two constants answer different questions and are now
+deliberately independent:
+
+| constant | answers | set by |
+|---|---|---|
+| `FrameInterval` | the RATE of a move whose length the client stated | a digitiser reports at 100–133 Hz; 8 ms is what the scheduler delivers free |
+| `FrameSeparation` | the LENGTH of a move where nobody stated one | 50 ms, the perceptual threshold above |
+
+### Why this belongs in a decisions log rather than only in a comment
+
+This is the third value that constant has held — 300, then a nominal 50 that was
+really 150, then a measured 80, now a measured 50 — and **two of the three were
+defended with reasoning that had already been falsified**. The first cited
+WinAppDriver's per-phase timing, gathered while timing was still believed to be
+the CAUSE of the broken drag; once the cause turned out to be the injection API,
+that number was evidence for nothing. The second reused a constant from an
+unrelated argument. Both looked like measurements in the diff.
+
+The rule that follows: **when the cause of a bug is refuted, every constant
+justified by the old cause is unjustified**, whether or not it still works.
+Sweep it again or say plainly that it is unmeasured.
