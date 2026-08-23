@@ -4,6 +4,12 @@ Guidance for Claude Code working in this repository.
 
 ## Read this first
 
+**Paused 2026-08-23 — `docs/RESUME-HERE.md` is the entry point after any break.**
+Six commits are unmeasured, the last full guest score is 265/290, and the
+backlog is 16 named tests with what is known about each. Read it before writing
+code or quoting a number.
+
+
 **`docs/PROJECT-KNOWLEDGE.md`** is the single consolidated briefing — protocol
 contract, compatibility floor, measured test results, UIA/COM knowledge, and the
 mistakes not to repeat. Read it before writing code. `docs/README.md` indexes the
