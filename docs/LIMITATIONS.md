@@ -3653,3 +3653,70 @@ four causes for nine tests, not nine problems.
 **Read this table, not a score.** `169`, `231`, `259`, `261` and `263` all
 appear in this repository's history as "our score" and none of them says which
 work is left.
+
+
+### REVERTED: a pointer position that survives between requests
+
+The reasoning was right, the arithmetic was right, and it cost **14 tests**.
+
+**Why it was written.** W3C keeps input state on the SESSION, and
+`Touch_Click_OriginPointer` / `Pen_Click_OriginPointer` prove the suite relies on
+it: the second gesture computes `alarm.Location.X - worldClock.Location.X`, a
+delta from wherever the first gesture left the pointer, and sends it in a
+**separate** `PerformActions` request. Measured on the guest, and only visible
+because the refusal had started naming the window it measured against:
+
+```
+(115,87) is outside the application window at (208,87) 816x641
+```
+
+Left edge 208, point 115 — an applied offset of −93 with zero Y, which is
+exactly that second delta.
+
+**Why it failed anyway.** Nothing ever resets the position. The suite assumes a
+FRESH pointer at the start of every test — `int relativeX = 0; // Initial x
+coordinate` — and this driver does not serve `DELETE /session/{id}/actions`
+(Release Actions), which is the only reset W3C defines. Nothing else marks a
+test boundary that a driver can see.
+
+Read straight off the execution order in the TRX:
+
+```
+01:48:37  Pen_Click_OriginElement    Passed     <- leaves the pointer at an element centre
+01:48:39  Pen_Click_OriginPointer    Failed     <- first domino
+01:48:40  Pen_Click_OriginViewport   Failed  TestInit
+   ... every ActionsPen and ActionsTouch test after it, 14 in total, TestInit
+```
+
+`Pen_Click_OriginPointer` failed at **line 136** — the assertion after the FIRST
+gesture, not the second. Its "fresh" pointer was wherever
+`Pen_Click_OriginElement` had left it, so the click landed roughly two offsets
+away from the tab strip, hit something that navigated the app, and every later
+`TestInit` then failed to find `AlarmButton`, `AlarmPivotItem`, `CancelButton`
+AND `Back`.
+
+**The change made this worse than the bug.** Before it, the guard refused the
+coordinate and nothing was injected — a failing test with no side effect. After
+it, the coordinate became "valid" and a real contact landed somewhere harmful.
+Score 258 → 249.
+
+**What is still true, and what is not.** The anchor fix (`340365c`) stays: a
+fresh pointer sits at the viewport origin, which is a separate and measured
+claim. What is refuted is only that the position can be carried forward without
+a reset boundary.
+
+**Before trying again, ask the reference.** The open question is not "should it
+persist" but "what resets it in WinAppDriver", which passes both gestures AND
+every following test. Two candidates, and a probe on the guest distinguishes
+them in minutes:
+
+- Selenium 3.8 sends `DELETE /actions` somewhere this driver answers with the
+  unknown-command fallback, so the reset silently never happens. Serving it
+  would then be the whole fix.
+- WinAppDriver resets on something else — a new element click, a find, the next
+  command of any kind — in which case persistence is narrower than W3C's model
+  and the shape of that narrowing has to be measured, not chosen.
+
+Do not implement `DELETE /actions` on the assumption it is called. That is the
+same shape of mistake as the first pointer-origin attempt: a plausible mechanism
+shipped without checking it is the one in play.
