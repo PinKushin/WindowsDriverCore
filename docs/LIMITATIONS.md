@@ -3720,3 +3720,66 @@ them in minutes:
 Do not implement `DELETE /actions` on the assumption it is called. That is the
 same shape of mistake as the first pointer-origin attempt: a plausible mechanism
 shipped without checking it is the one in play.
+
+
+### MouseClick: the mouse path works, and the guest failure is not in it
+
+`MouseClick` fails on the guest with `Expected:<8>. Actual:<0>.` — the **first**
+assertion, so the very first click never registers. Two guesses were wrong before
+measuring: it is not the desktop session the test needs later (that is twenty
+lines further down), and it is not a broken `/moveto` + `/click`.
+
+**Measured on the host**, `tools/probe-does-the-mouse-click-land.ps1`, asserting
+Calculator's DISPLAY rather than the HTTP status:
+
+```
+  element click (control)             8      PRESSED
+  moveto + click                     88      PRESSED
+  moveto + click, again             888      PRESSED
+  moveto + click, read immediately  8,888    PRESSED
+```
+
+The path lands, repeatedly, and lands within the same ~25 ms window in which the
+suite reads. So whatever fails on the guest is not "the mouse route does not
+click".
+
+**What the guest transcript shows**, which is the part still unexplained:
+
+```
+01:55:33.584   moveto -> (418,494) of 76x52
+01:55:33.596   click button 0 -> (418,494)
+01:55:33.597   drain -> waited 0.8 ms
+01:55:33.623   GET .../text -> 200          (reads "0")
+```
+
+A sensible coordinate at the centre of a 76x52 button, dispatched, and a display
+that still reads zero 26 ms later. `drain -> waited 0.8 ms` is a drain that
+waited for nothing — the same shape as the SendKeys defect, where a process-idle
+proxy answers "is the process idle" rather than "has my input been consumed".
+
+**HYPOTHESIS, not established:** the read beats the click on a slower machine.
+It did NOT reproduce on the host, where the identical immediate read sees the
+update. A fix aimed at it would therefore be unverifiable here, which is the
+condition under which this repository has previously shipped changes that cost
+more than the bug.
+
+**Next, and it needs the guest rather than the host:** re-run with the display
+read repeated until it changes, and see whether the value arrives late or never.
+Late means synchronisation; never means the click is landing somewhere the
+transcript's coordinate does not describe — and the window is maximised by the
+suite's own code in an earlier test, which would move every rectangle.
+
+### Two probe defects worth not repeating
+
+Both were caught by the probe's own controls, which is the argument for having
+them.
+
+1. **`Clear` is an alias for `Clear-Host`.** A helper named `Clear` was never
+   called; PowerShell ran the host cmdlet, which died on an invalid console
+   handle under `-NonInteractive`. The probe printed zero rows — a loud failure,
+   and the good case.
+2. **The verdict compared against a guessed value.** It read `$display -eq '8'`
+   and so reported "no" for rows reading `88` and `888`, every one of which was
+   a successful press onto a display the reset had failed to clear. It called a
+   working mouse path broken — the exact conclusion the probe existed to test,
+   reached backwards. **Measure the CHANGE, not equality with what you expect.**
