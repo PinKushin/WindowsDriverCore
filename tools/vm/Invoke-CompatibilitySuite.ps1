@@ -86,7 +86,26 @@ param(
     #
     # Keep the switch for a run that deliberately wants a pristine store, and
     # expect to lose those 21 tests when you use it.
-    [switch] $ResetStore
+    [switch] $ResetStore,
+
+    # RUN A SUBSET, FOR AN EXPERIMENT RATHER THAN A SCORE.
+    #
+    # A full run is ~25 minutes, which makes "vary one thing and measure" too
+    # expensive to do properly - and this repository has repeatedly reasoned its
+    # way to a wrong answer rather than spend a run. A vstest /TestCaseFilter
+    # turns that into well under a minute.
+    #
+    # TWO THINGS TO KNOW BEFORE TRUSTING A FILTERED RUN.
+    #
+    # A filter matching NOTHING exits 0 with no summary, so the caller sees
+    # success. The no-match line is captured below for exactly that reason.
+    #
+    # A FILTERED RUN IS NOT A SMALLER VERSION OF THE SUITE. Tests share one
+    # session per fixture and inherit each other's application state, so running
+    # a few alone changes the conditions they run under. Use it to compare a
+    # subset against ITSELF across a manipulation - never to claim a test would
+    # pass in a full run, and never to quote a score.
+    [string] $TestCaseFilter = ''
 )
 
 $ErrorActionPreference = "Stop"
@@ -306,9 +325,16 @@ if (-not `$up) { 'ABORT: driver never answered'; exit 1 }
 
 `$trx = "run-`$head-$Driver-`$(Get-Date -Format HHmmss).trx"
 'results: ' + `$trx
+# A FILTER THAT MATCHES NOTHING EXITS 0 AND PRINTS NO SUMMARY, so the
+# no-match line is captured too and reported rather than read as a pass.
+`$filterArgs = @()
+if ('$TestCaseFilter' -ne '') { `$filterArgs = @('/TestCaseFilter:$TestCaseFilter') }
+
 & `$vstest 'C:\baseline\WebDriverAPI\WebDriverAPI.dll' "/Logger:trx;LogFileName=`$trx" `
+    @filterArgs `
     /ResultsDirectory:C:\baseline\WindowsDriverCore\TestResults 2>&1 |
-    Select-String -Pattern '^Total tests|^\s+Passed:|^\s+Failed:' | ForEach-Object { `$_.Line }
+    Select-String -Pattern '^Total tests|^\s+Passed:|^\s+Failed:|^No test (matches|is available)' |
+    ForEach-Object { `$_.Line }
 
 Stop-Process -Id `$srv.Id -Force -ErrorAction SilentlyContinue
 
