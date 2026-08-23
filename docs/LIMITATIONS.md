@@ -3606,3 +3606,50 @@ answers whether the failure repeats at all — 13/13 then one failure is a stron
 signal but it is still one observation, and `TouchScrollOnElement_Vertical` in
 the same family has flapped all session. The same run also reports whether the
 two `*_OriginPointer` tests recovered, so it is not a run spent on this alone.
+
+
+## The gap is 18 tests, not 27, and half of it is one family
+
+**Computed 2026-08-22** by diffing failing test NAMES between our `028e346` run
+(263/290) and the reference's `044b71c8` run (281/290) on the same guest —
+rather than by subtracting two scores, which is what every previous statement of
+"the gap" did.
+
+**Nine of our 27 failures are shared with WinAppDriver**, so they are
+environmental and no amount of driver work removes them:
+
+```
+CreateSessionWithArguments_ModernApp   NavigateForward_Browser
+GetLocation                            SwitchWindows
+GetWindowHandles_ModernApp             TouchFlick_Arbitrary
+NavigateBack_Browser                   TouchSingleTap
+                                       TouchSingleTapError_StaleElement
+```
+
+`TouchSingleTap` being on that list is worth pausing on: it looks like an
+obvious capability gap and it is not ours. Reading the failing set as a to-do
+list without diffing it against the reference would have put real work into a
+test the reference cannot pass either.
+
+**The actual backlog is these 18**, every one of which WinAppDriver passes:
+
+| family | tests | count |
+|---|---|---|
+| **pointer** | `MouseClick`, `MouseDoubleClick`, `MouseDownMoveUp`, `Pen_Click_BarrelButton`, `Pen_Click_OriginPointer`, `Touch_Click_OriginPointer`, `TouchDoubleTap`, `TouchLongTap`, `TouchScrollOnElement_Vertical` | **9** |
+| element properties | `GetElementDisplayedState`, `GetElementSize`, `FindNestedElement_ByRuntimeId`, `ClickElement` | 4 |
+| desktop session | `CreateSession_Desktop`, `GetTitle_Desktop` | 2 |
+| faults | `GetOrientationError_NoSuchWindow`, `MiscellaneousSessionError_StaleSessionId` | 2 |
+| navigation | `NavigateBack_SystemApp` | 1 |
+
+18 + 263 = 281, which is exactly the reference's score — the arithmetic closes,
+which is a check on the method and not a coincidence.
+
+**Half the remaining work is pointer input**, and it decomposes further: the two
+`*_OriginPointer` tests share one cause (fixed in `340365c`), the three `Mouse*`
+tests share the `SendInputPointer` path that still jumps rather than
+interpolating, and `Pen_Click_BarrelButton` is a single missing flag. That is
+four causes for nine tests, not nine problems.
+
+**Read this table, not a score.** `169`, `231`, `259`, `261` and `263` all
+appear in this repository's history as "our score" and none of them says which
+work is left.
