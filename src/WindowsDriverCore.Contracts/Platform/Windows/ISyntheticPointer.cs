@@ -47,6 +47,7 @@ public enum SyntheticPointerKind
 /// </param>
 /// <param name="TiltX">Pen tilt left/right, -90 to 90. Ignored for touch.</param>
 /// <param name="TiltY">Pen tilt up/down, -90 to 90. Ignored for touch.</param>
+/// <param name="Button">Which part of the pen is in use. Ignored for touch.</param>
 public readonly record struct SyntheticContact(
     SyntheticPointerKind Kind,
     int X,
@@ -54,7 +55,48 @@ public readonly record struct SyntheticContact(
     SyntheticContactPhase Phase,
     double Pressure = 0.5,
     int TiltX = 0,
-    int TiltY = 0);
+    int TiltY = 0,
+    SyntheticContactButton Button = SyntheticContactButton.Tip);
+
+/// <summary>Which part of a pen is making the contact.</summary>
+/// <remarks>
+/// <para>
+/// <b>An enum rather than a barrel flag, because there are three of these and
+/// only one was missing.</b> W3C numbers a pointerDown's <c>button</c>, and for
+/// a pen 0 is the tip, 2 the barrel and 5 the eraser — a bool would name the one
+/// the suite exercises today and force a second bool for the next.
+/// </para>
+/// <para>
+/// <b>Meaningless for touch, and deliberately not modelled as such.</b> A finger
+/// has no buttons; a touch contact is always <see cref="Tip"/>. Splitting the
+/// record per kind to make that unrepresentable would duplicate seven fields to
+/// remove one, and the pen path is the only reader.
+/// </para>
+/// </remarks>
+public enum SyntheticContactButton
+{
+    /// <summary>The pen tip, or any touch contact. W3C button 0.</summary>
+    Tip,
+
+    /// <summary>
+    /// The barrel button, which the system treats as a secondary click.
+    /// </summary>
+    /// <remarks>
+    /// W3C button 2. The suite's <c>Pen_Click_BarrelButton</c> presses it to
+    /// raise a context menu and then finds "Delete" in it, so a driver that
+    /// injects an ordinary tip contact here produces no menu and the FIND is
+    /// what fails — which is why this read as a missing element rather than as a
+    /// missing button.
+    /// </remarks>
+    Barrel,
+
+    /// <summary>The eraser end. W3C button 5.</summary>
+    /// <remarks>
+    /// Carried for completeness of the mapping rather than because a test needs
+    /// it: a payload naming button 5 should not silently arrive as a tip press.
+    /// </remarks>
+    Eraser,
+}
 
 /// <summary>
 /// Injects pen and touch input.
