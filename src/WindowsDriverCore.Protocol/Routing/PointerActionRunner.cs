@@ -46,6 +46,51 @@ public sealed class PointerActionRunner
     /// </remarks>
     private static readonly TimeSpan DragDuration = TimeSpan.FromMilliseconds(300);
 
+    /// <summary>
+    /// The least separation that makes injected frames distinct input events.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is a SEPARATION, not a drag duration, and the distinction is the
+    /// whole point.</b> In <c>/actions</c> the client states how long a move
+    /// takes and this driver spends exactly that - the caller asked. The
+    /// multi-request <c>/touch/*</c> trio carries no duration at all, and the
+    /// caller has ALREADY expressed the drag's length by how far apart it sent
+    /// the three requests. A duration invented here would be added on top of
+    /// one the client never asked for.
+    /// </para>
+    /// <para>
+    /// <b>MEASURED, single <c>/touch/move</c>, window actually moving:</b>
+    /// </para>
+    /// <code>
+    ///    0 ms  no      25 ms  YES
+    ///   10 ms  no     300 ms  YES
+    /// </code>
+    /// <para>
+    /// The cliff sits between 10 and 25 ms across ten frames — roughly 2 ms of
+    /// separation per frame. Below it the per-frame remainder rounds to nothing,
+    /// no sleep happens, and the frames arrive as one burst the system coalesces
+    /// into a single jump. So what matters is that the frames are separate
+    /// events, not that the gesture is slow.
+    /// </para>
+    /// <para>
+    /// <b>Why not 300 ms.</b> That value was inherited from the <c>/actions</c>
+    /// path and defended by noting WinAppDriver spends ~100 ms per touch phase —
+    /// a measurement taken while timing was still believed to be the cause, and
+    /// worthless as justification once the cause turned out to be the injection
+    /// API. It is twelve times more than needed, and this driver's whole argument
+    /// is speed: a find costs ~33 ms here against ~1070 ms through WinAppDriver,
+    /// so handing back 300 ms of self-imposed wait per move is the wrong trade.
+    /// </para>
+    /// <para>
+    /// 5 ms per frame is roughly double the measured threshold — margin for a
+    /// loaded machine's scheduling without pretending the exact figure
+    /// generalises off the one desktop it was measured on.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan FrameSeparation =
+        TimeSpan.FromMilliseconds(5 * FramesPerMove);
+
     /// <summary>How many frames a move is broken into.</summary>
     /// <remarks>
     /// A move reported as a single jump is not a gesture — a flick and a drag are
@@ -298,10 +343,11 @@ public sealed class PointerActionRunner
             //
             // Without the pacing the window manager gets the whole path in a
             // single burst and does not register a drag - measured here, MOVED:
-            // NO at TimeSpan.Zero and MOVED: YES at DragDuration, everything else
-            // held constant.
+            // NO at TimeSpan.Zero and MOVED: YES at 25 ms, everything else held
+            // constant. See FrameSeparation for the sweep and for why this is a
+            // separation rather than a duration.
             PointerRefusal? moved = Move(
-                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, DragDuration);
+                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, FrameSeparation);
 
             if (moved is not null)
             {
