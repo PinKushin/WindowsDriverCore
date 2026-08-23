@@ -248,16 +248,50 @@ public sealed class PointerActionRunner
             return null;
         }
 
-        // Where the contact is now, in SCREEN coordinates. W3C treats a pointer
-        // as having a position between actions, so a pointerDown with no
-        // preceding move happens wherever the previous action left it.
-        int x = 0;
-        int y = 0;
+        // WHERE THIS INPUT SOURCE IS, IN SCREEN COORDINATES, AND IT SURVIVES THE
+        // REQUEST THAT PUT IT THERE.
+        //
+        // W3C keeps input state PER INPUT SOURCE, and that emphasis is the whole
+        // correctness of this. Touch_Click_OriginPointer needs the position to
+        // survive: its second gesture computes
+        // alarm.Location.X - worldClock.Location.X, a delta from where the first
+        // gesture left the pointer, and sends it in a separate PerformActions
+        // request. Measured on the guest, from a refusal that named the window:
+        //
+        //   (115,87) is outside the application window at (208,87) 816x641
+        //
+        // Left edge 208, point 115 - an applied offset of -93 with a zero Y,
+        // which is exactly that second delta measured from a re-anchored origin.
+        //
+        // AN EARLIER VERSION KEYED THIS BY WINDOW ALONE AND COST 14 TESTS.
+        // Every test in the suite begins its offsets from zero and comments them
+        // as the initial coordinate, so each one assumes a FRESH pointer - and a
+        // per-window position leaks across tests. Pen_Click_OriginElement left a
+        // position, Pen_Click_OriginPointer added its offset to THAT, the contact
+        // landed about two offsets from the tab strip and navigated the app, and
+        // every following TestInit then failed to find four different automation
+        // ids. 258 -> 249.
+        //
+        // KEYING BY SOURCE FIXES IT WITH NO RESET BOUNDARY, which matters
+        // because there is none to use: a full suite run sends 25 POST /actions
+        // and ZERO DELETE /actions, so Release Actions is never called and
+        // implementing it would have changed nothing. Measured against the
+        // suite's own WebDriver.dll, Selenium gives every PointerInputDevice a
+        // fresh GUID as its id:
+        //
+        //   device A id: 75149749-46fe-4ab7-989b-d24bb8a32781
+        //   device B id: d2c4762a-9727-4ead-bd0a-0cfbdd5dc9df
+        //
+        // Each test constructs one device and reuses it for both of its
+        // gestures. So the key persists exactly as far as a test does, and
+        // cannot reach the next one.
+        PointerSource origin = new(window, Text(source, "id") ?? string.Empty);
 
-        // Whether (x,y) above means anything yet. A fresh pointer sits at (0,0)
-        // of the VIEWPORT, which in this driver is the window - see the anchor
-        // below for why that is resolved late rather than here.
-        bool anchored = false;
+        bool anchored = _pointers.TryGetValue(origin, out (int X, int Y) resumed);
+
+        int x = anchored ? resumed.X : 0;
+        int y = anchored ? resumed.Y : 0;
+
         bool down = false;
 
         foreach (JsonElement step in steps.EnumerateArray())
@@ -360,8 +394,29 @@ public sealed class PointerActionRunner
             }
         }
 
+        // HANDED TO THE NEXT REQUEST FROM THE SAME SOURCE. Recorded only once
+        // the sequence has run to the end - a source that refused partway
+        // returned above, and remembering a position reached during a gesture
+        // that then failed would make the next request measure its delta from
+        // somewhere the caller never got to.
+        if (anchored)
+        {
+            _pointers[origin] = (x, y);
+        }
+
         return null;
     }
+
+    /// <summary>One W3C input source, on one window.</summary>
+    /// <remarks>
+    /// <b>The window is part of the key as well as the source id.</b> Ids come
+    /// from the client and nothing stops two sessions choosing the same one -
+    /// Selenium happens to use GUIDs, but a hand-written client saying
+    /// <c>"id": "finger"</c> is perfectly legal. Keying on the id alone would let
+    /// a gesture in one session begin wherever an unrelated session's ended,
+    /// which is a wrong coordinate injected into a real application.
+    /// </remarks>
+    private readonly record struct PointerSource(nint Window, string Id);
     /// <summary>
     /// Puts a contact down, moves it, or lifts it — one phase per call.
     /// </summary>
@@ -558,7 +613,27 @@ public sealed class PointerActionRunner
     /// zero.
     /// </para>
     /// </remarks>
-    public void ForgetContacts() => _contacts.Clear();
+    public void ForgetContacts()
+    {
+        _contacts.Clear();
+        _pointers.Clear();
+    }
+
+    /// <summary>Where each input source was left by its last gesture.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Separate from <see cref="_contacts"/> because the two answer different
+    /// questions.</b> A contact entry means a finger is DOWN and is removed on
+    /// lift; this means the source HAS A POSITION, which outlives the lift - a
+    /// pointer put down and picked up is still somewhere.
+    /// </para>
+    /// <para>
+    /// <b>An absent entry means a source that has never moved</b>, which sits at
+    /// the viewport origin and is resolved lazily. Bounded by the number of
+    /// input sources that have gestured, which for this suite is one per test.
+    /// </para>
+    /// </remarks>
+    private readonly ConcurrentDictionary<PointerSource, (int X, int Y)> _pointers = new();
 
 
     /// <summary>Taps a point, holding the contact for a duration.</summary>

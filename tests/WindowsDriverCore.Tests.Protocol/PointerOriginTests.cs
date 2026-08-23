@@ -103,8 +103,14 @@ public sealed class PointerOriginTests
     [Test]
     public void APointerOrigin_ReachesTheSamePointAsAViewportOrigin()
     {
-        SyntheticContact viaViewport = OnlyPress(Tap("viewport", 101, 33));
-        SyntheticContact viaPointer = OnlyPress(Tap("pointer", 101, 33));
+        // TWO DIFFERENT SOURCES, WHICH IS WHAT "FRESH" NOW MEANS. The claim is
+        // about a pointer that has not moved yet, and a position belongs to an
+        // input source - so reusing one name here would have the second tap
+        // correctly resume from (309,147) and turn this into a comparison
+        // between a fresh pointer and a carried one, which is a different
+        // question with a different right answer.
+        SyntheticContact viaViewport = OnlyPress(Tap("viewport", 101, 33), source: "device-a");
+        SyntheticContact viaPointer = OnlyPress(Tap("pointer", 101, 33), source: "device-b");
 
         (viaPointer.X, viaPointer.Y).ShouldBe(
             (viaViewport.X, viaViewport.Y),
@@ -208,6 +214,98 @@ public sealed class PointerOriginTests
     }
 
     /// <summary>
+    /// One input source keeps its position between requests.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured on the guest, from a refusal that named the window.</b>
+    /// <c>Touch_Click_OriginPointer</c> failed with <i>"(115,87) is outside the
+    /// application window at (208,87) 816x641"</i>: left edge 208, point 115, so
+    /// the applied offset was −93 with a zero Y. That is its SECOND gesture,
+    /// which computes <c>alarm.Location.X - worldClock.Location.X</c> — a delta
+    /// from where the first gesture left the pointer — and sends it in a
+    /// separate <c>PerformActions</c> request.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void OneSource_KeepsItsPositionBetweenRequests()
+    {
+        OnlyPress(Tap("pointer", 101, 33), source: "same-device");
+
+        SyntheticContact second = OnlyPress(Tap("pointer", -93, 0), source: "same-device");
+
+        (second.X, second.Y).ShouldBe(
+            (Bounds.X + 101 - 93, Bounds.Y + 33),
+            "the second request's offset is measured from where the first left it");
+    }
+
+    /// <summary>
+    /// A DIFFERENT input source starts fresh at the viewport origin.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>THE CONTROL, AND IT IS THE ONE THAT COST 14 TESTS.</b> A first attempt
+    /// at this kept the position per WINDOW, which satisfies the test above and
+    /// leaks the pointer between TESTS. Read straight off the TRX:
+    /// </para>
+    /// <code>
+    /// 01:48:37  Pen_Click_OriginElement    Passed    &lt;- leaves a position
+    /// 01:48:39  Pen_Click_OriginPointer    Failed    &lt;- first domino
+    /// 01:48:40  Pen_Click_OriginViewport   Failed  TestInit
+    ///    ... 14 ActionsPen/ActionsTouch tests, all TestInit
+    /// </code>
+    /// <para>
+    /// The failing assertion was the one after the FIRST gesture, whose "fresh"
+    /// pointer was wherever the previous TEST had left it. The contact landed
+    /// about two offsets from the tab strip, navigated the app, and every later
+    /// <c>TestInit</c> then failed to find four different automation ids.
+    /// Score 258 → 249.
+    /// </para>
+    /// <para>
+    /// <b>Why keying by source is the fix and not a patch.</b> W3C keeps input
+    /// state per INPUT SOURCE, and Selenium gives every
+    /// <c>PointerInputDevice</c> a fresh GUID as its id — measured directly
+    /// against the suite's own <c>WebDriver.dll</c>. Each test constructs one
+    /// device and reuses it for both of its gestures, so the same key persists
+    /// within a test and cannot survive into the next one. No reset boundary is
+    /// needed, which matters because the suite never sends one: the transcript
+    /// of a full run has 25 <c>POST /actions</c> and <b>zero</b>
+    /// <c>DELETE /actions</c>.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ADifferentSource_StartsAtTheViewportOrigin()
+    {
+        OnlyPress(Tap("pointer", 101, 33), source: "the-previous-test");
+
+        SyntheticContact fresh = OnlyPress(Tap("pointer", 40, 12), source: "a-new-device");
+
+        (fresh.X, fresh.Y).ShouldBe(
+            (Bounds.X + 40, Bounds.Y + 12),
+            "a device that has never moved sits at the viewport origin, however " +
+            "far another device was carried");
+    }
+
+    /// <summary>Another window is isolated even for the same source name.</summary>
+    /// <remarks>
+    /// One shared slot would let a gesture in one session begin wherever an
+    /// unrelated session's ended - a wrong coordinate injected into a real
+    /// application, which is the failure this path has a guard for.
+    /// </remarks>
+    [Test]
+    public void AnotherWindow_StartsAtItsOwnViewportOrigin()
+    {
+        OnlyPress(Tap("pointer", 101, 33), source: "shared-name");
+
+        SyntheticContact elsewhere =
+            OnlyPress(Tap("pointer", 10, 20), window: 0x7777, source: "shared-name");
+
+        (elsewhere.X, elsewhere.Y).ShouldBe(
+            (Bounds.X + 10, Bounds.Y + 20),
+            "a window with no pointer history starts at its own viewport origin");
+    }
+
+    /// <summary>
     /// A refused point names the window it was measured against.
     /// </summary>
     /// <remarks>
@@ -250,9 +348,11 @@ public sealed class PointerOriginTests
     /// and then presses somewhere else is exactly the defect being chased, and
     /// reading the move would not see it.
     /// </remarks>
-    private SyntheticContact OnlyPress(string steps)
+    private SyntheticContact OnlyPress(
+        string steps, nint window = Window, string source = "finger")
     {
-        Run(steps).ShouldBeNull("the gesture must run for its contact to be readable");
+        Run(steps, window, source)
+            .ShouldBeNull("the gesture must run for its contact to be readable");
 
         List<SyntheticContact> pressed = _injector.ReceivedCalls()
             .Where(call => call.GetMethodInfo().Name == nameof(ISyntheticPointer.Inject))
@@ -265,7 +365,8 @@ public sealed class PointerOriginTests
         return pressed[0];
     }
 
-    private PointerRefusal? Run(string steps)
+    private PointerRefusal? Run(
+        string steps, nint window = Window, string source = "finger")
     {
         _injector.ClearReceivedCalls();
 
@@ -274,14 +375,14 @@ public sealed class PointerOriginTests
             {
               "actions": [{
                 "type": "pointer",
-                "id": "finger",
+                "id": "{{source}}",
                 "parameters": { "pointerType": "touch" },
                 "actions": [ {{steps}} ]
               }]
             }
             """);
 
-        return _runner.Perform(document.RootElement, Window);
+        return _runner.Perform(document.RootElement, window);
     }
 
     private static string Tap(string origin, int x, int y) =>
