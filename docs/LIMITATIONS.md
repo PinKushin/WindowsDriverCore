@@ -3907,3 +3907,54 @@ pointer-position change cost 14 tests. Measure this first.
 timing signature matches the failure exactly. Whether the app has some other
 reason to exit is not established, and 8-of-10 is frequent enough that one green
 run would not settle it either.
+
+
+### MEASURED: the navigation drain did NOT fix NavigateBack_ModernApp
+
+`352357a` scored **267/290**, the best so far, and none of the gain is this
+change. The honest breakdown against `6a3aa53` (265):
+
+```
+RECOVERED   Pen_Scroll_Vertical, Touch_Scroll_Vertical, TouchScrollOnElement_Vertical
+REGRESSED   Pen_LongClick
+```
+
+All four are known-intermittent, and `NavigateBack_ModernApp` — the test the
+change was written for — **still fails with the identical message**.
+
+**Why it did not work, read from the transcript.** The second `/back` still
+returns in 0.4 ms, so the wait ran and answered instantly. `InputPending` was
+correctly true (a click sets it on every rung of the ladder, Invoke included);
+`WaitForInputIdle` simply reported the application as idle, **because it was**.
+It answers "is this process waiting for input", not "has this page finished
+becoming itself". The existing comment on the primitive already said it is
+process-grained, and that turns out to be exactly the limitation that matters
+here.
+
+So the timing signature that motivated the change — 66 ms to reach the edit page
+in a failing run against 122 ms in a passing one — is real, and the app being
+*idle* at 66 ms is also real. Those are compatible: the edit page renders and
+the process goes idle before whatever the back gesture depends on is wired up.
+There is no measured signal this driver can currently wait on for that.
+
+**The change is KEPT and relabelled.** It enforces a correct ordering — do not
+send input while previously dispatched input is unconsumed — it has tests
+including a mutation-verified ordering assertion, and it costs nothing when the
+application is idle. What it is not is a fix for this test, and the entry above
+should be read with that correction.
+
+**What is now known about NavigateBack_ModernApp**, after two investigations:
+
+- The application EXITS during the second `/back`. Nothing of ours kills it.
+- The passing and failing runs are request-for-request identical in shape.
+- The app is idle by every measure available when the gesture is sent.
+- It fails 7 of 9 runs, so it is a failure and not an oddity.
+
+**Next candidate, and it is upstream of everything above:** the FIRST `/back`
+fires 2 ms after `POST /session` returns, into an app whose content is not
+there — `find AlarmButton` then misses seven times over 600 ms.
+`ContentReadyLauncher` answered in 25.8 ms because its readiness condition is
+"some descendant has a non-empty AutomationId", and an `ApplicationFrameWindow`
+satisfies that with its own chrome before the CoreWindow has any content. That
+is a measured weakness in the condition, independent of this test, and worth
+fixing on its own merits.
