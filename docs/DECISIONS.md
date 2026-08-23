@@ -186,3 +186,58 @@ category of failure that gets mentally subtracted before the comparison makes
 the number mean less every time it is used — and this repository has already
 published four scores that turned out to be measuring scaffolding rather than
 the driver.
+
+---
+
+## 4. Parity includes determinism, not just the score
+
+**2026-08-23.** The owner, on the goal for the project:
+
+> "id really like to get to parity with winappdriver tonight if possible with
+> zero flakke"
+>
+> "we dont have parity if we have flake, winappdriver doesnt have flake"
+
+And, when the reference's own runs were shown to move slightly:
+
+> "well it doesnt have flake in its own suite, when shit doesnt work it simply
+> doesnt work."
+
+### The standard, and the measured bar
+
+**Matching 281/290 while three tests shift between runs is not parity.** A
+client cannot build on a driver whose answer depends on the run. The reference's
+failures are *deterministic* — when something does not work there, it does not
+work every time — and that property is part of what is being matched.
+
+**Measured, so the bar is a number rather than a slogan.** Across five
+WinAppDriver runs on this guest, exactly three tests ever changed verdict:
+`SendKeys_ModifierAlt`, `SendKeys_ModifierWindowsKey`,
+`CompareElementsError_StaleElementParameter` — about one per run. Ours was
+thirteen.
+
+So the target is **not literally zero**, which the reference does not achieve
+either, but **the reference's order of magnitude**: roughly one, against our
+thirteen. Stating it as zero would make the goal unfalsifiable and invite
+rounding a bad run down to "noise", which is the failure mode decision #3 exists
+to prevent.
+
+### What follows for how work is counted
+
+- A fix is not banked until a **full** run confirms it, compared by test NAME.
+  Three of the sixteen backlog tests are intermittent enough to swamp a two-test
+  gain in a bare score.
+- **A failure that always co-occurs with others is ONE defect.** Counting rows
+  instead of columns inflated our flake list four-fold: what looked like eight
+  independent flaky tests was two upsets, each taking four or five tests with
+  it. Two investigations, not eight.
+- Reducing flake and raising the score are the same work here, not competing
+  priorities: the three scroll tests alone account for both the largest
+  remaining variance and three of the sixteen backlog entries.
+
+### Why this is recorded rather than assumed
+
+The assistant reported two regressions as "known flappers" and moved on, and had
+to be corrected. The instinct to discount an intermittent failure is strong
+precisely because it is the cheapest reading available, and it is the reading
+that made four earlier published scores meaningless.
