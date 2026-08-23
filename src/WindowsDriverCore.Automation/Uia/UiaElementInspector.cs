@@ -28,6 +28,25 @@ public sealed class UiaElementInspector : IElementInspector
         Read(window, elementId, static element => UiaControlTypes.TagName(element.CurrentControlType));
 
     /// <inheritdoc />
+    public ElementRead<string> WindowName(nint window)
+    {
+        try
+        {
+            IUIAutomationElement? element = _automation.ElementFromHandle(window);
+
+            return element is null
+                ? ElementRead.Failed<string>(ElementReadOutcome.NoSuchWindow)
+                : ElementRead.Success(element.CurrentName ?? string.Empty);
+        }
+        catch (COMException)
+        {
+            // The window went away. Reported as such rather than as an empty
+            // name, which a caller would happily return to a client.
+            return ElementRead.Failed<string>(ElementReadOutcome.NoSuchWindow);
+        }
+    }
+
+    /// <inheritdoc />
     public ElementRead<string> Text(nint window, string elementId) =>
         Read(window, elementId, TextOf);
 

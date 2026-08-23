@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using WindowsDriverCore.Automation;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
@@ -97,13 +98,35 @@ public static class WindowRoutes
             return Results.Json(JsonWireResponse.ForSession(session.Id, handles));
         }).RequiresSession();
 
-        app.MapGet("/session/{sessionId}/title", (HttpContext context, IWindowLocator windows) =>
+        app.MapGet("/session/{sessionId}/title",
+            (HttpContext context, IWindowLocator windows, IElementInspector inspector) =>
         {
             DriverSession session = context.GetSession();
 
-            return windows.Exists(session.WindowHandle)
-                ? Results.Json(JsonWireResponse.ForSession(session.Id, windows.GetTitle(session.WindowHandle)))
-                : WindowClosed();
+            if (!windows.Exists(session.WindowHandle))
+            {
+                return WindowClosed();
+            }
+
+            // THE DESKTOP HAS NO WIN32 CAPTION, so GetWindowText answers an
+            // empty string for it and GetTitle_Desktop and CreateSession_Desktop
+            // both fail asserting a title that starts with "Desktop".
+            //
+            // A desktop session's handle is GetDesktopWindow(). UIA calls that
+            // element "Desktop 1" - the desktop is a UIA concept before it is a
+            // Win32 one, so the name is read where the concept lives. Every
+            // other session keeps the cheaper Win32 read.
+            if (session.IsDesktop)
+            {
+                ElementRead<string> name = inspector.WindowName(session.WindowHandle);
+
+                return name.Outcome == ElementReadOutcome.Read
+                    ? Results.Json(JsonWireResponse.ForSession(session.Id, name.Value))
+                    : WindowClosed();
+            }
+
+            return Results.Json(
+                JsonWireResponse.ForSession(session.Id, windows.GetTitle(session.WindowHandle)));
         }).RequiresSession();
 
         app.MapGet("/session/{sessionId}/window/current/size", (HttpContext context, IWindowLocator windows) =>

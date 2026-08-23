@@ -81,6 +81,26 @@ public interface IElementInspector
     /// </remarks>
     ElementRead<string> TagName(nint window, string elementId);
 
+    /// <summary>The UIA name of a WINDOW, rather than of an element inside it.</summary>
+    /// <param name="window">The window handle.</param>
+    /// <returns>The name UIA gives that window.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>For the desktop, which has no Win32 caption to read.</b>
+    /// <c>GetTitle_Desktop</c> and <c>CreateSession_Desktop</c> both assert a
+    /// title beginning with "Desktop", and a desktop session's handle is
+    /// <c>GetDesktopWindow()</c> - whose window text is empty, so
+    /// <c>GetWindowText</c> answers an empty string and both tests fail.
+    /// </para>
+    /// <para>
+    /// UIA calls that element "Desktop 1": the desktop is a UIA concept before
+    /// it is a Win32 one, and the name lives where the concept does. Ordinary
+    /// windows are still read through <c>IWindowLocator.GetTitle</c>, which is
+    /// cheaper and is what every other session uses.
+    /// </para>
+    /// </remarks>
+    ElementRead<string> WindowName(nint window);
+
     /// <summary>The element's text.</summary>
     /// <param name="window">The session's window.</param>
     /// <param name="elementId">The element id.</param>
