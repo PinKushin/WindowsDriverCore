@@ -138,3 +138,51 @@ unrelated argument. Both looked like measurements in the diff.
 The rule that follows: **when the cause of a bug is refuted, every constant
 justified by the old cause is unjustified**, whether or not it still works.
 Sweep it again or say plainly that it is unmeasured.
+
+---
+
+## 3. Flake is failure. It is never a reason to stop looking
+
+**2026-08-22.** The owner, after reading a status that dismissed two regressions
+as flappers:
+
+> "flake is failure you know"
+
+This restates a rule already in `CLAUDE.md` — *"Flake is a defect in
+synchronisation or in the app — never noise"* — and it is recorded here because
+the assistant broke it twice in one sitting while quoting it elsewhere.
+
+### What was done wrong
+
+`NavigateBack_ModernApp` fails in **8 of the last 10 guest runs**. It was
+reported as "a long-standing flapper" and set aside. A test that fails 80% of
+the time is a **failing test**; the 20% is what needs explaining, not what
+excuses it.
+
+`Pen_Scroll_Vertical` failed, then passed on a re-run, and that was used to
+close the investigation — "flap, not attribution, so there is nothing to
+explain". Wrong on the second half. The overrun MECHANISM was refuted by its own
+measurement and that refutation stands on that evidence. But a test that moves
+between runs at a fixed commit has a cause, and "it passed this time" is not it.
+
+### The rule, stated so it cannot be read as advice
+
+- **An intermittent failure is counted as a failure** in any score, backlog or
+  status. It is not annotated away.
+- **Variance is the evidence, not the excuse.** A test that changes verdict at a
+  fixed commit is telling you there is state or timing the driver does not
+  control. That is a driver defect until measured otherwise.
+- **A re-run is for a second data point, never for a green result.** Re-running
+  until it passes destroys the signal, which is the one thing the run was for.
+- The two legitimate causes are **dirty start state** and **a race we cause**.
+  Both are ours. "The machine was busy" is a hypothesis that has to be measured
+  like any other, and on this project it has been wrong every time it was
+  checked.
+
+### Why it matters more here than elsewhere
+
+The whole instrument is a 290-test score compared against a reference. A
+category of failure that gets mentally subtracted before the comparison makes
+the number mean less every time it is used — and this repository has already
+published four scores that turned out to be measuring scaffolding rather than
+the driver.
