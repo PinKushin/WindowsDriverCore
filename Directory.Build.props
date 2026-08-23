@@ -34,6 +34,18 @@
          the IDE. Test projects suppress the resulting CS1591. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- THE RUNTIME FLOOR, DECLARED ONCE FOR EVERY PROJECT.
+         Separate from the TargetFramework's SDK version, which only says which
+         APIs the compiler can see. 14393 is Windows 10 1607, matching
+         WinAppDriver's own floor.
+
+         It is a DECLARATION, not an enforcement. CA1416 was forced to error
+         against a deliberately unguarded Windows 10 1809 call and the build
+         still succeeded, because the WinRT projections carry no
+         SupportedOSPlatform attributes. What actually protects a 1607 machine is
+         WinRtTouchInjector.TryCreate returning null and the Win32 fallback
+         behind it - and a test, not the compiler, is what shows that works. -->
+    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-windows'))">10.0.14393.0</SupportedOSPlatformVersion>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
 
     <!-- Every security rule, not just the recommended subset. This server binds

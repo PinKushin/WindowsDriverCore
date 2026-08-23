@@ -3,7 +3,27 @@
        Bottom of the stack: references nothing of ours. -->
   <PropertyGroup>
     <!-- Literal, not inherited: Buildalyzer reads this textually. See Directory.Build.props. -->
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!--
+      THE SDK VERSION IS WHAT WE COMPILE AGAINST; SupportedOSPlatformVersion IS
+      WHAT MUST RUN IT. They are deliberately different.
+
+      17763 (Windows 10 1809) is where Windows.UI.Input.Preview.Injection.
+      InputInjector appears, and that API is the whole reason this project needs
+      a versioned TFM at all - see WinRtPointerInjector. Without the version
+      suffix there is no WinRT projection and the type does not exist to the
+      compiler.
+
+      14393 (Windows 10 1607) is the floor this driver claims, matching
+      WinAppDriver's own. Declaring it keeps that promise explicit in the build.
+
+      DO NOT EXPECT THE COMPILER TO POLICE THE GUARD. CA1416 was forced to error
+      against a deliberately unguarded InputInjector call and the build still
+      succeeded - the WinRT projection does not carry the SupportedOSPlatform
+      attributes the analyzer needs. The fallback is therefore verified by a
+      TEST, not by the build, and that is the only thing standing between a 1607
+      machine and a MissingMethodException.
+    -->
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <!-- Scoped to this project, not the solution. LibraryImport generates the
          marshalling stubs and they are unsafe by construction; this is also the
          only project that should ever need it, since it is the only one that
