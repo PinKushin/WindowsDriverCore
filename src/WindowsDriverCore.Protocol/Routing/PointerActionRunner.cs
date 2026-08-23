@@ -248,11 +248,16 @@ public sealed class PointerActionRunner
             return null;
         }
 
-        // Where the contact is now. W3C treats a pointer as having a position
-        // between actions, so a pointerDown with no preceding move happens
-        // wherever the previous action left it.
+        // Where the contact is now, in SCREEN coordinates. W3C treats a pointer
+        // as having a position between actions, so a pointerDown with no
+        // preceding move happens wherever the previous action left it.
         int x = 0;
         int y = 0;
+
+        // Whether (x,y) above means anything yet. A fresh pointer sits at (0,0)
+        // of the VIEWPORT, which in this driver is the window - see the anchor
+        // below for why that is resolved late rather than here.
+        bool anchored = false;
         bool down = false;
 
         foreach (JsonElement step in steps.EnumerateArray())
@@ -263,11 +268,54 @@ public sealed class PointerActionRunner
             {
                 case "pointerMove":
                 {
+                    // THE ANCHOR, AND IT IS RESOLVED LAZILY ON PURPOSE.
+                    //
+                    // A "pointer" origin is an offset from where the pointer
+                    // already is, and a pointer that has not moved is at the
+                    // viewport origin - the window's top-left, expressed in the
+                    // screen coordinates injection takes. Starting from a raw
+                    // (0,0) made a pointer-origin move produce a DESKTOP
+                    // coordinate while a viewport move produced a screen one, so
+                    // the two disagreed about the same intended point:
+                    // (101,33) against (309,147) for a window at (208,114).
+                    //
+                    // MEASURED IN A TEST, NOT ON THE GUEST. PointerOriginTests
+                    // states it as an equality between the two origin forms, so
+                    // it needs no application and no desktop.
+                    //
+                    // LAZY IS THE WHOLE FIX. An earlier attempt anchored eagerly
+                    // at the top of this method, for every pointer source, and
+                    // cost three tests: ActionsError_NoSuchWindow sends an
+                    // ELEMENT-origin move against an orphaned session, and on a
+                    // dead window the eager placement call fails first and
+                    // answers "The session window could not be placed" where the
+                    // suite waits for "Currently selected window has been
+                    // closed". A correct fault arriving instead of the expected
+                    // one. Resolved here, that sequence never reaches this line.
+                    if (!anchored && Text(step, "origin") == "pointer")
+                    {
+                        (int anchorX, int anchorY, PointerRefusal? unplaced) =
+                            WindowOrigin(window, 0, 0);
+
+                        if (unplaced is not null)
+                        {
+                            return unplaced;
+                        }
+
+                        x = anchorX;
+                        y = anchorY;
+                    }
+
                     (int toX, int toY, PointerRefusal? failure) = Target(step, window, x, y);
                     if (failure is not null)
                     {
                         return failure;
                     }
+
+                    // Any completed move leaves the pointer at a real screen
+                    // point, whichever origin named it, so nothing later needs
+                    // the anchor.
+                    anchored = true;
 
                     PointerRefusal? moved = Move(kind, x, y, toX, toY, down, DurationOf(step));
                     if (moved is not null)
