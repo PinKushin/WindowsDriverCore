@@ -7,8 +7,10 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using NUnit.Framework;
 using Shouldly;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Sessions;
 using WindowsDriverCore.Tests.Protocol.Recordings;
 
@@ -29,11 +31,23 @@ public sealed class OrientationRouteTests : IDisposable
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
     private ISessionStore _store = null!;
+    private IWindowLocator _windows = null!;
 
     [OneTimeSetUp]
     public void StartServer()
     {
-        _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>();
+        // THE LOCATOR IS SUBSTITUTED SO THAT "LIVE" MEANS SOMETHING. These tests
+        // seed a made-up window handle, so before this every session here was
+        // one whose window does not exist - and the fixture asserted LANDSCAPE
+        // for it, which is exactly the behaviour the suite's
+        // GetOrientationError_NoSuchWindow says is wrong. The name said live and
+        // nothing made it so.
+        _windows = Substitute.For<IWindowLocator>();
+
+        _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
+            .WithWebHostBuilder(builder =>
+                builder.ConfigureServices(services => services.AddSingleton(_windows)));
+
         _client = _factory.CreateClient();
         _store = _factory.Services.GetRequiredService<ISessionStore>();
     }
@@ -44,7 +58,11 @@ public sealed class OrientationRouteTests : IDisposable
     /// keeps every test independent of what ran before it regardless.
     /// </summary>
     [SetUp]
-    public void ArrangeDefaults() => _store.Clear();
+    public void ArrangeDefaults()
+    {
+        _store.Clear();
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+    }
 
     [OneTimeTearDown]
     public void StopServer() => Dispose();
@@ -97,6 +115,51 @@ public sealed class OrientationRouteTests : IDisposable
 
         using JsonDocument produced = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         produced.RootElement.GetProperty("sessionId").GetString().ShouldBe("second");
+    }
+
+    /// <summary>
+    /// An orphaned session's orientation is a fault, not LANDSCAPE.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>GetOrientationError_NoSuchWindow</c> reads the orientation of a
+    /// session whose window has been closed and expects
+    /// <c>ErrorStrings.NoSuchWindow</c>. This driver answered 200 LANDSCAPE and
+    /// the suite reported <c>Assert.Fail: Exception should have been thrown</c>.
+    /// </para>
+    /// <para>
+    /// <b>The session still EXISTS, which is why the session filter cannot catch
+    /// this.</b> Only the window is gone, so the check belongs in the handler -
+    /// the same shape <c>NavigationRoutes</c> already uses, and for a milder
+    /// version of the same reason: navigation refuses because a keystroke would
+    /// otherwise land in someone else's application, and this refuses because
+    /// answering LANDSCAPE for a window that does not exist is a claim about a
+    /// window that does not exist.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task GetOrientation_WhenTheWindowIsGone_ReturnsNoSuchWindow()
+    {
+        Seed("orphaned");
+        _windows.Exists(Arg.Any<nint>()).Returns(false);
+
+        HttpResponseMessage response = await _client.GetAsync(
+            new Uri("/session/orphaned/orientation", UriKind.Relative));
+
+        // 400/23 is JSON Wire's no such window, spelled out rather than read
+        // from the fault the handler uses - taking the numbers from the code
+        // under test would make this agree with whatever that code says.
+        ((int)response.StatusCode).ShouldBe(400);
+
+        using JsonDocument produced = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+
+        produced.RootElement.GetProperty("status").GetInt32().ShouldBe(23);
+
+        // The suite compares ErrorStrings.NoSuchWindow exactly, so this is an
+        // equality and not a "contains".
+        produced.RootElement.GetProperty("value").GetProperty("message").GetString()
+            .ShouldBe("Currently selected window has been closed");
     }
 
     [Test]
