@@ -105,7 +105,18 @@ param(
     # a few alone changes the conditions they run under. Use it to compare a
     # subset against ITSELF across a manipulation - never to claim a test would
     # pass in a full run, and never to quote a score.
-    [string] $TestCaseFilter = ''
+    [string] $TestCaseFilter = '',
+
+    # ENVIRONMENT FOR THE DRIVER PROCESS, as NAME=VALUE strings.
+    #
+    # The other half of making an experiment affordable: sweep a constant
+    # without a rebuild per value. Set immediately before the driver starts, so
+    # nothing between here and there can be blamed for the result.
+    #
+    # Anything set through this is by definition NOT the shipped configuration.
+    # Record the value in whatever the experiment concludes, and never leave the
+    # sweep hook in the product afterwards.
+    [string[]] $DriverEnvironment = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,6 +126,14 @@ $credentialPath = Join-Path (Join-Path $Root $VMName) "credential.txt"
 $lines = Get-Content -LiteralPath $credentialPath
 $credential = [System.Management.Automation.PSCredential]::new(
     $lines[0], (ConvertTo-SecureString $lines[1] -AsPlainText -Force))
+
+$driverEnvBlock = ($DriverEnvironment | ForEach-Object {
+    $name, $value = $_ -split '=', 2
+    if (-not $name -or $null -eq $value) { throw "DriverEnvironment needs NAME=VALUE, got '$_'" }
+    # Echoed as well as set: a sweep whose value never reached the driver looks
+    # exactly like a value that made no difference.
+    "    `$env:$name = '$value'`n    'driver env: $name=$value'"
+}) -join "`n"
 
 $job = @"
 `$ErrorActionPreference = 'Continue'
@@ -310,6 +329,7 @@ if ('$Driver' -eq 'WindowsDriverCore') {
     # silently separate the two.
     `$env:WINDOWSDRIVERCORE_LOG = 'C:\baseline\transcript-' + `$head + '-' + (Get-Date -Format HHmmss) + '.log'
     'transcript: ' + `$env:WINDOWSDRIVERCORE_LOG
+$driverEnvBlock
     `$srv = Start-Process -FilePath 'C:\baseline\host\WindowsDriverCore.exe' -PassThru
 } else {
     `$srv = Start-Process -FilePath 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe' -PassThru
