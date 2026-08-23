@@ -104,6 +104,15 @@ public sealed class PointerOriginTests
     public void APointerOrigin_ReachesTheSamePointAsAViewportOrigin()
     {
         SyntheticContact viaViewport = OnlyPress(Tap("viewport", 101, 33));
+
+        // FRESH, AND NOW IT HAS TO BE SAID OUT LOUD. The claim is about a
+        // pointer that has not moved yet, and since a pointer's position began
+        // surviving between requests the viewport gesture above leaves one
+        // behind. Without this the second tap would correctly resume from
+        // (309,147) and the test would be comparing a fresh pointer against a
+        // carried one - two different questions.
+        _runner.ForgetContacts();
+
         SyntheticContact viaPointer = OnlyPress(Tap("pointer", 101, 33));
 
         (viaPointer.X, viaPointer.Y).ShouldBe(
@@ -208,6 +217,68 @@ public sealed class PointerOriginTests
     }
 
     /// <summary>
+    /// The pointer stays where the previous REQUEST left it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured on the guest, and only visible because the refusal started
+    /// naming the window.</b> After the viewport anchor was fixed,
+    /// <c>Touch_Click_OriginPointer</c> still failed — with
+    /// <i>"(115,87) is outside the application window at (208,87) 816x641"</i>.
+    /// The window's left edge is 208 and the point is 115, so the offset applied
+    /// was −93 with a zero Y.
+    /// </para>
+    /// <para>
+    /// That is the test's SECOND gesture. It computes
+    /// <c>alarm.Location.X - worldClock.Location.X</c> — a genuine delta from
+    /// where the first gesture left the pointer — and sends it in a separate
+    /// <c>PerformActions</c> call. Each request started a fresh
+    /// <c>PerformSource</c> with the pointer back at the viewport origin, so the
+    /// delta was measured from the wrong place and landed left of the window.
+    /// </para>
+    /// <para>
+    /// W3C is explicit that input state belongs to the SESSION and persists
+    /// between <c>/actions</c> commands until it is released. A per-request
+    /// pointer is not a smaller version of that; it is a different model.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void APointerOrigin_ContinuesFromWhereThePreviousRequestLeftIt()
+    {
+        // First request: from the viewport origin, out to +101,+33.
+        OnlyPress(Tap("pointer", 101, 33));
+
+        // Second request, the suite's own shape: a delta from there, and the
+        // guest's actual numbers - back and to the left.
+        SyntheticContact second = OnlyPress(Tap("pointer", -93, 0));
+
+        (second.X, second.Y).ShouldBe(
+            (Bounds.X + 101 - 93, Bounds.Y + 33),
+            "the second request's offset is measured from where the first one " +
+            "left the pointer, not from the viewport origin again");
+    }
+
+    /// <summary>A different window does not inherit another's pointer.</summary>
+    /// <remarks>
+    /// <b>The control.</b> Remembering the position in one shared slot would
+    /// satisfy the test above and let a gesture in one session start from
+    /// wherever an unrelated session's gesture ended — a wrong coordinate
+    /// delivered into a real application, which is the failure this whole path
+    /// has a guard for.
+    /// </remarks>
+    [Test]
+    public void AnotherWindow_StartsAtItsOwnViewportOrigin()
+    {
+        OnlyPress(Tap("pointer", 101, 33));
+
+        SyntheticContact elsewhere = OnlyPress(Tap("pointer", 10, 20), window: 0x7777);
+
+        (elsewhere.X, elsewhere.Y).ShouldBe(
+            (Bounds.X + 10, Bounds.Y + 20),
+            "a window with no pointer history starts at its own viewport origin");
+    }
+
+    /// <summary>
     /// A refused point names the window it was measured against.
     /// </summary>
     /// <remarks>
@@ -250,9 +321,9 @@ public sealed class PointerOriginTests
     /// and then presses somewhere else is exactly the defect being chased, and
     /// reading the move would not see it.
     /// </remarks>
-    private SyntheticContact OnlyPress(string steps)
+    private SyntheticContact OnlyPress(string steps, nint window = Window)
     {
-        Run(steps).ShouldBeNull("the gesture must run for its contact to be readable");
+        Run(steps, window).ShouldBeNull("the gesture must run for its contact to be readable");
 
         List<SyntheticContact> pressed = _injector.ReceivedCalls()
             .Where(call => call.GetMethodInfo().Name == nameof(ISyntheticPointer.Inject))
@@ -265,7 +336,7 @@ public sealed class PointerOriginTests
         return pressed[0];
     }
 
-    private PointerRefusal? Run(string steps)
+    private PointerRefusal? Run(string steps, nint window = Window)
     {
         _injector.ClearReceivedCalls();
 
@@ -281,7 +352,7 @@ public sealed class PointerOriginTests
             }
             """);
 
-        return _runner.Perform(document.RootElement, Window);
+        return _runner.Perform(document.RootElement, window);
     }
 
     private static string Tap(string origin, int x, int y) =>

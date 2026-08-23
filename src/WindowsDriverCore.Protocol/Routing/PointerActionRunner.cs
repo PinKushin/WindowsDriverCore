@@ -248,16 +248,36 @@ public sealed class PointerActionRunner
             return null;
         }
 
-        // Where the contact is now, in SCREEN coordinates. W3C treats a pointer
-        // as having a position between actions, so a pointerDown with no
-        // preceding move happens wherever the previous action left it.
-        int x = 0;
-        int y = 0;
+        // WHERE THE POINTER IS, IN SCREEN COORDINATES, AND IT SURVIVES THE
+        // REQUEST THAT PUT IT THERE.
+        //
+        // W3C keeps input state on the SESSION: a pointer holds its position
+        // between /actions commands until the state is released. This used to
+        // start every request at nothing, which is not a smaller version of that
+        // model but a different one.
+        //
+        // MEASURED ON THE GUEST, and only visible because a refusal had started
+        // naming the window it measured against:
+        //
+        //   (115,87) is outside the application window at (208,87) 816x641
+        //
+        // The window's left edge is 208 and the point is 115, so the offset
+        // applied was -93 with a zero Y. That is Touch_Click_OriginPointer's
+        // SECOND gesture, which computes alarm.Location.X minus
+        // worldClock.Location.X - a delta from where the FIRST gesture left the
+        // pointer - and sends it as a separate PerformActions call. Measured
+        // from a re-anchored origin it lands left of the window, and the guard
+        // correctly refuses it.
+        //
+        // Keyed by window for the same reason as _contacts beside it: the state
+        // belongs to the window the gesture is aimed at, and one shared slot
+        // would let a gesture in one session start from wherever an unrelated
+        // session's gesture ended.
+        bool anchored = _pointers.TryGetValue(window, out (int X, int Y) resumed);
 
-        // Whether (x,y) above means anything yet. A fresh pointer sits at (0,0)
-        // of the VIEWPORT, which in this driver is the window - see the anchor
-        // below for why that is resolved late rather than here.
-        bool anchored = false;
+        int x = anchored ? resumed.X : 0;
+        int y = anchored ? resumed.Y : 0;
+
         bool down = false;
 
         foreach (JsonElement step in steps.EnumerateArray())
@@ -358,6 +378,15 @@ public sealed class PointerActionRunner
                     // separates are already discrete events.
                     break;
             }
+        }
+
+        // HANDED TO THE NEXT REQUEST. Recorded only once the sequence has run to
+        // the end - a source that refused partway returned above, and storing a
+        // position reached during a gesture that then failed would make the next
+        // request measure its delta from somewhere the caller never got to.
+        if (anchored)
+        {
+            _pointers[window] = (x, y);
         }
 
         return null;
@@ -558,7 +587,28 @@ public sealed class PointerActionRunner
     /// zero.
     /// </para>
     /// </remarks>
-    public void ForgetContacts() => _contacts.Clear();
+    public void ForgetContacts()
+    {
+        _contacts.Clear();
+        _pointers.Clear();
+    }
+
+    /// <summary>Where each window's pointer was left by the last gesture.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Separate from <see cref="_contacts"/> because the two answer different
+    /// questions.</b> A contact entry means a finger is DOWN and is removed on
+    /// lift; this means the pointer HAS A POSITION, which outlives the lift —
+    /// W3C keeps input state until it is released, and a pointer that has been
+    /// put down and picked up is still somewhere.
+    /// </para>
+    /// <para>
+    /// <b>An absent entry means a fresh pointer</b>, which sits at the viewport
+    /// origin and is resolved lazily. Bounded by the number of windows that have
+    /// received a gesture, and keyed by window so no session can read another's.
+    /// </para>
+    /// </remarks>
+    private readonly ConcurrentDictionary<nint, (int X, int Y)> _pointers = new();
 
 
     /// <summary>Taps a point, holding the contact for a duration.</summary>
