@@ -347,12 +347,17 @@ if (-not `$up) { 'ABORT: driver never answered'; exit 1 }
 'results: ' + `$trx
 # A FILTER THAT MATCHES NOTHING EXITS 0 AND PRINTS NO SUMMARY, so the
 # no-match line is captured too and reported rather than read as a pass.
-`$filterArgs = @()
-if ('$TestCaseFilter' -ne '') { `$filterArgs = @('/TestCaseFilter:$TestCaseFilter') }
+# ONE ARRAY, SPLATTED ONCE. Splatting cannot appear on a backtick-continued
+# line - PowerShell parses it as an expression there and refuses outright - so
+# the whole argument list is built before the call.
+`$vstestArgs = @(
+    'C:\baseline\WebDriverAPI\WebDriverAPI.dll'
+    "/Logger:trx;LogFileName=`$trx"
+    '/ResultsDirectory:C:\baseline\WindowsDriverCore\TestResults'
+)
+if ('$TestCaseFilter' -ne '') { `$vstestArgs += '/TestCaseFilter:$TestCaseFilter' }
 
-& `$vstest 'C:\baseline\WebDriverAPI\WebDriverAPI.dll' "/Logger:trx;LogFileName=`$trx" `
-    @filterArgs `
-    /ResultsDirectory:C:\baseline\WindowsDriverCore\TestResults 2>&1 |
+& `$vstest @vstestArgs 2>&1 |
     Select-String -Pattern '^Total tests|^\s+Passed:|^\s+Failed:|^No test (matches|is available)' |
     ForEach-Object { `$_.Line }
 
