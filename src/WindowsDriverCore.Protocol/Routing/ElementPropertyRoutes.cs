@@ -168,12 +168,51 @@ public static class ElementPropertyRoutes
             return;
         }
 
+        // CAPTURED BEFORE CLEARING, because the floor below is measured from it.
+        long? dispatchedAt = session.DispatchedAt;
+
         // Cleared either way. A wait that fails - no message loop, or a process
         // this driver may not open - must not make every later read retry it.
         session.InputPending = false;
 
         long started = Stopwatch.GetTimestamp();
         bool waited = windows.WaitForInputProcessed(session.WindowHandle);
+
+        // AND THEN A FLOOR, BECAUSE THE WAIT ABOVE ANSWERS THE WRONG QUESTION
+        // WHEN THE INPUT HAS NOT BEEN DELIVERED YET.
+        //
+        // WaitForInputIdle asks "is this process waiting for input". Injected
+        // input sits in the SYSTEM queue for a moment before it reaches the
+        // application's, and during that moment the application is idle and the
+        // wait returns in under a millisecond - measured repeatedly as
+        // "drain -> waited 0.8 ms" immediately before a read of the old value.
+        //
+        // MEASURED per-test on the guest against the reference:
+        //
+        //                            WinAppDriver   this driver
+        //   MouseClick                     3.90 s       0.067 s   fails
+        //   ClickElement                   8.17 s       0.29 s    fails
+        //   GetElementDisplayedState       9.64 s       1.51 s    fails
+        //
+        // Those tests carry no synchronisation: they click and read. The
+        // reference passes because a single find costs it ~1070 ms, so the
+        // application has caught up by accident. Answering before the
+        // application has reacted is reporting the wrong state, and being fast
+        // is no defence.
+        //
+        // Measured from when the input was DISPATCHED rather than from here, so
+        // a client that does other work in between pays nothing, and the floor
+        // is spent once per input rather than once per read.
+        if (dispatchedAt is long dispatched)
+        {
+            TimeSpan since = Stopwatch.GetElapsedTime(dispatched);
+            TimeSpan remaining = ReactionFloor - since;
+
+            if (remaining > TimeSpan.Zero)
+            {
+                Thread.Sleep(remaining);
+            }
+        }
 
         // THE RESULT IS NO LONGER DISCARDED, and that was a real defect by this
         // repository's own rule: a return-value error signal is checked before
@@ -190,6 +229,19 @@ public static class ElementPropertyRoutes
         // that ran and answered instantly - a different problem from false.
         log?.InputDrained(waited, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
+
+    /// <summary>The least time an application gets to react before it is read.</summary>
+    /// <remarks>
+    /// Bounded and small on the owner's standing direction - a wait is
+    /// acceptable "as long as they stay small... a second or less" and
+    /// especially where it matches what a client already sees from
+    /// WinAppDriver. This is far under that, and far under the reference's own
+    /// incidental delay of seconds per test.
+    /// </remarks>
+    private static readonly TimeSpan ReactionFloor = TimeSpan.FromMilliseconds(
+        int.TryParse(Environment.GetEnvironmentVariable("WDC_REACTION_MS"), out int sweep)
+            ? sweep
+            : 120);
 
     private static ElementRead<ElementLocation> ReadLocation(
         IElementInspector inspector, nint window, string elementId)

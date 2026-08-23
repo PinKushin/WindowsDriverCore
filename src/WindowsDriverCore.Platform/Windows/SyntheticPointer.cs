@@ -157,7 +157,7 @@ public sealed class SyntheticPointer : ISyntheticPointer
             frame[index].pointerInfo.ptPixelLocation.X = contact.X;
             frame[index].pointerInfo.ptPixelLocation.Y = contact.Y;
 
-            frame[index].pointerInfo.pointerFlags = FlagsFor(contact.Phase);
+            frame[index].pointerInfo.pointerFlags = FlagsForPhase(contact.Phase);
 
             frame[index].touchFlags = TOUCH_FLAG_NONE;
             frame[index].touchMask = TOUCH_MASK_CONTACTAREA;
@@ -201,7 +201,7 @@ public sealed class SyntheticPointer : ISyntheticPointer
         frame[0].penInfo.pointerInfo.pointerId = 0;
         frame[0].penInfo.pointerInfo.ptPixelLocation.X = contact.X;
         frame[0].penInfo.pointerInfo.ptPixelLocation.Y = contact.Y;
-        frame[0].penInfo.pointerInfo.pointerFlags = FlagsFor(contact.Phase);
+        frame[0].penInfo.pointerInfo.pointerFlags = FlagsForPhase(contact.Phase);
 
         frame[0].penInfo.penFlags = PenFlagsFor(contact.Button);
 
@@ -283,13 +283,15 @@ public sealed class SyntheticPointer : ISyntheticPointer
     /// UPDATE carries INRANGE and INCONTACT just as DOWN does — the contact is
     /// still there. UP carries neither, because it is not.
     /// </remarks>
-    private static uint FlagsFor(SyntheticContactPhase phase) => phase switch
+    internal static uint FlagsForPhase(SyntheticContactPhase phase) => phase switch
     {
         SyntheticContactPhase.Down =>
-            POINTER_FLAG_DOWN | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT,
+            POINTER_FLAG_DOWN | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT |
+            POINTER_FLAG_PRIMARY,
         SyntheticContactPhase.Update =>
-            POINTER_FLAG_UPDATE | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT,
-        _ => POINTER_FLAG_UP,
+            POINTER_FLAG_UPDATE | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT |
+            POINTER_FLAG_PRIMARY,
+        _ => POINTER_FLAG_UP | POINTER_FLAG_PRIMARY,
     };
 
     /// <summary>The pen flags for whichever part of the pen is in contact.</summary>
@@ -330,6 +332,25 @@ public sealed class SyntheticPointer : ISyntheticPointer
     private const uint POINTER_FLAG_UP = 0x00040000;
     private const uint POINTER_FLAG_INRANGE = 0x00000002;
     private const uint POINTER_FLAG_INCONTACT = 0x00000004;
+
+    /// <summary>The pointer Windows promotes to gestures and to mouse messages.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Without this a contact is raw pointer input and nothing more.</b>
+    /// Press-and-hold, double-tap and the touch-to-mouse promotion legacy
+    /// controls depend on are all driven from the PRIMARY pointer; a contact
+    /// that never claims to be it is delivered faithfully and recognised as
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// Measured inside a single guest run of <c>TouchLongTap</c>: a mouse
+    /// right-click on the list item opened the context menu in 3 seconds, and a
+    /// 1099 ms held touch contact at the same element produced no menu at all,
+    /// followed by 38 failing searches for "Delete". That test has failed in all
+    /// nine measured runs.
+    /// </para>
+    /// </remarks>
+    private const uint POINTER_FLAG_PRIMARY = 0x00002000;
 
     private const uint TOUCH_FLAG_NONE = 0x00000000;
     private const uint TOUCH_MASK_CONTACTAREA = 0x00000001;

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace WindowsDriverCore.Platform.Windows;
@@ -50,19 +51,115 @@ public sealed class SendInputPointer : IPointerInput
     }
 
     /// <inheritdoc />
-    public bool MoveTo(int x, int y) =>
-        TryNormalise(x, y, out int normalisedX, out int normalisedY)
-        && Send(Mouse(normalisedX, normalisedY, MoveAbsolute));
+    /// <remarks>
+    /// <para>
+    /// <b>A move with a button DOWN walks its path; a move with none jumps.</b>
+    /// A window manager samples the pointer on its own message loop, so a drag
+    /// delivered as one absolute jump is not a gesture it can follow - the
+    /// window never moves. Measured as <c>MouseDownMoveUp</c> failing with
+    /// <i>"Expected any value except {X=290,Y=154}. Actual: {X=290,Y=154}"</i>:
+    /// the window sat exactly where it started.
+    /// </para>
+    /// <para>
+    /// Exactly the defect already fixed for touch and pen, arriving separately
+    /// here because mouse input goes through <c>SendInput</c> rather than the
+    /// pointer-injection API and shares none of that code.
+    /// </para>
+    /// <para>
+    /// <b>A move with no button held is left as a single jump on purpose.</b>
+    /// Nothing is tracking it, walking it would emit frames no one reads, and
+    /// <c>/moveto</c> before a click is by far the common case.
+    /// </para>
+    /// </remarks>
+    public bool MoveTo(int x, int y)
+    {
+        if (!_pressed || !TryGetPosition(out int fromX, out int fromY))
+        {
+            return TryNormalise(x, y, out int jumpX, out int jumpY)
+                && Send(Mouse(jumpX, jumpY, MoveAbsolute));
+        }
+
+        foreach ((int stepX, int stepY) in PathBetween(fromX, fromY, x, y))
+        {
+            if (!TryNormalise(stepX, stepY, out int normalisedX, out int normalisedY) ||
+                !Send(Mouse(normalisedX, normalisedY, MoveAbsolute)))
+            {
+                return false;
+            }
+
+            // The same separation the injected paths use, and for the same
+            // measured reason: frames arriving as one burst are coalesced into a
+            // single jump and the gesture is lost. Below about 2 ms per frame a
+            // drag stops moving the window at all.
+            Thread.Sleep(FrameSeparationMilliseconds);
+        }
+
+        return true;
+    }
+
+    /// <summary>The points a dragged pointer passes through, endpoint last.</summary>
+    /// <param name="fromX">Where the pointer is.</param>
+    /// <param name="fromY">Where the pointer is.</param>
+    /// <param name="toX">Where it is going.</param>
+    /// <param name="toY">Where it is going.</param>
+    /// <returns>The path, always ending exactly on the destination.</returns>
+    /// <remarks>
+    /// Exposed for a test because the alternative is asserting on synthesized
+    /// mouse input, which needs a desktop and moves the real cursor.
+    /// </remarks>
+    internal static IReadOnlyList<(int X, int Y)> PathBetween(
+        int fromX, int fromY, int toX, int toY)
+    {
+        List<(int X, int Y)> path = new(FramesPerDrag);
+
+        for (int frame = 1; frame <= FramesPerDrag; frame++)
+        {
+            path.Add((
+                fromX + (int)(((long)(toX - fromX) * frame) / FramesPerDrag),
+                fromY + (int)(((long)(toY - fromY) * frame) / FramesPerDrag)));
+        }
+
+        return path;
+    }
+
+    /// <summary>How many steps a dragged move is broken into.</summary>
+    private const int FramesPerDrag = 10;
+
+    /// <summary>Milliseconds between the steps of a dragged move.</summary>
+    private const int FrameSeparationMilliseconds = 5;
+
+    /// <summary>Whether a button is currently held.</summary>
+    /// <remarks>
+    /// <b>Instance state, and the only state this type keeps.</b> A move has to
+    /// know whether it is a drag, and the caller does not tell it - the JSON
+    /// Wire protocol has <c>buttondown</c>, <c>moveto</c> and <c>buttonup</c> as
+    /// three separate requests with nothing linking them but this.
+    /// </remarks>
+    private bool _pressed;
 
     /// <inheritdoc />
     public bool Click(PointerButton button) =>
         Send(Mouse(0, 0, DownFlag(button)), Mouse(0, 0, UpFlag(button)));
 
     /// <inheritdoc />
-    public bool Press(PointerButton button) => Send(Mouse(0, 0, DownFlag(button)));
+    public bool Press(PointerButton button)
+    {
+        bool sent = Send(Mouse(0, 0, DownFlag(button)));
+        _pressed = _pressed || sent;
+        return sent;
+    }
 
     /// <inheritdoc />
-    public bool Release(PointerButton button) => Send(Mouse(0, 0, UpFlag(button)));
+    public bool Release(PointerButton button)
+    {
+        bool sent = Send(Mouse(0, 0, UpFlag(button)));
+        if (sent)
+        {
+            _pressed = false;
+        }
+
+        return sent;
+    }
 
     /// <inheritdoc />
     public bool TryGetPosition(out int x, out int y)

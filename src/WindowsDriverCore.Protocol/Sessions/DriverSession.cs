@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-
+using System.Diagnostics;
 using WindowsDriverCore.Platform.Windows;
 
 namespace WindowsDriverCore.Protocol.Sessions;
@@ -121,7 +121,39 @@ public sealed record DriverSession(
     /// waited; typing and clicking are the same problem, since SendInput only
     /// queues and the application consumes on its own message loop.
     /// </remarks>
-    public bool InputPending { get; set; }
+    public bool InputPending
+    {
+        get => DispatchedAt is not null;
+        set => DispatchedAt = value ? Stopwatch.GetTimestamp() : null;
+    }
+
+    /// <summary>When input was dispatched, or null when none is outstanding.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The TIME, not just the fact, because the fact is not enough to wait
+    /// on.</b> <c>WaitForInputIdle</c> answers "is this process waiting for
+    /// input" and returns in under a millisecond when the input has been
+    /// injected but not yet delivered from the system queue - so a read
+    /// immediately after a click sees the state before the click.
+    /// </para>
+    /// <para>
+    /// MEASURED on the guest, per-test durations against the reference:
+    /// </para>
+    /// <code>
+    ///                              WinAppDriver     this driver
+    ///   MouseClick                       3.90 s         0.067 s   fails
+    ///   ClickElement                     8.17 s         0.29 s    fails
+    ///   GetElementDisplayedState         9.64 s         1.51 s    fails
+    /// </code>
+    /// <para>
+    /// These tests carry no synchronisation of their own: they click and read.
+    /// WinAppDriver passes because a find costs it ~1070 ms, so the application
+    /// has caught up by accident. We fail by being 10-60x faster, which is a
+    /// real defect and not a virtue - a driver that answers before the
+    /// application has reacted has reported the wrong state.
+    /// </para>
+    /// </remarks>
+    public long? DispatchedAt { get; private set; }
 
     /// <summary>The modifier keys this session is holding between calls.</summary>
     /// <remarks>

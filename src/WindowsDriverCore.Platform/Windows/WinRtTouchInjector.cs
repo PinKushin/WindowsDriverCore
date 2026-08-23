@@ -146,6 +146,14 @@ internal sealed class WinRtTouchInjector
     /// The same three states the Win32 path uses, spelled in WinRT's enum.
     /// <c>New</c> appears only on the down: it declares a contact that did not
     /// exist before, and repeating it on an update would start a second one.
+    ///
+    /// <c>Primary</c> appears on ALL THREE. Windows promotes only the primary
+    /// pointer to gestures and to mouse messages, so a contact without it is
+    /// delivered faithfully and recognised as nothing - measured as a 1099 ms
+    /// held contact producing no context menu where a mouse right-click on the
+    /// same element produced one. A hold is a sequence of updates and a gesture
+    /// is not complete until the lift, so dropping it from either would leave
+    /// the recogniser watching a pointer that stops being primary mid-gesture.
     /// </remarks>
     private static InjectedInputPointerOptions OptionsFor(SyntheticContactPhase phase) => phase switch
     {
@@ -153,13 +161,15 @@ internal sealed class WinRtTouchInjector
             InjectedInputPointerOptions.New |
             InjectedInputPointerOptions.InRange |
             InjectedInputPointerOptions.InContact |
-            InjectedInputPointerOptions.PointerDown,
+            InjectedInputPointerOptions.PointerDown |
+            InjectedInputPointerOptions.Primary,
 
         SyntheticContactPhase.Update =>
             InjectedInputPointerOptions.Update |
             InjectedInputPointerOptions.InRange |
-            InjectedInputPointerOptions.InContact,
+            InjectedInputPointerOptions.InContact |
+            InjectedInputPointerOptions.Primary,
 
-        _ => InjectedInputPointerOptions.PointerUp,
+        _ => InjectedInputPointerOptions.PointerUp | InjectedInputPointerOptions.Primary,
     };
 }

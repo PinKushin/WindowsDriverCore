@@ -101,6 +101,12 @@ public static class ActionRoutes
 
             if (failure is null)
             {
+                // A W3C action sequence is dispatched input like any other, and
+                // this route never said so - only the keyboard, mouse and
+                // element-action routes did. A read following a gesture
+                // therefore never waited for the application at all.
+                session.InputPending = true;
+
                 return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
             }
 
