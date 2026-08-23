@@ -77,7 +77,7 @@ input including `/actions`, `/keys`, implicit wait, XPath.
 This paragraph is a rough sketch, not the source of truth — it stopped being
 updated as routes landed and drifted stale for a while, most recently
 2026-08-11. **`docs/LIMITATIONS.md` is the live, maintained list**; the
-209/290 score above is the actual measure of what works. Screenshots are the
+265/290 score above is the actual measure of what works. Screenshots are the
 one route confirmed still unimplemented as of that score.
 
 ## Claims
@@ -101,8 +101,8 @@ no warm step**:
 | WinAppDriver 1.2.1 | **280/290** |
 | environmental failures | 9 (3 ModernApp, 5 browser/EdgeBase, 1 `GetLocation`) |
 | **reachable ceiling** | **281** |
-| **this driver** | **209/290** (`d52882e`) |
-| **the gap** | **72 tests** |
+| **this driver** | **265/290** (`6a3aa53`, 2026-08-22 late) |
+| **the gap** | **16 tests** |
 
 **Every earlier figure in this file was wrong, including ones measured
 repeatedly.** Two pieces of scaffolding introduced on 2026-08-10 in a single
@@ -267,8 +267,10 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 - **280/290 for WinAppDriver 1.2.1 on the rebuilt guest**, cold, no reset, no
   warm — Windows 10 19045, Alarms & Clock `10.1906.2182.0`, offline, static 4 GB.
   Nine of the ten failures are environmental, so the reachable ceiling is **281**.
-  **This driver scores 209/290 under the same conditions (`d52882e`) — a gap of
-  72.** Every earlier figure for either driver was taken through scaffolding
+  **This driver scores 265/290 under the same conditions (`6a3aa53`) — a gap of
+  16, and that gap is 16 NAMED tests rather than a subtraction: nine of our
+  failures are the reference's too, so the failing list is not the backlog. See
+  `docs/LIMITATIONS.md`.** Every earlier figure for either driver was taken through scaffolding
   that moved the result. The test-suite refactor commits after `d52882e`
   (protocol fixture consolidation) do not change product behaviour and were
   not re-measured against the guest for that reason.

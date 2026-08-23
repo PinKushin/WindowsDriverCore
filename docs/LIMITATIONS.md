@@ -3783,3 +3783,63 @@ them.
    a successful press onto a display the reset had failed to clear. It called a
    working mouse path broken — the exact conclusion the probe existed to test,
    reached backwards. **Measure the CHANGE, not equality with what you expect.**
+
+
+## Ground truth 2026-08-22 (late): 265/290, backlog of 16
+
+`6a3aa53` on the rebuilt offline guest — Windows 10 19045, Alarms & Clock
+`10.1906.2182.0`, cold, no store reset, no warm step. **The best this driver has
+scored.** Reference on the same guest is 281/290, so `265 + 16 = 281` closes
+exactly.
+
+**Recovered in this sitting**, each with its own measured cause:
+
+| test | cause |
+|---|---|
+| `Pen_Click_BarrelButton` | `SyntheticContact` had no button; `penFlags` was never set |
+| `Pen_Click_OriginPointer` | pointer position must survive between requests, keyed by input SOURCE |
+| `Touch_Click_OriginPointer` | same |
+| `GetElementSize` | a search must include the element it starts from — in the finder AND the resolver |
+| `GetOrientationError_NoSuchWindow` | the route never checked its window still existed |
+
+**The remaining 16**, every one of which WinAppDriver passes:
+
+```
+ClickElement              MouseClick                  Pen_Scroll_Vertical
+CreateSession_Desktop     MouseDoubleClick            Touch_Scroll_Vertical
+FindNestedElement_ByRuntimeId  MouseDownMoveUp        TouchDoubleTap
+GetElementDisplayedState  NavigateBack_ModernApp      TouchLongTap
+GetTitle_Desktop          NavigateBack_SystemApp      TouchScrollOnElement_Vertical
+MiscellaneousSessionError_StaleSessionId
+```
+
+### OPEN: the vertical scrolls, and the horizontal ones are the control
+
+`Pen_Scroll_Vertical` and `Touch_Scroll_Vertical` both fail `Assert.IsTrue`
+while `Pen_Scroll_Horizontal` and `Touch_Scroll_Horizontal` both pass.
+
+The vertical test scrolls down 200 px, asserts the "00" minute is hidden —
+**which passes** — then scrolls up 200 px and asserts it is visible again, which
+does not. So the gesture works in one direction and does not restore in the
+other. **Asymmetric**, which rules out anything that would affect both moves
+equally.
+
+**Correlated with the frame-rate change, and not established as caused by it.**
+`Pen_Scroll_Vertical` first failed in `1947aa1`, the run that made the frame
+count follow the duration, then passed twice, then failed twice.
+`Touch_Scroll_Vertical` failed for the first time here. Excluding the `a8f9208`
+cascade run, that is 2 of 4 for pen and 1 of 4 for touch — **marginal, and both
+failed together in this run after passing together in every earlier one.**
+
+The plausible mechanism is inertia: a 200 px move is now ~62 frames of 3 px
+rather than 10 frames of 20 px, and a `LoopingSelector` computes a fling from
+pointer velocity. Same velocity on paper, but a flick recogniser reading a
+coarser sample set may register a larger throw. That would make the smoother
+gesture travel LESS far — which fits "down hid it, up did not bring it back"
+only if the two directions clamp differently, and that part is unexplained.
+
+**Do not tune the frame count against this.** Two mechanisms have already been
+proposed for this family and the measured one was refuted; the overrun theory
+died on `tools/probe-does-a-frame-fit-its-slot.ps1`. Next step is a repeat run
+to see whether both verticals fail together again, and only then an inertia
+experiment with the frame count as the manipulated variable.
