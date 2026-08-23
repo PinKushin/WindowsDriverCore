@@ -12,6 +12,7 @@ using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
+using WindowsDriverCore.Protocol.Sessions;
 
 namespace WindowsDriverCore.Tests.Protocol;
 
@@ -108,6 +109,93 @@ public sealed class NavigationRouteTests : IDisposable
         // test passed anyway because it asserted the same wrong mechanism the
         // route used. Alt must appear IN the string to be pressed.
         _keyboard.Received(1).Type($"{Alt}{LeftArrow}{Alt}");
+    }
+
+    /// <summary>
+    /// The app finishes what it was doing before the next gesture is sent.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>MEASURED on the guest by diffing a passing run against a failing one,
+    /// same test and same commit family.</b> <c>NavigateBack_ModernApp</c> fails
+    /// in 8 of 10 runs. In a PASSING run the second <c>/back</c> raises the
+    /// discard dialog in 40 ms and the suite dismisses it; in a FAILING run no
+    /// dialog appears and the application EXITS, so every later find answers
+    /// <c>no such window</c>.
+    /// </para>
+    /// <para>
+    /// The only difference upstream is speed. Time from the AddAlarm click to
+    /// finding <c>EditAlarmHeader</c>:
+    /// </para>
+    /// <code>
+    ///   passing run   122 ms
+    ///   failing run    66 ms
+    /// </code>
+    /// <para>
+    /// We reached the edit page twice as fast and sent Alt+Left before the page
+    /// had set up its navigation state, so the gesture did not mean "go back
+    /// within the app". WinAppDriver never hits this because it is slow enough
+    /// to wait by accident — the same reason it survives the content-ready race
+    /// and the typing race.
+    /// </para>
+    /// <para>
+    /// <b>The primitive already exists and was only wired to reads.</b>
+    /// <c>WaitForInputProcessed</c> was measured against three candidates and is
+    /// the only one that worked (52 of 52 typed characters, where a synchronous
+    /// <c>WM_NULL</c> and <c>GetQueueStatus</c> both reported ready while input
+    /// was still queued). It sat in <c>ElementPropertyRoutes</c> alone, on the
+    /// reasoning that a session which never types never pays. That is right for
+    /// typing-then-reading and wrong here: this dependency is not read-after-write
+    /// but <b>input-after-input</b>.
+    /// </para>
+    /// <para>
+    /// It costs nothing when the application is idle, which is the ordinary
+    /// case — the wait returns as soon as the condition holds rather than after
+    /// a fixed interval.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task Back_WaitsForEarlierInputToBeConsumed_BeforeSendingItsOwn()
+    {
+        string sessionId = await NewSession();
+
+        // A click happened and has not been read back, which is exactly the
+        // state the suite is in: it clicked AddAlarmButton, found the header,
+        // and navigated - with no property read in between to drain it.
+        _factory.Services.GetRequiredService<ISessionStore>()
+            .Find(sessionId)!.InputPending = true;
+
+        await Navigate(sessionId, "back");
+
+        // ORDER IS THE ASSERTION. Both calls happening is not enough: a wait
+        // performed after the keystroke waits for our own gesture and does
+        // nothing for the one before it.
+        Received.InOrder(() =>
+        {
+            _windows.WaitForInputProcessed(TheWindow);
+            _keyboard.Type(Arg.Any<string>());
+        });
+    }
+
+    /// <summary>
+    /// With nothing outstanding, navigation does not wait at all.
+    /// </summary>
+    /// <remarks>
+    /// <b>The control.</b> Waiting unconditionally would satisfy the test above
+    /// and put a process-grained wait in front of every navigation in every
+    /// session, including ones that have dispatched no input for it to drain.
+    /// This driver's argument is speed; a wait that cannot be skipped is a cost
+    /// paid for nothing.
+    /// </remarks>
+    [Test]
+    public async Task Back_WithNothingOutstanding_DoesNotWait()
+    {
+        string sessionId = await NewSession();
+
+        await Navigate(sessionId, "back");
+
+        _windows.DidNotReceive().WaitForInputProcessed(Arg.Any<nint>());
+        _keyboard.Received(1).Type(Arg.Any<string>());
     }
 
     [Test]

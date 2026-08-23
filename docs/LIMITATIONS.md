@@ -3843,3 +3843,67 @@ proposed for this family and the measured one was refuted; the overrun theory
 died on `tools/probe-does-a-frame-fit-its-slot.ps1`. Next step is a repeat run
 to see whether both verticals fail together again, and only then an inertia
 experiment with the frame count as the manipulated variable.
+
+
+### NavigateBack_ModernApp: we outrun the application, and it exits
+
+**Fails 8 of the last 10 guest runs.** It was reported as a "long-standing
+flapper" and set aside; the owner's correction — *"flake is failure you know"* —
+is what sent this back for a cause. See `docs/DECISIONS.md` #3.
+
+**Diffed a passing run against a failing one, same test, same commit family.**
+
+Passing (`2caa513`):
+
+```
+23.825  POST /back
+23.865  find SecondaryButton -> 1 match (40 ms)     <- discard dialog appeared
+23.983  Click -> Invoke                              <- suite dismissed it
+24.077  find AddAlarmButton -> 0 ...                 <- back on the list
+```
+
+Failing (`6a3aa53`):
+
+```
+36.579  POST /back
+37.223  find SecondaryButton -> 0 match (643 ms)     <- no dialog
+37.279  find SecondaryButton -> FAILED: NoSuchWindow <- the app is GONE
+```
+
+The application **exits**. Nothing of ours killed it: the only `terminate` for
+that pid is at 39.669, two seconds after the failure, and the window was alive
+at 37.223 — that find ran and returned zero rather than faulting.
+
+**The difference is entirely upstream, and it is speed.** Time from the AddAlarm
+click to finding `EditAlarmHeader`:
+
+```
+  passing run   122 ms
+  failing run    66 ms
+```
+
+We reached the edit page twice as fast and sent Alt+Left before it had set up
+its navigation state, so the gesture did not mean "go back within the app".
+WinAppDriver never hits this because it is slow enough to wait by accident — the
+same reason it survives the content-ready race and the typing race.
+
+**Fixed by draining before dispatching.** `WaitForInputProcessed` already
+existed and was already the measured survivor of three candidates (52 of 52
+typed characters, where a synchronous `WM_NULL` and `GetQueueStatus` both
+reported ready while input was still queued). It was wired only into
+`ElementPropertyRoutes`, on the reasoning that a session which never types never
+pays. Right for typing-then-reading; wrong here, because this dependency is
+**input-after-input** rather than read-after-write.
+
+Skipped when nothing is outstanding, so the ordinary case pays nothing, and the
+wait returns as soon as the application is idle rather than after an interval.
+
+**The same ordering exists on the other input routes and is deliberately not
+changed yet** — `/click`, `/moveto`, `/keys`, element click, `/actions`. The
+evidence here is for navigation; extending it everywhere at once is how the
+pointer-position change cost 14 tests. Measure this first.
+
+**Not claimed:** that this makes the test pass. It removes a measured race whose
+timing signature matches the failure exactly. Whether the app has some other
+reason to exit is not established, and 8-of-10 is frequent enough that one green
+run would not settle it either.

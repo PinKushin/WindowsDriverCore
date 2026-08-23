@@ -78,6 +78,41 @@ public static class NavigationRoutes
                         statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
                 }
 
+                // LET THE APPLICATION FINISH WHAT WE ALREADY SENT IT.
+                //
+                // MEASURED on the guest by diffing a passing run of
+                // NavigateBack_ModernApp against a failing one - it fails in 8
+                // of 10 runs. In a passing run the second /back raises the
+                // discard dialog in 40 ms and the suite dismisses it; in a
+                // failing run no dialog appears and the APPLICATION EXITS, so
+                // every later find answers no such window.
+                //
+                // The only difference upstream is speed. Time from the AddAlarm
+                // click to finding EditAlarmHeader:
+                //
+                //   passing run   122 ms
+                //   failing run    66 ms
+                //
+                // We reached the edit page twice as fast and sent Alt+Left
+                // before it had set up its navigation state, so the gesture did
+                // not mean "go back within the app". WinAppDriver never hits
+                // this because it is slow enough to wait by accident.
+                //
+                // The dependency here is input-after-input, not the
+                // read-after-write that put WaitForInputProcessed in
+                // ElementPropertyRoutes and nowhere else. Same primitive - the
+                // only one of three candidates that worked, 52 of 52 typed
+                // characters - applied to the other ordering.
+                //
+                // Skipped when nothing is outstanding, so a session that has
+                // dispatched no input pays nothing, and the wait returns as soon
+                // as the application is idle rather than after a fixed interval.
+                if (session.InputPending)
+                {
+                    session.InputPending = false;
+                    windows.WaitForInputProcessed(session.WindowHandle);
+                }
+
                 // Focus first, for the same reason: synthesized keys go to the
                 // foreground window, not to a handle.
                 windows.BringToForeground(session.WindowHandle);
