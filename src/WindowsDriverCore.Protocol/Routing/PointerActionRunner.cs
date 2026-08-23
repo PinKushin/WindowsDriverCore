@@ -689,11 +689,41 @@ public sealed class PointerActionRunner
     /// whole reason the locator answers this rather than a rectangle test.
     /// </para>
     /// </remarks>
-    private PointerRefusal? Refuse(nint window, int x, int y) =>
-        _windows.OwnsThePointAt(x, y, window)
-            ? null
-            : PointerRefusal.Reason(
-                $"({x},{y}) is outside the application window, so the input was not dispatched");
+    private PointerRefusal? Refuse(nint window, int x, int y)
+    {
+        if (_windows.OwnsThePointAt(x, y, window))
+        {
+            return null;
+        }
+
+        // THE RECTANGLE IS IN THE MESSAGE BECAUSE A BARE COORDINATE IS
+        // UNFALSIFIABLE. Pen_Click_OriginPointer and Touch_Click_OriginPointer
+        // have now failed twice with nothing but a point - "(101,33) is
+        // outside", then "(115,87) is outside" after the anchor was corrected -
+        // and both times the next step was guesswork about where the window is.
+        // One of those guesses cost a guest run and three tests.
+        //
+        // With the rectangle beside it the answer is arithmetic rather than
+        // theory. A point INSIDE the reported rectangle means OwnsThePointAt is
+        // refusing something it contains, which is an ownership question - a
+        // covering window, or a child HWND answering for the point. A point
+        // OUTSIDE it means the anchor and this rectangle disagree, which is a
+        // coordinate-space question. Those need opposite fixes and the score
+        // cannot tell them apart.
+        //
+        // Safe to extend: no test in the compatibility suite asserts this
+        // sentence, checked before writing it. The suite's own error strings are
+        // matched exactly where they matter, and this is not one of them.
+        WindowBounds? bounds = _windows.GetBounds(window);
+
+        string where = bounds is null
+            ? "whose position could not be read"
+            : $"at ({bounds.X},{bounds.Y}) {bounds.Width}x{bounds.Height}";
+
+        return PointerRefusal.Reason(
+            $"({x},{y}) is outside the application window {where}, " +
+            "so the input was not dispatched");
+    }
 
     /// <summary>Names the threads a gesture spanned, when it spanned more than one.</summary>
     /// <param name="window">The window whose contact is being lifted.</param>
@@ -969,7 +999,43 @@ public sealed class PointerActionRunner
             phase,
             Number(step, "pressure", 0.5),
             (int)Number(step, "tiltX", 0),
-            (int)Number(step, "tiltY", 0));
+            (int)Number(step, "tiltY", 0),
+            ButtonOf(kind, step));
+
+    /// <summary>Which part of the pen a step is pressing with.</summary>
+    /// <remarks>
+    /// <para>
+    /// W3C gives <c>pointerDown</c> a numbered <c>button</c> and reuses the
+    /// numbering across pointer kinds. For a pen, 0 is the tip, 2 the barrel and
+    /// 5 the eraser.
+    /// </para>
+    /// <para>
+    /// <b>Touch is always the tip and the payload does not get a say.</b> The
+    /// same 2 means "right button" for a mouse, and a client that sends it with
+    /// a touch source has said something that does not exist — a finger has no
+    /// barrel. Honouring it would report that a pen feature was used by a
+    /// finger, which is the same class of lie as answering a touch request with
+    /// a mouse click.
+    /// </para>
+    /// <para>
+    /// <b>An absent button is the tip, not a fault.</b> The JSON Wire
+    /// <c>/touch/*</c> routes build their steps here and name no button at all.
+    /// </para>
+    /// </remarks>
+    private static SyntheticContactButton ButtonOf(SyntheticPointerKind kind, JsonElement step)
+    {
+        if (kind != SyntheticPointerKind.Pen)
+        {
+            return SyntheticContactButton.Tip;
+        }
+
+        return (int)Number(step, "button", 0) switch
+        {
+            2 => SyntheticContactButton.Barrel,
+            5 => SyntheticContactButton.Eraser,
+            _ => SyntheticContactButton.Tip,
+        };
+    }
 
     private static SyntheticPointerKind PointerKind(JsonElement source)
     {

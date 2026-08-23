@@ -207,6 +207,43 @@ public sealed class PointerOriginTests
             "an offset from the viewport origin is meaningless without the viewport");
     }
 
+    /// <summary>
+    /// A refused point names the window it was measured against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Because a bare coordinate is unfalsifiable, and this has now cost two
+    /// investigations.</b> The two <c>*_OriginPointer</c> tests failed with
+    /// "(101,33) is outside", the anchor was corrected, and they failed with
+    /// "(115,87) is outside". Neither message says where the window was, so both
+    /// times the next step was a guess about it — and one of those guesses cost a
+    /// guest run and three tests.
+    /// </para>
+    /// <para>
+    /// With the rectangle present the two possible causes separate by arithmetic:
+    /// a point INSIDE the reported rectangle means the ownership check refuses
+    /// something the window contains, and a point OUTSIDE means the anchor and
+    /// the rectangle disagree about the coordinate space. Those need opposite
+    /// fixes.
+    /// </para>
+    /// <para>
+    /// <b>Asserted on the string the client actually receives</b>, not on a log
+    /// call. A diagnostic that exists only in the transcript is not available to
+    /// whoever is reading a test failure, which is the audience that needs it.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ARefusedPoint_ReportsTheWindowItWasMeasuredAgainst()
+    {
+        _windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(false);
+
+        PointerRefusal? refusal = Run(Tap("viewport", 101, 33));
+
+        refusal.ShouldNotBeNull();
+        refusal.Message.ShouldContain($"({Bounds.X},{Bounds.Y})");
+        refusal.Message.ShouldContain($"{Bounds.Width}x{Bounds.Height}");
+    }
+
     /// <summary>The contact injected by the press, which is the point that matters.</summary>
     /// <remarks>
     /// The DOWN rather than the last move: a gesture that walks to the right place

@@ -203,6 +203,8 @@ public sealed class SyntheticPointer : ISyntheticPointer
         frame[0].penInfo.pointerInfo.ptPixelLocation.Y = contact.Y;
         frame[0].penInfo.pointerInfo.pointerFlags = FlagsFor(contact.Phase);
 
+        frame[0].penInfo.penFlags = PenFlagsFor(contact.Button);
+
         frame[0].penInfo.penMask = PEN_MASK_PRESSURE | PEN_MASK_TILT_X | PEN_MASK_TILT_Y;
 
         // W3C carries pressure as 0..1; the pointer API wants 0..1024.
@@ -290,8 +292,38 @@ public sealed class SyntheticPointer : ISyntheticPointer
         _ => POINTER_FLAG_UP,
     };
 
+    /// <summary>The pen flags for whichever part of the pen is in contact.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>These live in <c>penFlags</c>, a field this struct always had and never
+    /// set</b>, so every pen gesture arrived as a tip press regardless of the
+    /// button the client named. The suite's <c>Pen_Click_BarrelButton</c> reports
+    /// that as <i>"An element could not be located"</i>, because the barrel press
+    /// is supposed to raise a context menu and the test then looks for "Delete"
+    /// inside it.
+    /// </para>
+    /// <para>
+    /// <b>BARREL and ERASER are not exclusive in the API and are here.</b>
+    /// <c>PEN_FLAG_ERASER</c> describes which END is being used and
+    /// <c>PEN_FLAG_BARREL</c> which BUTTON is held, so a real pen can report
+    /// both. Nothing upstream can express that yet - a W3C <c>button</c> names
+    /// one value - so the mapping is one to one and the bitwise shape is kept
+    /// only because inventing a different one would misdescribe the API.
+    /// </para>
+    /// </remarks>
+    internal static uint PenFlagsFor(SyntheticContactButton button) => button switch
+    {
+        SyntheticContactButton.Barrel => PEN_FLAG_BARREL,
+        SyntheticContactButton.Eraser => PEN_FLAG_ERASER,
+        _ => PEN_FLAG_NONE,
+    };
+
     private const uint PT_TOUCH = 2;
     private const uint PT_PEN = 3;
+
+    private const uint PEN_FLAG_NONE = 0x00000000;
+    private const uint PEN_FLAG_BARREL = 0x00000001;
+    private const uint PEN_FLAG_ERASER = 0x00000004;
 
     private const uint POINTER_FLAG_DOWN = 0x00010000;
     private const uint POINTER_FLAG_UPDATE = 0x00020000;
