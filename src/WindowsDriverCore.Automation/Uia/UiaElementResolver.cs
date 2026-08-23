@@ -52,8 +52,18 @@ public sealed class UiaElementResolver : IElementResolver
         {
             using ComScope<IUIAutomationCondition> condition = new(_automation.CreateTrueCondition());
 
+            // SUBTREE, SO THE WINDOW CAN RESOLVE ITSELF. Descendants excludes
+            // the element the walk starts from, so an id belonging to the window
+            // resolved as NotFound - and a client that had just been GIVEN that
+            // id by a find could not then use it.
+            //
+            // Caught by WindowScopedFindMatchesTheWindowTests after the FIND was
+            // widened. Widening only the find would have looked correct and
+            // still failed the suite's GetElementSize, which finds
+            // ApplicationFrameWindow and then reads its Size - two calls, and
+            // only the first was fixed.
             IUIAutomationElementArray? matches = root.FindAll(
-                TreeScope.TreeScope_Descendants,
+                TreeScope.TreeScope_Subtree,
                 condition.Value);
 
             return matches is null

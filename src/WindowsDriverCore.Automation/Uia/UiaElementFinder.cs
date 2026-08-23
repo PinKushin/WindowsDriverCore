@@ -149,19 +149,36 @@ public sealed class UiaElementFinder : IElementFinder
             // element.
             bool mustEnumerate = exhaustive || kind == LocatorKind.RuntimeId;
 
-            // A NESTED search includes the container itself; a window-scoped one
-            // does not. Measured from the compatibility suite, which searches the
-            // alarm tab for the alarm tab's own automation id and asserts the
-            // answer is one element and that it IS the container - twice, once by
-            // automation id and once by runtime id. Both answered zero here.
+            // A SEARCH INCLUDES THE ELEMENT IT STARTS FROM, whether that is a
+            // container or the window.
             //
-            // The window keeps TreeScope_Descendants deliberately. Nothing
-            // measured says a window-scoped find should match the window element,
-            // and widening the scope every find runs under is not a change to
-            // make on the strength of a nested measurement.
-            TreeScope treeScope = scope.ContainerElementId is null
-                ? TreeScope.TreeScope_Descendants
-                : TreeScope.TreeScope_Subtree;
+            // Measured first for the NESTED case, from the compatibility suite:
+            // it searches the alarm tab for the alarm tab's own automation id and
+            // asserts the answer is one element and that it IS the container -
+            // twice, once by automation id and once by runtime id. Both answered
+            // zero.
+            //
+            // The window scope was deliberately left on TreeScope_Descendants at
+            // that point, with the note that nothing measured said a window
+            // search should match the window, and that widening the scope every
+            // find in the driver runs under was not a change to make on the
+            // strength of a nested measurement. That was right, and the
+            // measurement has since arrived.
+            //
+            // GetElementSize does session.FindElementByClassName(
+            // "ApplicationFrameWindow") - the session root's OWN class - and
+            // asserts its size equals the window's. WinAppDriver passes it; this
+            // answered zero, because Descendants excludes the element you start
+            // from. So the two scopes were never really different rules, only
+            // one rule with half the evidence.
+            //
+            // THE RISK IS THAT THIS IS NOT A LOCAL CHANGE. Every find runs at
+            // window scope, so a root that starts intercepting matches would
+            // show up everywhere. That is what the full suite is for, and
+            // WindowScopedFindMatchesTheWindowTests carries the named controls:
+            // a descendant find must still answer with the descendant, and an
+            // absent locator must still find nothing.
+            TreeScope treeScope = TreeScope.TreeScope_Subtree;
 
             IReadOnlyList<string> ids = mustEnumerate
                 ? ReadRuntimeIds(root.FindAll(treeScope, condition.Value))
