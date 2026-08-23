@@ -80,10 +80,50 @@ public sealed class SyntheticPointer : ISyntheticPointer
             }
         }
 
+        // TOUCH PREFERS THE WinRT INJECTOR WHEN THIS SYSTEM HAS ONE.
+        //
+        // The Win32 path below cannot hold a contact across separate HTTP
+        // requests, which is why a multi-request drag never moved a window while
+        // /actions - one request, one continuous burst - always did. The WinRT
+        // injector is a long-lived session object and survives the gaps by
+        // construction. See WinRtTouchInjector for the measurement and for how
+        // WinAppDriver's own MitaLite does exactly this.
+        //
+        // Null means Windows 10 1607-1803, where the type does not exist. The
+        // Win32 path stays as the fallback and behaves precisely as it does
+        // today, which is why adopting this does not raise the floor.
+        if (kind == SyntheticPointerKind.Touch && _winRtTouch is not null)
+        {
+            return _winRtTouch.Inject(contacts);
+        }
+
         return kind == SyntheticPointerKind.Touch
             ? InjectTouch(contacts)
             : InjectPen(contacts);
     }
+
+    /// <summary>The WinRT injector, or null when this system has none.</summary>
+    /// <remarks>
+    /// <b>Created once and held.</b> The whole reason it fixes anything is that
+    /// the injector IS the injection session - creating one per gesture, or per
+    /// request, would reproduce the defect it exists to remove.
+    ///
+    /// Lazy rather than a field initialiser so that a system without it pays the
+    /// probe once rather than on every construction, and so a test can observe
+    /// the fallback by inspecting <see cref="UsesWinRtForTouch"/>.
+    /// </remarks>
+    private readonly WinRtTouchInjector? _winRtTouch = WinRtTouchInjector.TryCreate();
+
+    /// <summary>Whether touch is going through the WinRT injector.</summary>
+    /// <remarks>
+    /// <b>Exposed for a test, and the test matters more than usual here.</b> The
+    /// platform-compatibility analyzer does NOT flag an unguarded 1809 call -
+    /// CA1416 was forced to error against one and the build still succeeded,
+    /// because the WinRT projection carries no SupportedOSPlatform attributes. So
+    /// nothing in the build protects the 1607 floor; only the fallback does, and
+    /// only a test can show the fallback is reachable.
+    /// </remarks>
+    internal bool UsesWinRtForTouch => _winRtTouch is not null;
 
     /// <inheritdoc />
     /// <remarks>

@@ -292,7 +292,7 @@ public sealed class PointerActionRunner
             // which are what the window manager needs, and drops the invented
             // wait, which is what it choked on.
             PointerRefusal? moved = Move(
-                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, TimeSpan.Zero);
+                SyntheticPointerKind.Touch, from.X, from.Y, x, y, down: true, DragDuration);
 
             if (moved is not null)
             {

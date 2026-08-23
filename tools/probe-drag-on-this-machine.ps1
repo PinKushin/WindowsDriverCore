@@ -32,11 +32,18 @@ function PostRaw($path, $json) {
         -ContentType 'application/json; charset=utf-8' -TimeoutSec 60
 }
 
-$exe = Join-Path $PSScriptRoot '..\src\WindowsDriverCore.Host\bin\Release\net10.0-windows\WindowsDriverCore.exe'
-if (-not (Test-Path $exe)) {
-    $exe = Join-Path $PSScriptRoot '..\src\WindowsDriverCore.Host\bin\Debug\net10.0-windows\WindowsDriverCore.exe'
-}
-if (-not (Test-Path $exe)) { throw "ABORT: no built driver at $exe" }
+# THE NEWEST BUILD, FOUND RATHER THAN ASSUMED.
+#
+# A hardcoded bin path measured a STALE BINARY once already: changing the
+# TargetFramework to net10.0-windows10.0.17763.0 moved the output directory, the
+# old net10.0-windows folder still held a working exe from 24 minutes earlier,
+# and the probe reported on code that no longer existed. Same hazard as
+# --no-build, arriving through a different door.
+$binRoot = Join-Path $PSScriptRoot '..' | Join-Path -ChildPath 'src/WindowsDriverCore.Host/bin'
+$exe = Get-ChildItem -Path $binRoot -Filter 'WindowsDriverCore.exe' -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+if (-not $exe) { throw 'ABORT: no built driver under src/WindowsDriverCore.Host/bin' }
 
 "driver: $exe"
 "windows: $([System.Environment]::OSVersion.Version)"
@@ -44,6 +51,18 @@ if (-not (Test-Path $exe)) { throw "ABORT: no built driver at $exe" }
 $srv = Start-Process -FilePath $exe -PassThru
 for ($i = 0; $i -lt 40; $i++) {
     try { $null = Invoke-RestMethod -Uri "$base/status" -TimeoutSec 5; break } catch { Start-Sleep -Seconds 1 }
+}
+
+# Puts the window back where it started.
+#
+# Not tidiness - a probe that leaves the subject 100 px further into the corner
+# every iteration is changing its own conditions AND, on a real desktop, dragging
+# a window into the Snap Assist trigger zone.
+function RestorePosition($session, $before) {
+    try {
+        PostRaw "/session/$session/window/current/position" `
+            "{`"x`":$($before.value.x),`"y`":$($before.value.y)}" | Out-Null
+    } catch { }
 }
 
 function DragOnce($label, $useActions) {
@@ -91,6 +110,13 @@ function DragOnce($label, $useActions) {
         '  {0,-16} {1},{2} -> {3},{4}   MOVED: {5}   [{6}]' -f `
             $label, $before.value.x, $before.value.y, $after.value.x, $after.value.y, `
             $(if ($moved) { 'YES' } else { 'NO' }), $status
+
+        # PUT IT BACK. Every drag here moves +100,+100 and a run does several, so
+        # without this the window walks toward the bottom-right corner and
+        # eventually trips Snap Assist over the user's desktop. The suite's own
+        # drag test restores position for the same reason; this did not, and it
+        # was noticed by someone watching the screen rather than by any output.
+        RestorePosition $session $before
     }
     finally {
         try { Invoke-RestMethod -Method Delete -Uri "$base/session/$session" -TimeoutSec 20 | Out-Null } catch { }
@@ -149,6 +175,8 @@ function SweepTouchDurations {
             $moved = ($before.value.x -ne $after.value.x) -or ($before.value.y -ne $after.value.y)
 
             '  /touch/* over {0,5} ms   MOVED: {1,-3}   [{2}]' -f $ms, $(if ($moved) { 'YES' } else { 'NO' }), $status
+
+            RestorePosition $session $before
         }
         finally {
             try { Invoke-RestMethod -Method Delete -Uri "$base/session/$session" -TimeoutSec 20 | Out-Null } catch { }
