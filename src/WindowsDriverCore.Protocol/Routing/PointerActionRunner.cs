@@ -39,10 +39,18 @@ public sealed class PointerActionRunner
 
     /// <summary>How long a drag with no stated duration takes.</summary>
     /// <remarks>
+    /// <para>
     /// The touch routes carry no duration of their own, but a gesture delivered
     /// instantly is not one the window manager can follow - measured against the
     /// reference, which spends 1261 ms on a 1000 ms move and repositions the
-    /// window, where this driver spent 50 ms and moved nothing.
+    /// window, where this driver spent nothing and moved nothing.
+    /// </para>
+    /// <para>
+    /// <b>Distinct from <see cref="FrameSeparation"/>, which replaced it on the
+    /// multi-request path.</b> This one remains for a gesture assembled INSIDE a
+    /// single request, where the driver is choosing the whole gesture's length
+    /// rather than only the gap between its frames.
+    /// </para>
     /// </remarks>
     private static readonly TimeSpan DragDuration = TimeSpan.FromMilliseconds(300);
 
@@ -60,45 +68,104 @@ public sealed class PointerActionRunner
     /// one the client never asked for.
     /// </para>
     /// <para>
-    /// <b>MEASURED, single <c>/touch/move</c>, window actually moving:</b>
+    /// <b>MEASURED 2026-08-22, single <c>/touch/move</c> over ten frames, the
+    /// window actually moving. Repeats interleaved, not batched, and every sweep
+    /// carried a zero row as its control:</b>
     /// </para>
     /// <code>
-    ///    0 ms  no      25 ms  YES
-    ///   10 ms  no     300 ms  YES
+    ///   total   per frame   moved
+    ///    0 ms       0 ms    no x3        &lt;- the control
+    ///   20 ms       2 ms    3 YES / 5 no    marginal
+    ///   40 ms       4 ms    YES x5
+    ///   50 ms       5 ms    YES x3       &lt;- shipped
+    ///   60 ms       6 ms    YES x3
+    ///   80 ms       8 ms    YES x2
     /// </code>
     /// <para>
-    /// The cliff sits between 10 and 25 ms across ten frames — roughly 2 ms of
-    /// separation per frame. Below it the per-frame remainder rounds to nothing,
-    /// no sleep happens, and the frames arrive as one burst the system coalesces
-    /// into a single jump. So what matters is that the frames are separate
-    /// events, not that the gesture is slow.
+    /// The mechanism is that the frames are SEPARATE EVENTS, not that the gesture
+    /// is slow — at zero they arrive as one burst the system coalesces into a
+    /// single jump. The threshold sits between 2 and 4 ms per frame; 20 ms is
+    /// genuinely marginal rather than noisy, and both its successes and its
+    /// failures are recorded because dropping the rows that disagree is how a
+    /// range gets reported as a point.
+    /// </para>
+    /// <para>
+    /// <b>Why 50 and not 80.</b> The owner's threshold, in their words: "when you
+    /// can get stuff to run in 50ms or less it appears instant to most human
+    /// observers". 80 ms was not a measurement — it fell out of reusing
+    /// <see cref="FrameInterval"/> as <c>10 frames x 8 ms</c>, which is an
+    /// accident of implementation and not an argument. The two constants answer
+    /// different questions and are deliberately no longer derived from each
+    /// other: <see cref="FrameInterval"/> sets the RATE of a move whose length
+    /// the client stated, and this sets the LENGTH of one where nobody did.
+    /// </para>
+    /// <para>
+    /// <b>An earlier sweep read this cliff at 10–25 ms and it was measuring
+    /// something else.</b> Each frame then slept "the remainder of this frame",
+    /// and Windows wakes a sleeper on a ~15.6 ms tick, so a request for 2.5 ms
+    /// became 15 ms while a request for 1 ms rounded to zero and did not sleep at
+    /// all. Those rows were reading the ROUNDING. The conclusion drawn from them
+    /// — roughly 2 ms per frame — happens to sit next to the honest answer, which
+    /// is luck and not corroboration.
     /// </para>
     /// <para>
     /// <b>Why not 300 ms.</b> That value was inherited from the <c>/actions</c>
     /// path and defended by noting WinAppDriver spends ~100 ms per touch phase —
     /// a measurement taken while timing was still believed to be the cause, and
     /// worthless as justification once the cause turned out to be the injection
-    /// API. It is twelve times more than needed, and this driver's whole argument
-    /// is speed: a find costs ~33 ms here against ~1070 ms through WinAppDriver,
-    /// so handing back 300 ms of self-imposed wait per move is the wrong trade.
+    /// API. This driver's whole argument is speed: a find costs ~33 ms here
+    /// against ~1070 ms through WinAppDriver, so handing back 300 ms of
+    /// self-imposed wait per move is the wrong trade.
     /// </para>
     /// <para>
-    /// 5 ms per frame is roughly double the measured threshold — margin for a
-    /// loaded machine's scheduling without pretending the exact figure
-    /// generalises off the one desktop it was measured on.
+    /// <b>An intermediate version also said 50 and was not delivering it.</b> It
+    /// asked <c>Thread.Sleep</c> for 5 ms per frame with the deadline reset each
+    /// frame, and Windows rounded every one of those up to a ~15.6 ms timer tick,
+    /// so the real cost was ~150 ms. The number is the same today and now true —
+    /// the difference is the start-relative deadline in <c>Move</c>, not the
+    /// constant.
     /// </para>
     /// </remarks>
-    private static readonly TimeSpan FrameSeparation =
-        TimeSpan.FromMilliseconds(5 * FramesPerMove);
+    private static readonly TimeSpan FrameSeparation = TimeSpan.FromMilliseconds(50);
 
-    /// <summary>How many frames a move is broken into.</summary>
+    /// <summary>The fewest frames a move is broken into.</summary>
     /// <remarks>
     /// A move reported as a single jump is not a gesture — a flick and a drag are
     /// distinguished by the path between the endpoints, and an application
     /// watching for velocity sees none from one frame. Ten is enough for a target
-    /// to see motion without flooding the queue.
+    /// to see motion without flooding the queue, and it is a FLOOR rather than a
+    /// count so that a brief move still walks its path.
     /// </remarks>
-    private const int FramesPerMove = 10;
+    private const int MinimumFramesPerMove = 10;
+
+    /// <summary>Milliseconds between the frames of a move.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The frame count follows the duration; it used to be fixed at ten.</b>
+    /// Spotted by the owner watching the drag tests: "all our moves are kinda
+    /// jittery while i think winappdrivers is actually smooth". Ten frames spread
+    /// across a one-second <c>/actions</c> move is one sample every hundred
+    /// milliseconds — 10 Hz, where a real digitiser reports at 100–133. That is
+    /// not a slower gesture, it is a different signal, and an application
+    /// separating a flick from a drag by velocity cannot read it.
+    /// </para>
+    /// <para>
+    /// <b>8 ms is chosen because it is what the scheduler can actually deliver
+    /// for free.</b> Measured 2026-08-22, sixty frames, deadline computed from
+    /// the start of the move:
+    /// </para>
+    /// <code>
+    ///   pacing            per frame   CPU
+    ///   Thread.Sleep        8.06 ms     0 ms
+    ///   pure spin           8.00 ms   469 ms
+    /// </code>
+    /// <para>
+    /// So the accuracy costs nothing; spinning buys 0.06 ms for a burnt core and
+    /// is not worth it. Below about 4 ms only spinning works, and no target needs
+    /// 250 Hz.
+    /// </para>
+    /// </remarks>
+    private const int FrameInterval = 8;
 
     /// <summary>Creates the runner.</summary>
     /// <param name="synthetic">Injects pen and touch.</param>
@@ -681,19 +748,16 @@ public sealed class PointerActionRunner
         // follow. The duration is SEMANTIC here rather than a timeout: the
         // client asked for a move lasting a second because that is what the
         // application needs to see.
-        long frameTicks = duration > TimeSpan.Zero
-            ? duration.Ticks / FramesPerMove
-            : 0;
+        int frames = FramesFor(duration);
+        long started = Stopwatch.GetTimestamp();
 
         // Interpolated, because a drag is the PATH and not the endpoints. An
         // application measuring velocity or distinguishing a flick from a press
         // sees nothing in a single jump.
-        for (int frame = 1; frame <= FramesPerMove; frame++)
+        for (int frame = 1; frame <= frames; frame++)
         {
-            long frameDue = Stopwatch.GetTimestamp();
-
-            int stepX = fromX + (((toX - fromX) * frame) / FramesPerMove);
-            int stepY = fromY + (((toY - fromY) * frame) / FramesPerMove);
+            int stepX = fromX + (int)(((long)(toX - fromX) * frame) / frames);
+            int stepY = fromY + (int)(((long)(toY - fromY) * frame) / frames);
 
             if (!_synthetic.Inject(
                 [new SyntheticContact(kind, stepX, stepY, SyntheticContactPhase.Update)]))
@@ -702,24 +766,65 @@ public sealed class PointerActionRunner
                     $"The system refused a contact update{Because(_synthetic.LastInjectionError)}");
             }
 
-            if (frameTicks > 0)
+            if (duration <= TimeSpan.Zero)
             {
-                // Paced against the clock rather than slept blindly, so the
-                // cost of injecting a frame comes out of the interval instead of
-                // being added to it. A move asking for a second takes about a
-                // second, not a second plus a hundred injections.
-                TimeSpan spent = Stopwatch.GetElapsedTime(frameDue);
-                TimeSpan remaining = TimeSpan.FromTicks(frameTicks) - spent;
+                continue;
+            }
 
-                if (remaining > TimeSpan.Zero)
-                {
-                    Thread.Sleep(remaining);
-                }
+            // EACH FRAME'S DEADLINE IS MEASURED FROM THE START OF THE MOVE, not
+            // from the previous frame, and that is the whole correctness of this
+            // loop. Sleeping "the remainder of this frame" looks equivalent and
+            // is not: Windows wakes a sleeper on a ~15.6 ms timer tick, so every
+            // short sleep overshoots and a per-frame reset ADDS every overshoot
+            // together. Measured 2026-08-22 over sixty frames:
+            //
+            //   asked         per frame, reset each frame   per frame, from start
+            //     8 ms                        14.15 ms                    8.06 ms
+            //
+            // Against a start-relative deadline the same coarse timer averages
+            // out - a frame that woke late simply sleeps less, or not at all -
+            // and it costs no CPU, where spinning to the same accuracy costs a
+            // fully burnt core.
+            //
+            // This is also why the touch path's separation constant was three
+            // times optimistic before today: it asked for 5 ms per frame and got
+            // 15, so a "50 ms" gesture really took 150.
+            TimeSpan due = duration * ((double)frame / frames);
+            TimeSpan remaining = due - Stopwatch.GetElapsedTime(started);
+
+            if (remaining > TimeSpan.Zero)
+            {
+                Thread.Sleep(remaining);
             }
         }
 
         return null;
     }
+
+    /// <summary>How many frames a move of this length is broken into.</summary>
+    /// <remarks>
+    /// Duration divided by the frame interval, never fewer than
+    /// <see cref="MinimumFramesPerMove"/>. The floor is what stops the obvious
+    /// wrong version of this — a bare division reduces a 20 ms move to two frames
+    /// and an instant one to none, reintroducing the single-jump teleport the
+    /// guest measured, through the change meant to smooth the gesture out.
+    /// </remarks>
+    private static int FramesFor(TimeSpan duration) =>
+        duration <= TimeSpan.Zero
+            ? MinimumFramesPerMove
+            : (int)Math.Max(
+                MinimumFramesPerMove,
+                Math.Min(duration.TotalMilliseconds / FrameInterval, MaximumFramesPerMove));
+
+    /// <summary>The most frames one move may emit.</summary>
+    /// <remarks>
+    /// A ceiling on the WORK, not on the rate: at 8 ms apart this is a sixteen
+    /// second gesture, longer than anything a suite performs, and it means a
+    /// client that asks for a ten-minute move cannot make the driver emit
+    /// seventy-five thousand injections. Past it the move simply samples more
+    /// coarsely, which is the right failure.
+    /// </remarks>
+    private const int MaximumFramesPerMove = 2000;
 
     /// <summary>How long a step asked to take.</summary>
     /// <remarks>
