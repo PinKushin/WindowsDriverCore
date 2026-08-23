@@ -98,6 +98,15 @@ public static class TouchRoutes
                 failure = runner.Tap(x, y, Tap) ?? runner.Tap(x, y, Tap);
             }
 
+            if (failure is null)
+            {
+                // A GESTURE IS DISPATCHED INPUT LIKE ANY OTHER, and these routes
+                // never said so - only the keyboard, mouse and element-action
+                // routes did. A read that follows a tap or a drag therefore
+                // never waited for the application at all.
+                session.InputPending = true;
+            }
+
             return failure is null
                 ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
                 : Fault(failure, session, registry, windows);
@@ -134,6 +143,15 @@ public static class TouchRoutes
 
             failure ??= runner.Tap(x, y, hold);
 
+            if (failure is null)
+            {
+                // A GESTURE IS DISPATCHED INPUT LIKE ANY OTHER, and these routes
+                // never said so - only the keyboard, mouse and element-action
+                // routes did. A read that follows a tap or a drag therefore
+                // never waited for the application at all.
+                session.InputPending = true;
+            }
+
             return failure is null
                 ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
                 : Fault(failure, session, registry, windows);
@@ -166,6 +184,15 @@ public static class TouchRoutes
             {
                 failure = runner.Drag(
                     x, y, x + (request?.XOffset ?? 0), y + (request?.YOffset ?? 0));
+            }
+
+            if (failure is null)
+            {
+                // A GESTURE IS DISPATCHED INPUT LIKE ANY OTHER, and these routes
+                // never said so - only the keyboard, mouse and element-action
+                // routes did. A read that follows a tap or a drag therefore
+                // never waited for the application at all.
+                session.InputPending = true;
             }
 
             return failure is null

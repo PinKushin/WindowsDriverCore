@@ -3958,3 +3958,48 @@ there — `find AlarmButton` then misses seven times over 600 ms.
 satisfies that with its own chrome before the CoreWindow has any content. That
 is a measured weakness in the condition, independent of this test, and worth
 fixing on its own merits.
+
+
+## The speed finding, and the fake 287
+
+**MEASURED 2026-08-23**, per-test durations from the TRX, same guest:
+
+```
+                             WinAppDriver   this driver
+  MouseClick                       3.90 s       0.067 s   fails
+  ClickElement                     8.17 s       0.29 s    fails
+  GetElementDisplayedState         9.64 s       1.51 s    fails
+  MouseDoubleClick                 4.26 s       1.03 s    fails
+  TouchDoubleTap                   3.98 s       1.09 s    fails
+```
+
+**Several tests fail because this driver is 10-60x faster than the reference.**
+They click and then read, with no synchronisation of their own; WinAppDriver
+passes because a single find costs it ~1070 ms and the application catches up by
+accident.
+
+That is not an argument for being slower. It is the rule already recorded as
+*act early but wait as long*: succeed as soon as the condition holds, give up
+only after the reference would. Answering before the application has reacted is
+reporting the wrong state.
+
+### A score that beats the reference is a red flag
+
+A comparison of the PRIMARY-flag run reported **287/290** — above WinAppDriver's
+281 — with twenty tests "recovered", including `NavigateBack_Browser` and
+`NavigateForward_Browser`, which fail because **Edge is not installed on the
+guest**. A pointer flag cannot install Edge, and that impossibility is what
+exposed the error.
+
+The comparison had selected the TRX by filename prefix with `Select -First 1`
+and picked the **filtered** run's file (6 results) rather than the full run's
+(290) at the same commit. The twenty tests were not recovered; they were absent.
+
+**Select a full run by RESULT COUNT, never by name.** The `-TestCaseFilter`
+parameter's own documentation says never to quote a score from a filtered
+run — written an hour earlier, in this same session, by the same author who then
+did exactly that.
+
+The true result of that run was **265**, down from 267: `Pen_LongClick`
+recovered and the three scroll tests flipped back, all within their measured
+variance.

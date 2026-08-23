@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -104,6 +105,128 @@ public sealed class ElementPropertyRouteTests : IDisposable
     {
         _client?.Dispose();
         _factory?.Dispose();
+    }
+
+    /// <summary>
+    /// A read that follows input gives the application time to react first.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>MEASURED on the guest, per-test durations against the reference:</b>
+    /// </para>
+    /// <code>
+    ///                              WinAppDriver    this driver
+    ///   MouseClick                       3.90 s        0.067 s   fails
+    ///   ClickElement                     8.17 s        0.29 s    fails
+    ///   GetElementDisplayedState         9.64 s        1.51 s    fails
+    /// </code>
+    /// <para>
+    /// Those tests carry no synchronisation of their own — they click and read.
+    /// WinAppDriver passes because a single find costs it ~1070 ms, so the
+    /// application has caught up by accident. We fail by being 10-60x faster,
+    /// and answering before the application has reacted is reporting the wrong
+    /// state rather than reporting it quickly.
+    /// </para>
+    /// <para>
+    /// <c>WaitForInputProcessed</c> alone does not cover this: it asks "is this
+    /// process waiting for input", and injected input sits in the SYSTEM queue
+    /// for a moment before reaching the application's, during which the answer
+    /// is yes. Measured repeatedly in the transcript as
+    /// <c>drain -> waited 0.8 ms</c> immediately before a read of the old value.
+    /// </para>
+    /// <para>
+    /// <b>Asserted by ELAPSED TIME because the end state is identical either
+    /// way.</b> The substituted inspector answers the same value whether the
+    /// floor ran or not, so nothing else distinguishes them.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AReadRightAfterInput_LetsTheApplicationReactFirst()
+    {
+        _inspector.Text(Window, ElementId).Returns(ElementRead.Success("8"));
+
+        // WARMED FIRST, AND WITHOUT THIS THE TEST MEASURES THE WRONG THING.
+        // The first request to a route pays routing and JIT setup - more than
+        // the floor itself - so an unwarmed timing passes with the floor set to
+        // ZERO. Caught by mutation: the assertion survived removing the very
+        // behaviour it exists to check.
+        await Get("text");
+
+        ISessionStore store = _factory.Services.GetRequiredService<ISessionStore>();
+        store.Find(SessionId)!.InputPending = true;
+
+        Stopwatch clock = Stopwatch.StartNew();
+        await Get("text");
+        clock.Stop();
+
+        // The floor is 120 ms; 80 is comfortably below it and comfortably above
+        // the few milliseconds an unfloored read costs, so this cannot pass by
+        // accident on a slow machine or fail by accident on a fast one.
+        clock.ElapsedMilliseconds.ShouldBeGreaterThan(
+            80L, "the application must get a moment to react before it is read");
+    }
+
+    /// <summary>
+    /// A read with nothing outstanding is not delayed at all.
+    /// </summary>
+    /// <remarks>
+    /// <b>THE CONTROL, and it is the whole reason the floor is affordable.</b>
+    /// A driver that waited on every property read would spend this on hundreds
+    /// of reads that depend on nothing — and this project's argument is speed: a
+    /// find costs ~33 ms here against ~1070 ms through WinAppDriver. The floor
+    /// is paid once per dispatched input, by the first read that depends on it.
+    /// </remarks>
+    [Test]
+    public async Task AReadWithNoInputOutstanding_IsNotDelayed()
+    {
+        _inspector.Text(Window, ElementId).Returns(ElementRead.Success("8"));
+
+        // WARMED FIRST, AND WITHOUT THIS THE TEST MEASURES THE WRONG THING.
+        // The first request to a route pays routing and JIT setup - more than
+        // the floor itself - so an unwarmed timing passes with the floor set to
+        // ZERO. Caught by mutation: the assertion survived removing the very
+        // behaviour it exists to check.
+        await Get("text");
+
+        Stopwatch clock = Stopwatch.StartNew();
+        await Get("text");
+        clock.Stop();
+
+        clock.ElapsedMilliseconds.ShouldBeLessThan(
+            80L, "nothing was dispatched, so there is nothing to wait for");
+    }
+
+    /// <summary>
+    /// The floor is measured from the DISPATCH, not from the read.
+    /// </summary>
+    /// <remarks>
+    /// A client that does other work between the click and the read has already
+    /// given the application its moment. Measuring from the read would charge it
+    /// again for time that has already passed, on every such pair.
+    /// </remarks>
+    [Test]
+    public async Task TimeAlreadyElapsedSinceTheInput_CountsTowardsTheFloor()
+    {
+        _inspector.Text(Window, ElementId).Returns(ElementRead.Success("8"));
+
+        // WARMED FIRST, AND WITHOUT THIS THE TEST MEASURES THE WRONG THING.
+        // The first request to a route pays routing and JIT setup - more than
+        // the floor itself - so an unwarmed timing passes with the floor set to
+        // ZERO. Caught by mutation: the assertion survived removing the very
+        // behaviour it exists to check.
+        await Get("text");
+
+        ISessionStore store = _factory.Services.GetRequiredService<ISessionStore>();
+        store.Find(SessionId)!.InputPending = true;
+
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+
+        Stopwatch clock = Stopwatch.StartNew();
+        await Get("text");
+        clock.Stop();
+
+        clock.ElapsedMilliseconds.ShouldBeLessThan(
+            80L, "200 ms have already passed since the input; the floor is spent");
     }
 
     private Task<HttpResponseMessage> Get(string suffix) =>
