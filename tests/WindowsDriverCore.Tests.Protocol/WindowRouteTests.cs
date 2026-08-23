@@ -10,6 +10,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Platform.Applications;
+using WindowsDriverCore.Automation;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Protocol.Recordings;
 
@@ -31,6 +32,7 @@ public sealed class WindowRouteTests : IDisposable
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
     private IWindowLocator _windows = null!;
+    private IElementInspector _inspector = null!;
 
     [SetUp]
     public void StartServer()
@@ -49,11 +51,15 @@ public sealed class WindowRouteTests : IDisposable
         _windows.SetBounds(Arg.Any<nint>(), Arg.Any<WindowBounds>()).Returns(true);
         _windows.Maximize(Arg.Any<nint>()).Returns(true);
 
+        _inspector = Substitute.For<IElementInspector>();
+        _inspector.WindowName(Arg.Any<nint>()).Returns(ElementRead.Success("Desktop 1"));
+
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
                 services.AddSingleton(launcher);
                 services.AddSingleton(_windows);
+                services.AddSingleton(_inspector);
             }));
 
         _client = _factory.CreateClient();
@@ -67,6 +73,58 @@ public sealed class WindowRouteTests : IDisposable
     {
         _client?.Dispose();
         _factory?.Dispose();
+    }
+
+    /// <summary>The desktop's title comes from UIA, not from Win32.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>GetTitle_Desktop</c> asserts a title starting with "Desktop" and
+    /// <c>CreateSession_Desktop</c> asserts one containing it. A desktop
+    /// session's handle is <c>GetDesktopWindow()</c>, which has NO WINDOW TEXT -
+    /// <c>GetWindowText</c> answers an empty string and both tests fail on a
+    /// title that is not wrong so much as absent.
+    /// </para>
+    /// <para>
+    /// UIA names that element "Desktop 1". The desktop is a UIA concept before
+    /// it is a Win32 one, so the name is read where the concept lives.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task TheDesktopSession_IsTitledFromUia()
+    {
+        HttpResponseMessage created = await _client.PostAsJsonAsync(
+            new Uri("/session", UriKind.Relative),
+            new { desiredCapabilities = new { app = "Root" } });
+
+        string sessionId = JsonDocument.Parse(await created.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("sessionId").GetString()!;
+
+        HttpResponseMessage response = await _client.GetAsync(
+            new Uri($"/session/{sessionId}/title", UriKind.Relative));
+
+        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("value").GetString().ShouldBe("Desktop 1");
+    }
+
+    /// <summary>
+    /// An ordinary window keeps its Win32 caption.
+    /// </summary>
+    /// <remarks>
+    /// <b>THE CONTROL.</b> Reading every title through UIA would satisfy the
+    /// test above and change the answer for every other session - a UIA name and
+    /// a window caption are not the same string, and the suite asserts on both.
+    /// It is also the cheaper call, which is why it stays the default.
+    /// </remarks>
+    [Test]
+    public async Task AnOrdinaryWindow_KeepsItsWin32Caption()
+    {
+        string sessionId = await NewSession();
+
+        HttpResponseMessage response = await _client.GetAsync(
+            new Uri($"/session/{sessionId}/title", UriKind.Relative));
+
+        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("value").GetString().ShouldBe("Calculator");
     }
 
     private async Task<string> NewSession()
