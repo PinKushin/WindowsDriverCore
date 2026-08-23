@@ -3555,3 +3555,54 @@ belongs to the owner rather than to the end of an investigation.
 well outside every repository, inspected with `ilspycmd`, and deleted. Nothing
 decompiled was copied into this repository — only the two facts above, which are
 API names.
+
+
+### REFUTED: that a higher frame count makes a move overrun its duration
+
+`Pen_Scroll_Vertical` passed on the guest for **13 consecutive runs** and failed
+on the 14th — `1947aa1`, the run that made a move's frame count follow its
+duration instead of being fixed at ten. For its 200 px / 500 ms scroll that is
+62 frames of ~3 px at 8 ms apart, where it used to be 10 frames of 20 px at
+50 ms apart.
+
+**The hypothesis:** injecting a frame costs more than its 8 ms slot, so the move
+overruns, and the velocity the application sees is lower than the one the client
+asked for. That is the "a slower gesture is a different signal" argument that
+justified the frame-rate change, running backwards.
+
+**Measured on the host, `tools/probe-does-a-frame-fit-its-slot.ps1`:**
+
+```
+  kind   asked   frames   elapsed   per frame   overrun
+  touch    80 ms       10     163 ms   16.26 ms    2.03x
+  touch   500 ms       62     508 ms    8.19 ms    1.02x
+  touch  1000 ms      125   1,010 ms    8.08 ms    1.01x
+  pen      80 ms       10      92 ms    9.15 ms    1.14x
+  pen     500 ms       62     515 ms    8.31 ms    1.03x
+  pen    1000 ms      125   1,013 ms    8.11 ms    1.01x
+```
+
+**Refuted.** Frames fit their slot with room to spare at exactly the counts in
+question, for both injection APIs. The move takes as long as it asked for, so
+the velocity is unchanged and the overrun mechanism does not exist. (The 80 ms
+touch row is first-call warm-up, not a trend — it is the first injection of the
+run and pen's equivalent row is 1.14x.)
+
+**What the failure actually says**, read from the TRX rather than from the
+score: `Assert.IsTrue failed` after **4.4 s**. The test sleeps 1 s three times
+and performs two 500 ms gestures, so 4.4 s means it ran to the END — the scroll
+DOWN hid "00" and passed its `IsFalse`, and the scroll back UP failed to restore
+it. **The failure is asymmetric**, which an overrun affecting both gestures
+equally does not explain either.
+
+**Still open.** The remaining difference is the per-frame STEP SIZE — 3 px
+against 20 px — and how a XAML `LoopingSelector`'s gesture recogniser turns that
+into an inertial fling. Not yet investigated, and deliberately not guessed at:
+two mechanisms have already been proposed for this one test and the measured one
+was refuted.
+
+**Next step is arbitration, not theory.** One guest run at the current HEAD
+answers whether the failure repeats at all — 13/13 then one failure is a strong
+signal but it is still one observation, and `TouchScrollOnElement_Vertical` in
+the same family has flapped all session. The same run also reports whether the
+two `*_OriginPointer` tests recovered, so it is not a run spent on this alone.
