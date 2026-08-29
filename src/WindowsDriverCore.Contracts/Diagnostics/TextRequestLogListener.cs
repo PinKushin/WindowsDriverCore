@@ -135,10 +135,14 @@ public sealed class TextRequestLogListener : EventListener
                 $"  launch '{payload[0]}' -> pid {payload[1]} window 0x{Handle(payload[2])}" +
                 $"{Kind(payload[3])}{Because(payload[4])} {Cost(payload[5])} ms"),
 
-            (DriverEventSource.KeysDispatchedEventId, 2) => string.Create(
+            // NAMES WHERE THE KEYS WENT. "NOT RAISED, went to whatever had
+            // focus" was true and useless: it took cross-referencing four runs'
+            // transcripts against their TRX timings to establish that "whatever"
+            // was another application. The window is now in the line.
+            (DriverEventSource.KeysDispatchedEventId, 3) => string.Create(
                 CultureInfo.InvariantCulture,
-                $"  keys -> {(payload[0] is true ? "raised" : "NOT RAISED, went to whatever had focus")}" +
-                $" {Cost(payload[1])} ms"),
+                $"  keys -> {(payload[0] is true ? "raised" : $"NOT RAISED, went to {payload[1]}")}" +
+                $" {Cost(payload[2])} ms"),
 
             // "DID NOT WAIT" is the line worth reading, and it is spelled loudly
             // for the same reason "STILL THERE" is below: the request answers

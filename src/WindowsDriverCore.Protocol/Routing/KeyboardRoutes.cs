@@ -106,8 +106,13 @@ public static class KeyboardRoutes
             // physically down for the next one, which is what the protocol
             // describes and what SendKeys_ModifierExplicitRelease asserts.
             // DELETE /session lifts whatever survives.
+            // Described only when the raise FAILED. On the success path it costs
+            // nothing and says nothing - the window that holds the foreground is
+            // the one we just raised.
             log.KeysDispatched(
-                raised, Stopwatch.GetElapsedTime(raiseStarted).TotalMilliseconds);
+                raised,
+                raised ? string.Empty : windows.DescribeForeground(),
+                Stopwatch.GetElapsedTime(raiseStarted).TotalMilliseconds);
 
             if (!keyboard.Type(keys, session.Modifiers))
             {

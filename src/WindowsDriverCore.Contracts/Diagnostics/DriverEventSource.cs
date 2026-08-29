@@ -229,15 +229,21 @@ public sealed class DriverEventSource
     [Event(
         KeysDispatchedEventId,
         Level = EventLevel.Informational,
-        Message = "keys -> raised {0} {1} ms")]
-    public void KeysDispatched(bool raised, double elapsedMilliseconds)
+        Message = "keys -> raised {0} {1} {2} ms")]
+    public void KeysDispatched(bool raised, string foreground, double elapsedMilliseconds)
     {
         if (!IsEnabled())
         {
             return;
         }
 
-        WriteEvent(KeysDispatchedEventId, raised, elapsedMilliseconds);
+        // A WINDOW TITLE, and only on the failing branch. It is not caller-
+        // supplied content: SendKeys and SetValue arguments still have no
+        // parameter anywhere in this interface that could carry them, which is
+        // the rule that keeps a password out of the transcript. This names a
+        // window somebody else owns, on a path that has already gone wrong, in a
+        // log that never leaves the machine.
+        WriteEvent(KeysDispatchedEventId, raised, foreground, elapsedMilliseconds);
     }
 
     /// <inheritdoc />

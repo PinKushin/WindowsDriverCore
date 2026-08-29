@@ -168,10 +168,26 @@ public sealed class UiaElementInteractor : IElementInteractor
             // read and IInteractionLog has no parameter that could carry them
             // separately. "NOT RAISED" is shouted for the same reason the drain's
             // "DID NOT WAIT" is: the request answers success either way.
+            // NAMING WHAT HELD THE FOREGROUND INSTEAD, because the bare fact that
+            // a raise failed is not actionable.
+            //
+            // Measured 2026-08-29: establishing that these keystrokes were
+            // landing in another application took cross-referencing TRX timings
+            // against request transcripts across four separate runs. The count of
+            // these lines predicts the failure exactly - 2 in every passing run,
+            // 23 in every failing one - but the line itself never said WHERE the
+            // keys went, which is the one fact needed to fix it.
+            //
+            // Read only on the failing branch: it costs two Win32 calls and a
+            // process lookup, on a path that has already gone wrong.
+            string wentTo = raised == false && _windows is not null
+                ? $", went to {_windows.DescribeForeground()}"
+                : string.Empty;
+
             string path = (raised, focused) switch
             {
-                (false, true) => "keys (NOT RAISED, went to whatever was in front)",
-                (false, false) => "keys (NOT RAISED, unfocused)",
+                (false, true) => $"keys (NOT RAISED{wentTo})",
+                (false, false) => $"keys (NOT RAISED, unfocused{wentTo})",
                 (_, false) => "keys (unfocused)",
                 (_, true) => "keys",
             };
