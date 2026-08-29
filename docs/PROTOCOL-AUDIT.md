@@ -583,3 +583,57 @@ than assumed:
 - **`GET /status` in the W3C shape** — the one item still needing an owner
   decision. The dialects disagree at the root and the request cannot tell them
   apart; see above for the two real options.
+
+---
+
+## Passes 9 and 10 — the first clean ones
+
+### Pass 9, by DIALECT — clean
+
+Every command where JSON Wire and W3C diverge, probed against a running server in
+BOTH spellings, with `/definitely-not-a-route` as the control: `/execute` and
+`/execute/sync`, both window-handle pairs, `attribute` and `property`, active
+element by POST and GET, maximize with and without the handle, `current/size`
+and `rect`, timeouts read and written and the legacy spelling, all six alert
+forms, orientation both ways, actions POST and DELETE. **27 served, 0 missing.**
+
+And the half a path probe cannot see: a **W3C session** — created with
+`capabilities.alwaysMatch` — was pointed at four of the newest routes and each
+answered in the W3C envelope (`value`, no top-level `status` or `sessionId`).
+The dialect filter covers them because they use the standard envelope, which was
+measured rather than assumed.
+
+### Pass 10, by ROUTE, run in the INVERSE direction — clean
+
+Passes 4 and 7 walked the spec and checked it against us. This one walked OUR
+routes and checked them against the spec — a different question, and the one that
+finds a route we should not be serving.
+
+**It found no protocol gap and one instrument defect**, which is now permanently
+fixed.
+
+The grep that enumerated our routes **silently missed `/back`, `/click` and
+`/buttondown`**. That is the dangerous direction for this lens: pass 4's grep
+over-reported and merely wasted time, but an under-reporting grep leaves a stray
+route unexamined and reports clean.
+
+`TheServedSurfaceTests` replaces it by reading `EndpointDataSource` — the table
+the server itself dispatches on, which cannot disagree with what is served. A
+test rather than a script so it runs on every build and a route added tomorrow
+appears without anybody re-running anything.
+
+It asserts PROPERTIES, not a frozen list: every route under a protocol prefix,
+28 named family members present, exactly one catch-all. A test that pinned the
+count would fail on every addition and teach people to update it without reading
+it.
+
+**It corrected two of my assumptions on its first run** — the fallback is
+registered as `/{*path:nonfile}`, with a leading slash and a route constraint,
+and neither guess matched. That is the instrument working.
+
+### The count: 2 of 3
+
+Pass 10 added a test and changed no shipping code. Recorded as clean on that
+basis, and the reasoning is stated rather than assumed: the reset exists because
+*a fix can introduce a gap*, and a test cannot change what the server serves.
+A production change would reset it.
