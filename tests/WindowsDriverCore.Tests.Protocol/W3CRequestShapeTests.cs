@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -724,6 +725,67 @@ public sealed class W3CRequestShapeTests : IDisposable
         JsonDocument.Parse(await response.Content.ReadAsStringAsync())
             .RootElement.ToString()
             .ShouldNotContain("latitude", Case.Insensitive);
+    }
+
+    /// <summary>The log endpoints answer, and the log DRAINS.</summary>
+    /// <remarks>
+    /// <para>
+    /// WinAppDriver serves neither — measured, both 404. This is the one place
+    /// this driver has clearly more to offer: the transcript records a find's
+    /// match count and a click's chosen strategy, and until now none of it was
+    /// reachable except by reading the server's console.
+    /// </para>
+    /// <para>
+    /// <b>Draining is asserted, not assumed.</b> It is the protocol's contract:
+    /// a client polls this, and one that re-read its whole history every time
+    /// would report every line again on every call.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task TheServerLog_IsReadableAndDrains()
+    {
+        string session = await NewSession();
+
+        JsonDocument.Parse(await GetValue($"/session/{session}/log/types"))
+            .RootElement.EnumerateArray().First().GetString()
+            .ShouldBe("server");
+
+        // Creating the session above produced transcript lines, so the first
+        // read has something in it - which is what makes the second read's
+        // emptiness meaningful rather than vacuous.
+        JsonElement first = JsonDocument.Parse(
+            await (await Post($"/session/{session}/log", """{"type":"server"}"""))
+                .Content.ReadAsStringAsync()).RootElement.GetProperty("value");
+
+        first.GetArrayLength().ShouldBeGreaterThan(0, "the session's own requests were logged");
+
+        JsonElement second = JsonDocument.Parse(
+            await (await Post($"/session/{session}/log", """{"type":"server"}"""))
+                .Content.ReadAsStringAsync()).RootElement.GetProperty("value");
+
+        // Only the one request between the two reads, so the second is short -
+        // asserted as "fewer" rather than "empty", because reading the log is
+        // itself a logged request.
+        second.GetArrayLength().ShouldBeLessThan(
+            first.GetArrayLength(), "the first read took the entries");
+    }
+
+    /// <summary>An unknown log type is refused, not answered with the server log.</summary>
+    /// <remarks>
+    /// THE CONTROL. Handing back the request transcript for "performance" would
+    /// have a client draw timing conclusions from records that are not timings.
+    /// </remarks>
+    [Test]
+    public async Task AnUnknownLogType_IsRefused()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = await Post(
+            $"/session/{session}/log", """{"type":"performance"}""");
+
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("status").GetInt32()
+            .ShouldBe(100, "invalid argument");
     }
 
     private async Task<string> NewSession()

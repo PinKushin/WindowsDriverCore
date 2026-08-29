@@ -158,8 +158,21 @@ public partial class Program
         // a log file is closed rather than left locked.
         builder.Services.AddSingleton(
             _ => RequestLogDestination.Open(Environment.GetEnvironmentVariable));
+        // THE BUFFER POST /log SERVES, fed by TEEING the transcript rather than
+        // by reading the events a second time.
+        //
+        // That is not just tidiness. Locators are logged and SetValue/SendKeys
+        // arguments never are, because IInteractionLog has no parameter that
+        // could carry one - so serving the SAME formatted lines means a log
+        // fetched over HTTP cannot contain a password the console transcript
+        // would not. A second, independent reader of the raw events could.
+        builder.Services.AddSingleton(
+            provider => new LogBuffer(provider.GetRequiredService<TimeProvider>()));
+
         builder.Services.AddSingleton(provider => new TextRequestLogListener(
-            provider.GetRequiredService<RequestLogDestination>().Writer,
+            new TeeTextWriter(
+                provider.GetRequiredService<RequestLogDestination>().Writer,
+                provider.GetRequiredService<LogBuffer>()),
             provider.GetRequiredService<TimeProvider>()));
 
         builder.Services.AddSingleton<IServerStatusProvider, ServerStatusProvider>();

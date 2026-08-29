@@ -455,6 +455,30 @@ if ($Driver -eq 'WindowsDriverCore') {
 
     Copy-VMFile -Name $VMName -SourcePath $zip -DestinationPath 'C:\baseline\payload\host.zip' -CreateFullPath -FileSource Host -Force
     Write-Host 'host binaries pushed to the guest'
+
+    # THE BUNDLE GOES WITH THEM, EVERY TIME.
+    #
+    # The guest resets its clone to $Commit to get the SUITE-side scripts and the
+    # test assemblies' source of truth, and it can only do that for a commit its
+    # bundle contains. Refreshing that bundle used to be a manual step named only
+    # in the abort message - so the first run after any new commit aborted, and
+    # before the exit-code fix below it aborted while reporting success.
+    #
+    # --all rather than the branch, so a run can measure any commit reachable
+    # from any ref rather than only the current branch's tip.
+    $bundle = Join-Path $env:TEMP "wdc-$hostHead.bundle"
+    if (Test-Path $bundle) { Remove-Item $bundle -Force }
+
+    & git bundle create $bundle --all 2>&1 | Out-Null
+
+    if (-not (Test-Path $bundle)) { throw "git bundle produced nothing at $bundle" }
+
+    'bundle {0:N1} MB' -f ((Get-Item $bundle).Length / 1MB)
+
+    Copy-VMFile -Name $VMName -SourcePath $bundle `
+        -DestinationPath 'C:\baseline\payload\WindowsDriverCore.bundle' `
+        -CreateFullPath -FileSource Host -Force
+    Write-Host 'bundle pushed to the guest'
 }
 
 $name = "compat-$(Get-Date -Format HHmmss)"
@@ -470,7 +494,27 @@ while ((Get-Date) -lt $deadline) {
         param($jobName)
         if (Test-Path "C:\baseline\cmd\$jobName.done") { Get-Content "C:\baseline\cmd\$jobName.log" -Raw } else { $null }
     }
-    if ($log) { Write-Host $log; return }
+    if ($log) {
+        Write-Host $log
+
+        # AN ABORT INSIDE THE GUEST MUST NOT EXIT 0 OUT HERE.
+        #
+        # The guest script exits 1 on its own aborts, but that exit code dies
+        # with the guest process - the host only ever sees the LOG. So a run
+        # that never started ("the guest repository does not have that commit")
+        # printed its abort and this script returned success, which is the exact
+        # defect the whole audit has been about: reporting work that did not
+        # happen. Measured 2026-08-29, on a run whose bundle was stale.
+        #
+        # Matched on the log rather than plumbed through a status file, because
+        # the log is what every abort already writes and a second channel is a
+        # second thing to keep in sync.
+        if ($log -match '(?m)^ABORT:') {
+            throw "The guest aborted the run. See the log above."
+        }
+
+        return
+    }
     Start-Sleep -Seconds 15
 }
 throw "The run did not finish within $TimeoutMinutes minutes."

@@ -421,15 +421,26 @@ typing into a prompt's field; a Windows message box has no field, and a dialog
 with several has no canonical one. A client that wants that has `/element` and
 can name it.
 
-### `/log` and `/log/types`
+### `/log` and `/log/types` — CLOSED 2026-08-29
 
-WinAppDriver serves both. This driver has a richer transcript than the reference
-(`IInteractionLog`, the EventSource channel) and no way for a client to ask for
-any of it.
+**And the note above was wrong about the reference too.** It said "WinAppDriver
+serves both". Measured: both answer **404**. Another claim written from memory
+in the same sitting as the `/execute` one, and caught by the same probe.
 
-Worth doing and cheap, but it needs the privacy rule applied deliberately:
-locators are logged, `SetValue` and `SendKeys` arguments never are, and a log
-endpoint is exactly where that boundary would be crossed by accident.
+Served now, and it is the clearest case of this driver having more to offer than
+the reference: the transcript records a find's match count and a click's chosen
+strategy, and none of it was reachable except by reading the server's console.
+
+**The privacy rule holds by construction rather than by care.** The buffer is a
+`TextWriter` TEED off the existing transcript, so it serves the same formatted
+lines the console gets. Locators are logged and `SetValue`/`SendKeys` arguments
+never are — `IInteractionLog` has no parameter that could carry one — so an HTTP
+log cannot contain a password the console would not. A second, independent
+reader of the raw events could have, which is why it is not one.
+
+Bounded at 5000 lines dropping the OLDEST, and it DRAINS, which is the protocol's
+contract: a client polls it, and one re-reading its whole history would report
+every line again on every call.
 
 ### `/url`, `/refresh`, `/element/{id}/submit`
 
@@ -543,6 +554,7 @@ than assumed:
 | `GET /timeouts` | not served | reports the implicit wait |
 | `POST /window/minimize` | not served | served |
 | alert text, accept, dismiss | 404 | served, both dialects |
+| `GET /log/types`, `POST /log` | 404 | served, drains, teed off the transcript |
 | `GET /location` | in its list, fails environmentally | served, refuses honestly |
 | `GET`/`POST /window/rect` | not served | served |
 | every W3C request spelling | not served | served |
@@ -556,6 +568,6 @@ than assumed:
   port. `DECISIONS.md` #7b, and a test asserts it stays absent.
 - **`POST /alert_text`** — typing into a prompt. No canonical input field exists
   on a Windows dialog; `/element` names one explicitly.
-- **`/log`, `/url`, `/refresh`, `/element/{id}/submit`** — open, listed above
+- **`/url`, `/refresh`, `/element/{id}/submit`** — open, listed above
   with what each needs. The reference serves none of them either (404, or 501 for
   the middle two), so these are *plus more* work rather than gaps.
