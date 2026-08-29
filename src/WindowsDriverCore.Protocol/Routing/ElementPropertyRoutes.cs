@@ -74,7 +74,43 @@ public static class ElementPropertyRoutes
     /// </remarks>
     private static void MapAttribute(IEndpointRouteBuilder app)
     {
+        // W3C SPLIT ATTRIBUTE FROM PROPERTY, and on a UIA tree the distinction
+        // does not exist: there is no DOM here, so an element has properties and
+        // nothing else. A Selenium 4 client asking for a property got the
+        // unknown-command fallback for a question this driver can answer.
+        //
+        // Served by the same delegate rather than a second copy, including the
+        // empty-name fault - an empty attribute name answers 400 with status
+        // 100 while an unknown one answers 200 with null, and that distinction
+        // is easy to lose in a duplicate.
         app.MapGet("/session/{sessionId}/element/{elementId}/attribute/{name?}",
+            static (
+                HttpContext context,
+                IElementInspector inspector,
+                IElementRegistry registry,
+                IWindowLocator windows,
+                string elementId,
+                string? name) =>
+            {
+                if (string.IsNullOrEmpty(name))
+                {
+                    return Results.Json(
+                        JsonWireResponse.ForFault(
+                            WebDriverFault.InvalidArgument, MissingAttributeNameMessage),
+                        statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+                }
+
+                DriverSession session = context.GetSession();
+                ElementRead<string?> result = inspector.Attribute(
+                    session.WindowHandle, elementId, name);
+
+                return result.Outcome == ElementReadOutcome.Read
+                    ? Results.Json(JsonWireResponse.ForSession(session.Id, result.Value))
+                    : ElementFault.For(result.Outcome, session, elementId, registry, windows);
+            })
+            .RequiresSession();
+
+        app.MapGet("/session/{sessionId}/element/{elementId}/property/{name?}",
             static (
                 HttpContext context,
                 IElementInspector inspector,

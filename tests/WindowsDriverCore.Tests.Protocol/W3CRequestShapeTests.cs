@@ -44,6 +44,7 @@ public sealed class W3CRequestShapeTests : IDisposable
     private HttpClient _client = null!;
     private IElementInteractor _interactor = null!;
     private IWindowLocator _windows = null!;
+    private IElementInspector _inspector = null!;
 
     [OneTimeSetUp]
     public void StartServer()
@@ -65,6 +66,15 @@ public sealed class W3CRequestShapeTests : IDisposable
         // refuses it - also as UnknownError, also 500. The launcher above
         // reports process 4242, so the substitute agrees.
         _windows.GetOwningProcessId(Arg.Any<nint>()).Returns(4242);
+        _windows.Maximize(Arg.Any<nint>()).Returns(true);
+        _windows.SetBounds(Arg.Any<nint>(), Arg.Any<WindowBounds>()).Returns(true);
+        _windows.GetBounds(Arg.Any<nint>()).Returns(new WindowBounds(10, 20, 300, 400));
+
+        _inspector = Substitute.For<IElementInspector>();
+        _inspector.Attribute(Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(ElementRead.Success<string?>("the same answer either way"));
+        _inspector.FocusedElementId(Arg.Any<nint>())
+            .Returns(ElementRead.Success("focused"));
 
         _interactor = Substitute.For<IElementInteractor>();
         _interactor.SendKeys(Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>())
@@ -76,6 +86,7 @@ public sealed class W3CRequestShapeTests : IDisposable
                 services.AddSingleton(launcher);
                 services.AddSingleton(_windows);
                 services.AddSingleton(_interactor);
+                services.AddSingleton(_inspector);
             }));
 
         _client = _factory.CreateClient();
@@ -223,6 +234,101 @@ public sealed class W3CRequestShapeTests : IDisposable
 
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return body.RootElement.GetProperty("value").ToString();
+    }
+
+    /// <summary>W3C reads window geometry as one rectangle.</summary>
+    /// <remarks>
+    /// It replaced size and position with <c>/window/rect</c>, and there is NO
+    /// JSON Wire route a W3C client can fall back to — so without this a
+    /// Selenium 4 client cannot read or set window geometry at all.
+    /// </remarks>
+    [Test]
+    public async Task WindowRect_IsReadable()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = await _client.GetAsync(
+            new Uri($"/session/{session}/window/rect", UriKind.Relative));
+
+        ((int)response.StatusCode).ShouldBe(200);
+
+        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement rect = body.RootElement.GetProperty("value");
+
+        rect.GetProperty("x").GetInt32().ShouldBe(10);
+        rect.GetProperty("y").GetInt32().ShouldBe(20);
+        rect.GetProperty("width").GetInt32().ShouldBe(300);
+        rect.GetProperty("height").GetInt32().ShouldBe(400);
+    }
+
+    /// <summary>
+    /// A rect that names only some fields leaves the others alone.
+    /// </summary>
+    /// <remarks>
+    /// <b>The control, and it guards a destructive default.</b> Every field is
+    /// optional in W3C, so a null means "leave it" — not "set it to zero". A
+    /// client nudging only the position must not have its window resized to
+    /// nothing, which is exactly what a record of non-nullable ints would do.
+    /// </remarks>
+    [Test]
+    public async Task APartialRect_KeepsTheFieldsItDidNotName()
+    {
+        string session = await NewSession();
+
+        await Post($"/session/{session}/window/rect", """{"x":50,"y":60}""");
+
+        _windows.Received(1).SetBounds(
+            Handle, Arg.Is<WindowBounds>(b =>
+                b.X == 50 && b.Y == 60 && b.Width == 300 && b.Height == 400));
+    }
+
+    /// <summary>Maximize is served at both spellings.</summary>
+    /// <remarks>
+    /// JSON Wire addresses a window as <c>/window/{handle}/maximize</c> with
+    /// "current" as this driver's alias; W3C dropped the handle entirely.
+    /// </remarks>
+    [Test]
+    public async Task Maximize_IsServedAtBothSpellings()
+    {
+        string session = await NewSession();
+
+        ((int)(await Post($"/session/{session}/window/current/maximize", "{}")).StatusCode)
+            .ShouldBe(200, "the JSON Wire spelling is what the whole score rides on");
+        ((int)(await Post($"/session/{session}/window/maximize", "{}")).StatusCode)
+            .ShouldBe(200, "and W3C dropped the handle from the path");
+    }
+
+    /// <summary>W3C asks for the focused element with GET, not POST.</summary>
+    [Test]
+    public async Task ActiveElement_IsServedAtBothVerbs()
+    {
+        string session = await NewSession();
+
+        ((int)(await Post($"/session/{session}/element/active", "{}")).StatusCode)
+            .ShouldBe(200, "JSON Wire uses POST");
+        ((int)(await _client.GetAsync(
+            new Uri($"/session/{session}/element/active", UriKind.Relative))).StatusCode)
+            .ShouldBe(200, "W3C uses GET");
+    }
+
+    /// <summary>
+    /// W3C's "property" is this tree's "attribute".
+    /// </summary>
+    /// <remarks>
+    /// W3C split attribute from property for the DOM. There is no DOM on a UIA
+    /// tree — an element has properties and nothing else — so both spellings
+    /// answer the same question, and a Selenium 4 client asking for a property
+    /// was getting the unknown-command fallback.
+    /// </remarks>
+    [Test]
+    public async Task Property_AnswersTheSameAsAttribute()
+    {
+        string session = await NewSession();
+
+        string viaAttribute = await GetValue($"/session/{session}/element/e9/attribute/Name");
+        string viaProperty = await GetValue($"/session/{session}/element/e9/property/Name");
+
+        viaProperty.ShouldBe(viaAttribute);
     }
 
     private async Task<string> NewSession()
