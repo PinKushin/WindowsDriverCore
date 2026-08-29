@@ -108,6 +108,25 @@ public interface IWindowLocator
     /// <returns>True if the window was still there to maximize.</returns>
     bool Maximize(nint handle);
 
+    /// <summary>Minimizes a window.</summary>
+    /// <param name="handle">The window.</param>
+    /// <returns>True if the window was still there to minimize.</returns>
+    /// <remarks>
+    /// <para>
+    /// W3C defines <c>POST /window/minimize</c> alongside <c>maximize</c>, and
+    /// this driver served only the second — so a client could enlarge a window
+    /// and never put it back. Found by the by-dialect audit lens; nothing in the
+    /// compatibility suite sends it.
+    /// </para>
+    /// <para>
+    /// Minimizing must NOT activate the next window in the Z order, which is
+    /// what the obvious flag does. Stealing the foreground for a window the
+    /// client never named is the same class of defect as an unguarded
+    /// coordinate click.
+    /// </para>
+    /// </remarks>
+    bool Minimize(nint handle);
+
     /// <summary>Asks a window to close.</summary>
     /// <param name="handle">The window.</param>
     /// <returns>True if the request was delivered.</returns>

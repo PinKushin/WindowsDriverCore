@@ -69,6 +69,9 @@ public sealed record WindowPosition(
 public static class WindowRoutes
 {
 
+    /// <summary>The handle segment that means "the window this session drives".</summary>
+    private const string CurrentWindow = "current";
+
     /// <summary>Measured from the real server, not invented.</summary>
     private const string SwitchFailedMessage =
         "A request to switch to a window could not be satisfied because the window could not be found.";
@@ -134,85 +137,39 @@ public static class WindowRoutes
                 JsonWireResponse.ForSession(session.Id, windows.GetTitle(session.WindowHandle)));
         }).RequiresSession();
 
-        app.MapGet("/session/{sessionId}/window/current/size", (HttpContext context, IWindowLocator windows) =>
-        {
-            DriverSession session = context.GetSession();
-            WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
-
-            return bounds is null
-                ? WindowClosed()
-                : Results.Json(JsonWireResponse.ForSession(
-                    session.Id, new WindowSize(bounds.Height, bounds.Width)));
-        }).RequiresSession();
-
-        app.MapGet("/session/{sessionId}/window/current/position", (HttpContext context, IWindowLocator windows) =>
-        {
-            DriverSession session = context.GetSession();
-            WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
-
-            return bounds is null
-                ? WindowClosed()
-                : Results.Json(JsonWireResponse.ForSession(
-                    session.Id, new WindowPosition(bounds.X, bounds.Y)));
-        }).RequiresSession();
-
-        app.MapPost("/session/{sessionId}/window/current/size",
-            async (HttpContext context, IWindowLocator windows) =>
-        {
-            DriverSession session = context.GetSession();
-            WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
-
-            if (bounds is null)
-            {
-                return WindowClosed();
-            }
-
-            using JsonDocument body = await JsonDocument
-                .ParseAsync(context.Request.Body).ConfigureAwait(false);
-
-            if (!Number(body.RootElement, "width", out int width) ||
-                !Number(body.RootElement, "height", out int height))
-            {
-                return BadParameter("width, height");
-            }
-
-            // Position is kept: this route sets SIZE, and moving the window as a
-            // side effect would be a surprise the caller never asked for.
-            return windows.SetBounds(session.WindowHandle, new WindowBounds(bounds.X, bounds.Y, width, height))
-                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                : WindowClosed();
-        }).RequiresSession();
-
-        app.MapPost("/session/{sessionId}/window/current/position",
-            async (HttpContext context, IWindowLocator windows) =>
-        {
-            DriverSession session = context.GetSession();
-            WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
-
-            if (bounds is null)
-            {
-                return WindowClosed();
-            }
-
-            using JsonDocument body = await JsonDocument
-                .ParseAsync(context.Request.Body).ConfigureAwait(false);
-
-            if (!Number(body.RootElement, "x", out int x) ||
-                !Number(body.RootElement, "y", out int y))
-            {
-                return BadParameter("x, y");
-            }
-
-            return windows.SetBounds(session.WindowHandle, new WindowBounds(x, y, bounds.Width, bounds.Height))
-                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
-                : WindowClosed();
-        }).RequiresSession();
+        // THE HANDLE SEGMENT IS A PARAMETER, not the literal word "current".
+        //
+        // WinAppDriver documents /window/:windowHandle/size, /position and
+        // /maximize, and this driver served only /window/current/... - so a
+        // client addressing a window by its actual handle, which is what the
+        // path is FOR, got "Command not recognized". The compatibility suite
+        // sends "current" (Selenium 3.8's Manage().Window does), which is why
+        // 290 green tests never showed it.
+        //
+        // Measured 2026-08-29 by probing all 59 endpoints in WinAppDriver's own
+        // SupportedAPIs.md against a running server: eleven answered
+        // unknown-command, and this family was six of them.
+        MapGeometry(app, "size", ReadSize, WriteSize);
+        MapGeometry(app, "position", ReadPosition, WritePosition);
 
         // W3C DROPPED THE HANDLE FROM THE PATH. JSON Wire addresses a window as
-        // /window/{handle}/maximize with "current" as the alias this driver
-        // uses; W3C is simply /window/maximize. Same handler, both spellings.
-        app.MapPost("/session/{sessionId}/window/current/maximize", MaximizeWindow).RequiresSession();
+        // /window/{handle}/maximize, with "current" as the alias meaning the
+        // session's own; W3C is simply /window/maximize. Same handler, all
+        // three spellings.
+        app.MapPost("/session/{sessionId}/window/{windowHandle}/maximize", MaximizeWindow)
+            .RequiresSession();
         app.MapPost("/session/{sessionId}/window/maximize", MaximizeWindow).RequiresSession();
+
+        // THE OTHER HALF OF MAXIMIZE, which W3C defines and this driver did not
+        // serve — so a client could enlarge a window and never put it back.
+        //
+        // Both spellings for symmetry with maximize, even though W3C only
+        // defines the handle-less one: a JSON Wire client that has been
+        // addressing windows by handle everywhere else should not have to
+        // change shape for this one command.
+        app.MapPost("/session/{sessionId}/window/{windowHandle}/minimize", MinimizeWindow)
+            .RequiresSession();
+        app.MapPost("/session/{sessionId}/window/minimize", MinimizeWindow).RequiresSession();
 
         // W3C REPLACED SIZE AND POSITION WITH ONE RECTANGLE. A client that
         // wants to know where a window is, or to put it somewhere, has no
@@ -459,9 +416,182 @@ public static class WindowRoutes
     {
         DriverSession session = context.GetSession();
 
-        return windows.Maximize(session.WindowHandle)
+        (nint handle, IResult? refusal) = AddressedWindow(context, session, windows);
+
+        if (refusal is not null)
+        {
+            return refusal;
+        }
+
+        return windows.Maximize(handle)
             ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
             : WindowClosed();
+    }
+
+    private static IResult MinimizeWindow(HttpContext context, IWindowLocator windows)
+    {
+        DriverSession session = context.GetSession();
+
+        (nint handle, IResult? refusal) = AddressedWindow(context, session, windows);
+
+        if (refusal is not null)
+        {
+            return refusal;
+        }
+
+        return windows.Minimize(handle)
+            ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+            : WindowClosed();
+    }
+
+    /// <summary>Registers one geometry property under all three path spellings.</summary>
+    /// <param name="app">The route builder.</param>
+    /// <param name="property">The path segment, <c>size</c> or <c>position</c>.</param>
+    /// <param name="read">Turns bounds into the response body.</param>
+    /// <param name="write">Turns a request body plus current bounds into new bounds.</param>
+    /// <remarks>
+    /// Three spellings, one handler each way:
+    /// <c>/window/{handle}/{property}</c> as WinAppDriver documents it,
+    /// and <c>/window/{property}</c>, which its own list also carries. The
+    /// literal <c>current</c> is not a fourth registration — it arrives through
+    /// the parameter and is recognised by <see cref="AddressedWindow"/>.
+    /// </remarks>
+    private static void MapGeometry(
+        IEndpointRouteBuilder app,
+        string property,
+        Func<WindowBounds, object> read,
+        Func<JsonElement, WindowBounds, WindowBounds?> write)
+    {
+        app.MapGet($"/session/{{sessionId}}/window/{{windowHandle}}/{property}", Read).RequiresSession();
+        app.MapGet($"/session/{{sessionId}}/window/{property}", Read).RequiresSession();
+
+        app.MapPost($"/session/{{sessionId}}/window/{{windowHandle}}/{property}", Write).RequiresSession();
+        app.MapPost($"/session/{{sessionId}}/window/{property}", Write).RequiresSession();
+
+        IResult Read(HttpContext context, IWindowLocator windows)
+        {
+            DriverSession session = context.GetSession();
+
+            (nint handle, IResult? refusal) = AddressedWindow(context, session, windows);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            WindowBounds? bounds = windows.GetBounds(handle);
+
+            return bounds is null
+                ? WindowClosed()
+                : Results.Json(JsonWireResponse.ForSession(session.Id, read(bounds)));
+        }
+
+        async Task<IResult> Write(HttpContext context, IWindowLocator windows)
+        {
+            DriverSession session = context.GetSession();
+
+            (nint handle, IResult? refusal) = AddressedWindow(context, session, windows);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            WindowBounds? bounds = windows.GetBounds(handle);
+
+            if (bounds is null)
+            {
+                return WindowClosed();
+            }
+
+            using JsonDocument body = await JsonDocument
+                .ParseAsync(context.Request.Body).ConfigureAwait(false);
+
+            WindowBounds? wanted = write(body.RootElement, bounds);
+
+            if (wanted is null)
+            {
+                return BadParameter(property == "size" ? "width, height" : "x, y");
+            }
+
+            return windows.SetBounds(handle, wanted)
+                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                : WindowClosed();
+        }
+    }
+
+    /// <summary>Height before width, which is how the real server serialises it.</summary>
+    private static object ReadSize(WindowBounds bounds) =>
+        new WindowSize(bounds.Height, bounds.Width);
+
+    private static object ReadPosition(WindowBounds bounds) =>
+        new WindowPosition(bounds.X, bounds.Y);
+
+    /// <summary>New bounds from a size request, or null if the body is malformed.</summary>
+    /// <remarks>
+    /// Position is kept: this route sets SIZE, and moving the window as a side
+    /// effect would be a surprise the caller never asked for.
+    /// </remarks>
+    private static WindowBounds? WriteSize(JsonElement body, WindowBounds bounds) =>
+        Number(body, "width", out int width) && Number(body, "height", out int height)
+            ? new WindowBounds(bounds.X, bounds.Y, width, height)
+            : null;
+
+    /// <summary>New bounds from a position request, or null if the body is malformed.</summary>
+    private static WindowBounds? WritePosition(JsonElement body, WindowBounds bounds) =>
+        Number(body, "x", out int x) && Number(body, "y", out int y)
+            ? new WindowBounds(x, y, bounds.Width, bounds.Height)
+            : null;
+
+    /// <summary>Which window a <c>{windowHandle}</c> segment addresses.</summary>
+    /// <param name="context">The request, carrying the route values.</param>
+    /// <param name="session">The session, which owns the default window.</param>
+    /// <param name="windows">Answers who owns a handle.</param>
+    /// <returns>The handle, or the fault to report instead.</returns>
+    /// <remarks>
+    /// <para>
+    /// Three cases, and only the first was previously reachable:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// Absent, or the literal <c>current</c> — the session's own window. This is
+    /// what Selenium 3.8 sends and what the compatibility suite scores.
+    /// </description></item>
+    /// <item><description>
+    /// A hex handle the session's process owns — that window. The point of the
+    /// path parameter, and previously an unknown command.
+    /// </description></item>
+    /// <item><description>
+    /// Anything else — refused as no such window. <b>Not silently redirected to
+    /// the session's window</b>, which is the tempting shortcut: it would move a
+    /// window the client did not name and report success for it.
+    /// </description></item>
+    /// </list>
+    /// </remarks>
+    private static (nint Handle, IResult? Refusal) AddressedWindow(
+        HttpContext context, DriverSession session, IWindowLocator windows)
+    {
+        object? segment = context.Request.RouteValues.GetValueOrDefault("windowHandle");
+
+        if (segment is not string named ||
+            named.Length == 0 ||
+            string.Equals(named, CurrentWindow, StringComparison.OrdinalIgnoreCase))
+        {
+            return (session.WindowHandle, null);
+        }
+
+        string digits = named.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? named[2..]
+            : named;
+
+        if (!nint.TryParse(digits, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out nint handle) ||
+            !windows.Exists(handle) ||
+            windows.GetOwningProcessId(handle) != session.ProcessId)
+        {
+            return (0, Results.Json(
+                JsonWireResponse.ForFault(WebDriverFault.NoSuchWindow, SwitchFailedMessage),
+                statusCode: WebDriverFault.NoSuchWindow.HttpStatus));
+        }
+
+        return (handle, null);
     }
 
     /// <summary>The handle of the window this session is driving.</summary>
