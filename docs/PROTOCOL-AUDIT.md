@@ -396,16 +396,30 @@ it.
 
 Scope decided at implementation time is recorded in `docs/DECISIONS.md`.
 
-### Alert handling
+### Alert handling — CLOSED 2026-08-29
 
-`/alert_text`, `/accept_alert`, `/dismiss_alert` (JSON Wire) and `/alert/text`,
-`/alert/accept`, `/alert/dismiss` (W3C). None served, in either dialect.
+All six spellings served: `/alert_text`, `/accept_alert`, `/dismiss_alert` and
+the W3C `/alert/...` forms, on the same three handlers.
 
-Windows modal dialogs are real and this driver already finds them — the Notepad
-discard prompt is a WinUI `ContentDialog` in the app's own UIA subtree with no
-HWND of its own, and `SecondaryButton` is matched by automation id today. So the
-capability exists; what is missing is the routes and a definition of "the
-current alert" on a desktop, where there is no single browser-modal concept.
+**"The alert" needed defining**, since a desktop has no browser-modal concept.
+It is a `Window` in the SESSION WINDOW's own UIA subtree whose `IsModal` is true,
+which covers both shapes this project has met: a Win32 message box, which owns an
+HWND but is a UIA child of the frame because it is an owned pop-up, and a WinUI
+`ContentDialog`, which has no HWND at all. Scoped to the session's window rather
+than the desktop, so a modal belonging to another application is not this
+session's to accept.
+
+**Which button means "accept" is a real decision.** Windows has no property that
+says so. Automation ids first (`PrimaryButton`, `SecondaryButton`, `CloseButton`),
+then the conventional captions. A dialog matching none is **refused rather than
+guessed at** — pressing an arbitrary button would answer an accept with "Don't
+Save", a silent difference with a destructive outcome — and that refusal is its
+own fault rather than "no alert", because the two need different fixes.
+
+**`POST /alert_text` is deliberately not served.** Both dialects define it for
+typing into a prompt's field; a Windows message box has no field, and a dialog
+with several has no canonical one. A client that wants that has `/element` and
+can name it.
 
 ### `/log` and `/log/types`
 
@@ -528,6 +542,8 @@ than assumed:
 | `DELETE /actions` | not served | releases contacts and modifiers |
 | `GET /timeouts` | not served | reports the implicit wait |
 | `POST /window/minimize` | not served | served |
+| alert text, accept, dismiss | 404 | served, both dialects |
+| `GET /location` | in its list, fails environmentally | served, refuses honestly |
 | `GET`/`POST /window/rect` | not served | served |
 | every W3C request spelling | not served | served |
 
@@ -538,6 +554,8 @@ than assumed:
   never comes. The reference answers 404 too.
 - **`windows: execPowerShell`** — remote code execution on an unauthenticated
   port. `DECISIONS.md` #7b, and a test asserts it stays absent.
-- **Alerts, `/log`, `/url`, `/refresh`, `/element/{id}/submit`** — open, listed
-  above with what each needs. The reference serves none of them either (404, or
-  501 for the middle two), so these are *plus more* work rather than gaps.
+- **`POST /alert_text`** — typing into a prompt. No canonical input field exists
+  on a Windows dialog; `/element` names one explicitly.
+- **`/log`, `/url`, `/refresh`, `/element/{id}/submit`** — open, listed above
+  with what each needs. The reference serves none of them either (404, or 501 for
+  the middle two), so these are *plus more* work rather than gaps.
