@@ -4161,3 +4161,51 @@ how many frames, at what spacing, and what is the velocity in the last samples
 before the lift? A `LoopingSelector` computes its fling from exactly those, and
 we currently emit a constant-velocity path with the lift immediately after the
 final frame.
+
+
+### The scroll gesture is DETERMINISTIC in isolation — so the flake is contextual
+
+`tools/vm/probe-how-far-does-a-scroll-go.ps1` sends the suite's own gesture —
+element origin, contact down, 200 px up over 500 ms, lift — straight at
+`MinuteLoopingSelector`, three times per run.
+
+**Ours hid the "00" minute 3 of 3, twice over: six for six.** Not once did it
+land short.
+
+**That refutes the threshold theory** recorded in the entry above. If our gesture
+sat on the boundary of what the `LoopingSelector` treats as a fling, it would
+vary here too — the probe repeats it under identical conditions, which is
+exactly the manipulation that would expose a marginal gesture. It does not vary.
+
+So the gesture is fine and **the variance comes from the context a full suite
+run puts the application in**, not from what we inject. Which means tuning the
+frame rate, the duration or the velocity profile is now not merely unjustified
+but aimed at the wrong subject — the third dead mechanism for this family, after
+the overrun theory and the dirty-start-state theory.
+
+**Where to look instead:** what differs about `MinuteLoopingSelector` during a
+full run. Candidates, none tested — the alarm store's contents, which page the
+app is on when the test begins, how many alarms are in the list behind the
+picker, and whether a previous test left the picker part-scrolled.
+
+### Two failures of the probe itself, both worth not repeating
+
+**`Measure` is an alias for `Measure-Object`.** A probe function named `Measure`
+binds to the cmdlet and dies with *"a positional parameter cannot be found"*.
+This is the SECOND alias collision here after `Clear` / `Clear-Host` in
+`probe-does-the-mouse-click-land.ps1`. A probe helper named after a PowerShell
+verb will be shadowed. `probe-reference-touch-drag.ps1` already used
+`MeasureDriver` for this exact reason and the name was not copied.
+
+**The reference refuses this payload and the probe would not say why.** Three
+rounds reported a bare `REFUSED`. The JWP `ELEMENT` origin key was the first
+guess — recorded in memory as *the dialect split is per command*, since the
+suite speaks JWP for classic commands and W3C inside `/actions` — but sending
+the W3C key, and then both keys as Selenium does, changed nothing. The refusal
+is still unexplained, and the probe now reads the response stream (as
+`probe-reference-touch-drag.ps1` learned to) rather than reporting a word.
+
+**We accept both spellings, which is why this only surfaced against the
+reference.** A payload that looks fine forever against this driver can be
+rejected by WinAppDriver, so any probe that asks the reference a question must
+be able to print the reference's answer.
