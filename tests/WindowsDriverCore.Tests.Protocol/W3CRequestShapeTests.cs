@@ -607,6 +607,65 @@ public sealed class W3CRequestShapeTests : IDisposable
         _windows.DidNotReceive().GetBounds(Handle);
     }
 
+    /// <summary>The vendor commands are reachable over HTTP, in both spellings.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>VendorCommandTests</c> covers what each command DOES. This covers that
+    /// the route exists, dispatches, and answers in the envelope — which is a
+    /// different failure: a runner that works perfectly behind a route nobody
+    /// registered is invisible to every unit test of it.
+    /// </para>
+    /// <para>
+    /// JSON Wire spells it <c>/execute</c>; W3C renamed it <c>/execute/sync</c>.
+    /// WinAppDriver answers 501 to the first and 404 to the second, so a
+    /// Selenium 4 client had nowhere to go at all.
+    /// </para>
+    /// </remarks>
+    [TestCase("execute", TestName = "Execute_JsonWireSpelling")]
+    [TestCase("execute/sync", TestName = "Execute_W3CSpelling")]
+    public async Task Execute_IsServedUnderBothSpellings(string path)
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = await Post(
+            $"/session/{session}/{path}",
+            """{"script":"windows: getClipboard","args":[]}""");
+
+        // NOT the unknown-command fallback, which is the thing being ruled out.
+        // The command itself may well refuse — this fixture registers no
+        // clipboard — but a refusal from the RUNNER proves the route dispatched.
+        ((int)response.StatusCode).ShouldNotBe(
+            404, "the route must exist rather than fall through");
+
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement.ToString()
+            .ShouldNotContain("Command not recognized");
+    }
+
+    /// <summary>An unknown script is a bad argument, not an unknown command.</summary>
+    /// <remarks>
+    /// The distinction is what a client acts on. "Unknown command" tells it to
+    /// stop using <c>/execute</c>; the actual problem is the script it named, and
+    /// the message lists the vocabulary so it can pick a real one.
+    /// </remarks>
+    [Test]
+    public async Task AnUnknownScript_IsAnInvalidArgumentAndNamesTheVocabulary()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = await Post(
+            $"/session/{session}/execute",
+            """{"script":"windows: teleport","args":[]}""");
+
+        JsonElement body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+        body.GetProperty("status").GetInt32()
+            .ShouldBe(100, "invalid argument, not unknown command (which is 9)");
+
+        (body.GetProperty("value").GetProperty("message").GetString() ?? string.Empty)
+            .ShouldContain("windows: click");
+    }
+
     private async Task<string> NewSession()
     {
         _interactor.ClearReceivedCalls();
