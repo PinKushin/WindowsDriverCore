@@ -164,6 +164,67 @@ public sealed class W3CRequestShapeTests : IDisposable
             .ShouldContain("name");
     }
 
+    /// <summary>W3C asks for the current window at /window, not /window_handle.</summary>
+    /// <remarks>
+    /// Found by the by-ROUTE lens of the protocol audit. W3C renamed both handle
+    /// endpoints and this driver served only the JSON Wire spellings, so a
+    /// Selenium 4 client could not ask which window it was on OR what windows
+    /// existed — two of the most ordinary questions a client has, both answered
+    /// with the unknown-command fallback.
+    /// </remarks>
+    [Test]
+    public async Task TheCurrentWindow_IsServedAtBothSpellings()
+    {
+        string session = await NewSession();
+
+        string jsonWire = await GetValue($"/session/{session}/window_handle");
+        string w3c = await GetValue($"/session/{session}/window");
+
+        w3c.ShouldBe(jsonWire, "the same question at two spellings is the same answer");
+    }
+
+    /// <summary>And the handle list at /window/handles.</summary>
+    [Test]
+    public async Task TheWindowList_IsServedAtBothSpellings()
+    {
+        string session = await NewSession();
+
+        string jsonWire = await GetValue($"/session/{session}/window_handles");
+        string w3c = await GetValue($"/session/{session}/window/handles");
+
+        w3c.ShouldBe(jsonWire);
+    }
+
+    /// <summary>
+    /// Release Actions exists, and the suite has never once sent it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Measured: a full suite run makes 25 POSTs to /actions and ZERO
+    /// DELETEs.</b> So nothing in the compatibility score could ever have caught
+    /// this route's absence — a W3C client releasing its input state got the
+    /// unknown-command fallback, silently, forever.
+    /// </remarks>
+    [Test]
+    public async Task ReleaseActions_IsServed()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = await _client.DeleteAsync(
+            new Uri($"/session/{session}/actions", UriKind.Relative));
+
+        ((int)response.StatusCode).ShouldBe(200);
+    }
+
+    private async Task<string> GetValue(string path)
+    {
+        HttpResponseMessage response = await _client.GetAsync(new Uri(path, UriKind.Relative));
+
+        ((int)response.StatusCode).ShouldBe(200, $"{path} should be served");
+
+        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return body.RootElement.GetProperty("value").ToString();
+    }
+
     private async Task<string> NewSession()
     {
         _interactor.ClearReceivedCalls();

@@ -65,38 +65,27 @@ public static class WindowRoutes
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapGet("/session/{sessionId}/window_handle", (HttpContext context, IWindowLocator windows) =>
-        {
-            DriverSession session = context.GetSession();
+        // W3C RENAMED BOTH OF THESE, and serving only the JSON Wire spelling
+        // means a Selenium 4 client cannot ask which window it is on OR what
+        // windows exist - two of the most ordinary questions a client has.
+        //
+        //   JSON Wire            W3C
+        //   /window_handle       /window
+        //   /window_handles      /window/handles
+        //
+        // Registered as aliases onto the SAME handlers rather than reimplemented,
+        // because two copies of "which windows are alive" is exactly how
+        // WinAppDriver's own XPath singular and plural drifted apart into issue
+        // #1079. The response envelope is translated by the dialect filter, so
+        // only the path differs.
+        //
+        // The POST and DELETE on /session/{id}/window already existed - switch
+        // and close - so only the GET was missing there.
+        app.MapGet("/session/{sessionId}/window_handle", CurrentHandle).RequiresSession();
+        app.MapGet("/session/{sessionId}/window", CurrentHandle).RequiresSession();
 
-            return windows.Exists(session.WindowHandle)
-                ? Results.Json(JsonWireResponse.ForSession(session.Id, FormatHandle(session.WindowHandle)))
-                : WindowClosed();
-        }).RequiresSession();
-
-        app.MapGet("/session/{sessionId}/window_handles", (HttpContext context, IWindowLocator windows) =>
-        {
-            DriverSession session = context.GetSession();
-
-            // A DESKTOP SESSION OWNS NO APPLICATION WINDOWS, so it answers
-            // empty rather than reporting the desktop window it is rooted at.
-            // GetWindowHandles_Desktop asserts exactly zero, and returning the
-            // root would be reporting a window the session cannot close, move
-            // or switch away from.
-            //
-            // Otherwise every window this session has opened that is still
-            // alive. Liveness is asked here rather than trusted from the list,
-            // because a window the session opened may have been closed since -
-            // and Launch_ModernApp requires the count to RISE by one when the
-            // application is relaunched, which a single handle cannot express.
-            IReadOnlyList<string> handles = session.IsDesktop
-                ? []
-                : [.. session.OwnedWindows
-                    .Where(windows.Exists)
-                    .Select(FormatHandle)];
-
-            return Results.Json(JsonWireResponse.ForSession(session.Id, handles));
-        }).RequiresSession();
+        app.MapGet("/session/{sessionId}/window_handles", AllHandles).RequiresSession();
+        app.MapGet("/session/{sessionId}/window/handles", AllHandles).RequiresSession();
 
         app.MapGet("/session/{sessionId}/title",
             (HttpContext context, IWindowLocator windows, IElementInspector inspector) =>
@@ -397,6 +386,61 @@ public static class WindowRoutes
             JsonWireResponse.ForFault(
                 WebDriverFault.InvalidArgument, $"Missing Command Parameter: {names}"),
             statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+
+    /// <summary>The handle of the window this session is driving.</summary>
+    /// <param name="context">The request, carrying the session.</param>
+    /// <param name="windows">Answers whether the window is still there.</param>
+    /// <returns>The handle, or the closed-window fault.</returns>
+    /// <remarks>
+    /// Served at BOTH <c>/window_handle</c> (JSON Wire) and <c>/window</c>
+    /// (W3C). One handler rather than two, because two copies of the same
+    /// question are how WinAppDriver's own XPath singular and plural drifted
+    /// apart into issue #1079.
+    /// </remarks>
+    private static IResult CurrentHandle(HttpContext context, IWindowLocator windows)
+    {
+        DriverSession session = context.GetSession();
+
+        return windows.Exists(session.WindowHandle)
+            ? Results.Json(JsonWireResponse.ForSession(session.Id, FormatHandle(session.WindowHandle)))
+            : WindowClosed();
+    }
+
+    /// <summary>Every window this session owns that is still alive.</summary>
+    /// <param name="context">The request, carrying the session.</param>
+    /// <param name="windows">Answers whether each window is still there.</param>
+    /// <returns>The handles.</returns>
+    /// <remarks>
+    /// <para>
+    /// Served at BOTH <c>/window_handles</c> (JSON Wire) and
+    /// <c>/window/handles</c> (W3C).
+    /// </para>
+    /// <para>
+    /// <b>A DESKTOP SESSION OWNS NO APPLICATION WINDOWS</b>, so it answers empty
+    /// rather than reporting the desktop window it is rooted at.
+    /// <c>GetWindowHandles_Desktop</c> asserts exactly zero, and returning the
+    /// root would be reporting a window the session cannot close, move or switch
+    /// away from.
+    /// </para>
+    /// <para>
+    /// Liveness is asked here rather than trusted from the list, because a
+    /// window the session opened may have been closed since - and
+    /// <c>Launch_ModernApp</c> requires the count to RISE by one when the
+    /// application is relaunched, which a single handle cannot express.
+    /// </para>
+    /// </remarks>
+    private static IResult AllHandles(HttpContext context, IWindowLocator windows)
+    {
+        DriverSession session = context.GetSession();
+
+        IReadOnlyList<string> handles = session.IsDesktop
+            ? []
+            : [.. session.OwnedWindows
+                .Where(windows.Exists)
+                .Select(FormatHandle)];
+
+        return Results.Json(JsonWireResponse.ForSession(session.Id, handles));
+    }
 
     private static IResult WindowClosed() =>
         Results.Json(
