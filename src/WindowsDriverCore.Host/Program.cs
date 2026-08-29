@@ -207,6 +207,12 @@ public partial class Program
         // pointer is substituted in those fixtures.
         builder.Services.AddSingleton<IClipboard, WindowsClipboard>();
         builder.Services.AddSingleton<VendorCommandRunner>();
+
+        // The wheel half of /actions.
+        builder.Services.AddSingleton<WheelActionRunner>();
+
+        // GET /location. Answers a refusal on most machines, which is honest.
+        builder.Services.AddSingleton<IGeolocation, WindowsGeolocation>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<UiaElementFinder>();
         builder.Services.AddSingleton<IElementFinder>(provider =>

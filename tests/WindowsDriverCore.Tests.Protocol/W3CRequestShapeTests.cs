@@ -45,6 +45,7 @@ public sealed class W3CRequestShapeTests : IDisposable
     private IElementInteractor _interactor = null!;
     private IWindowLocator _windows = null!;
     private IElementInspector _inspector = null!;
+    private IGeolocation _geolocation = null!;
 
     [OneTimeSetUp]
     public void StartServer()
@@ -81,6 +82,11 @@ public sealed class W3CRequestShapeTests : IDisposable
         _interactor.SendKeys(Arg.Any<nint>(), Arg.Any<string>(), Arg.Any<string>())
             .Returns(ElementAction.Performed("typed"));
 
+        // Substituted rather than left to the real one: WindowsGeolocation asks
+        // the machine for consent, which on a desktop raises a prompt at the
+        // person running the suite.
+        _geolocation = Substitute.For<IGeolocation>();
+
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
@@ -88,6 +94,7 @@ public sealed class W3CRequestShapeTests : IDisposable
                 services.AddSingleton(_windows);
                 services.AddSingleton(_interactor);
                 services.AddSingleton(_inspector);
+                services.AddSingleton(_geolocation);
             }));
 
         _client = _factory.CreateClient();
@@ -664,6 +671,59 @@ public sealed class W3CRequestShapeTests : IDisposable
 
         (body.GetProperty("value").GetProperty("message").GetString() ?? string.Empty)
             .ShouldContain("windows: click");
+    }
+
+    /// <summary>The machine's location, when it knows it.</summary>
+    /// <remarks>
+    /// The last of WinAppDriver's 59 documented endpoints this driver did not
+    /// serve. The suite's own <c>Location.cs</c> reads all three keys back and
+    /// asserts latitude and longitude are in range, so the shape is pinned rather
+    /// than assumed.
+    /// </remarks>
+    [Test]
+    public async Task Location_ReportsWhatTheMachineKnows()
+    {
+        _geolocation.TryRead(out Arg.Any<GeoPosition?>())
+            .Returns(call =>
+            {
+                call[0] = new GeoPosition(51.5, -0.12, 11.0);
+                return true;
+            });
+
+        string session = await NewSession();
+
+        JsonElement where = JsonDocument
+            .Parse(await GetValue($"/session/{session}/location")).RootElement;
+
+        where.GetProperty("latitude").GetDouble().ShouldBe(51.5);
+        where.GetProperty("longitude").GetDouble().ShouldBe(-0.12);
+        where.GetProperty("altitude").GetDouble().ShouldBe(11.0);
+    }
+
+    /// <summary>A machine that does not know where it is says so.</summary>
+    /// <remarks>
+    /// <b>THE CONTROL, and the one that matters more than the reading.</b> Most
+    /// machines have no location provider or no consent — CI's Windows Server and
+    /// the offline guest both — and the reference has the same failure there. A
+    /// route that answered zeroes, or any plausible coordinate, would be
+    /// indistinguishable from a real fix to every client. Refusing is the honest
+    /// answer and this asserts it stays one.
+    /// </remarks>
+    [Test]
+    public async Task AMachineWithNoFix_RefusesRatherThanInventingACoordinate()
+    {
+        _geolocation.TryRead(out Arg.Any<GeoPosition?>()).Returns(false);
+
+        string session = await NewSession();
+
+        HttpResponseMessage response = await _client.GetAsync(
+            new Uri($"/session/{session}/location", UriKind.Relative));
+
+        ((int)response.StatusCode).ShouldNotBe(200, "no fix is not a location");
+
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement.ToString()
+            .ShouldNotContain("latitude", Case.Insensitive);
     }
 
     private async Task<string> NewSession()

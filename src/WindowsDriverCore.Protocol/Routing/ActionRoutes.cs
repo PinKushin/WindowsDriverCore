@@ -104,6 +104,7 @@ public static class ActionRoutes
                 HttpContext context,
                 PointerActionRunner? runner,
                 KeyActionRunner? keys,
+                WheelActionRunner? wheel,
                 IElementRegistry registry,
                 IWindowLocator windows) =>
         {
@@ -145,6 +146,36 @@ public static class ActionRoutes
                 // A KEY-ONLY SEQUENCE IS COMPLETE HERE. Falling through to the
                 // 501 below would refuse a payload that has just been performed
                 // in full, purely because no pointer injector is registered.
+                if (!PointerActionRunner.HasPointerSource(body.RootElement))
+                {
+                    return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
+                }
+            }
+
+            // THE WHEEL HALF, the third of the three source types /actions
+            // defines and the second one this route was dropping. Found while
+            // adding a mouse wheel for windows: scroll rather than by the audit,
+            // which is worth noting: the route answered 200 to a scroll sequence
+            // that turned nothing.
+            if (wheel is not null && WheelActionRunner.HasWheelSource(body.RootElement))
+            {
+                PointerRefusal? spun = wheel.Perform(body.RootElement, session.WindowHandle);
+
+                if (spun is not null)
+                {
+                    return Results.Json(
+                        JsonWireResponse.ForFault(WebDriverFault.UnknownError, spun.Message),
+                        statusCode: WebDriverFault.UnknownError.HttpStatus);
+                }
+
+                session.InputPending = true;
+
+                // A WHEEL-ONLY SEQUENCE IS COMPLETE HERE, and the early return
+                // has to come AFTER the scroll rather than before it. Written the
+                // other way round first, which answered 200 to a wheel-only
+                // payload without turning the wheel - the precise "success for
+                // work not done" this route exists to avoid, reintroduced while
+                // fixing it.
                 if (!PointerActionRunner.HasPointerSource(body.RootElement))
                 {
                     return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));

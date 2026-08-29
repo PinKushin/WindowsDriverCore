@@ -333,21 +333,20 @@ Not just the code. Each needs:
 Recorded here at the moment they were found, per the completion rule above. Each
 names what it needs, so "already known" cannot be used to launder work.
 
-### `GET /session/{id}/location`
+### `GET /session/{id}/location` — CLOSED 2026-08-29
 
-In WinAppDriver's documented list and in its own suite (`Location.cs`, which
-asserts a latitude within ±90 and a longitude within ±180). Not served here at
-all.
+Served through `IGeolocation` over WinRT's `Geolocator`. Refuses on a machine
+with no provider, no consent or no fix — which is most of them, including CI's
+Windows Server and the offline guest, and is the same failure the reference has
+there.
 
-Needs `Windows.Devices.Geolocation.Geolocator`, which is a new Platform
-capability and a new contract — and which raises an unauthorised error on a
-machine without location consent, so most of the time the honest answer is a
-refusal. Note that `GetLocation` is one of the nine environmental failures the
-reference driver ALSO has on the guest, for exactly that reason.
+**Inventing a coordinate was never an option**, and a control test asserts the
+refusal path stays a refusal: a route answering zeroes would be
+indistinguishable from a real fix to every client.
 
-**Fabricating a coordinate is not an option.** A plausible latitude is the same
-defect as a 200 for an action that did not happen, and it is worse than a
-refusal because the client cannot tell.
+**With this, all 59 endpoints in WinAppDriver's documented list answer.** Probed
+after the change: three rows still report missing and all three are errors in its
+own table.
 
 ### `/execute` and `/execute_async` — and a CORRECTION
 
@@ -498,3 +497,47 @@ does not redo it:
   is about its internals rather than about the caller's test.
 - A void W3C response spells "nothing happened" as an explicit null `value`,
   where JSON Wire omits the key.
+
+---
+
+## The surface, measured 2026-08-29
+
+Not asserted. Probed with `tools/audit/Probe-Endpoints.ps1`, which proves its own
+control before believing any verdict.
+
+| | |
+|---|---|
+| WinAppDriver's 59 documented endpoints | **all 59 answer** |
+| still reported missing | 3, all errors in its own table |
+
+The three: it writes `GET` for `/element/:id/element` and `/elements`, both of
+which are POST, and truncates `/equals/:other`. Confirmed served under the correct
+verb and path.
+
+### Beyond the reference
+
+Each of these answers here and does not answer there, which was measured rather
+than assumed:
+
+| | WinAppDriver | here |
+|---|---|---|
+| `POST /execute` | 501 | eight `windows:` vendor commands |
+| `POST /execute/sync` | 404 | the same, W3C spelling |
+| `wheel` sources in `/actions` | not served | performed |
+| `key` sources in `/actions` | not served | performed |
+| `DELETE /actions` | not served | releases contacts and modifiers |
+| `GET /timeouts` | not served | reports the implicit wait |
+| `POST /window/minimize` | not served | served |
+| `GET`/`POST /window/rect` | not served | served |
+| every W3C request spelling | not served | served |
+
+### Still not served, and why
+
+- **`/execute_async`** — nothing here is asynchronous. A vendor command is a
+  synchronous act on the desktop, so accepting one would promise a callback that
+  never comes. The reference answers 404 too.
+- **`windows: execPowerShell`** — remote code execution on an unauthenticated
+  port. `DECISIONS.md` #7b, and a test asserts it stays absent.
+- **Alerts, `/log`, `/url`, `/refresh`, `/element/{id}/submit`** — open, listed
+  above with what each needs. The reference serves none of them either (404, or
+  501 for the middle two), so these are *plus more* work rather than gaps.
