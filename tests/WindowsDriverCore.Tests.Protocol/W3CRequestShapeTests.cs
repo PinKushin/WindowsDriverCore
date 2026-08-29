@@ -67,6 +67,7 @@ public sealed class W3CRequestShapeTests : IDisposable
         // reports process 4242, so the substitute agrees.
         _windows.GetOwningProcessId(Arg.Any<nint>()).Returns(4242);
         _windows.Maximize(Arg.Any<nint>()).Returns(true);
+        _windows.Minimize(Arg.Any<nint>()).Returns(true);
         _windows.SetBounds(Arg.Any<nint>(), Arg.Any<WindowBounds>()).Returns(true);
         _windows.GetBounds(Arg.Any<nint>()).Returns(new WindowBounds(10, 20, 300, 400));
 
@@ -504,6 +505,106 @@ public sealed class W3CRequestShapeTests : IDisposable
         JsonDocument.Parse(await created.Content.ReadAsStringAsync())
             .RootElement.GetProperty("value").GetProperty("app").GetString()
             .ShouldBe("Root", "desired is what a client sending both already got");
+    }
+
+    /// <summary>A window can be addressed by its handle, not only as "current".</summary>
+    /// <remarks>
+    /// <para>
+    /// WinAppDriver documents <c>/window/:windowHandle/size</c>,
+    /// <c>/position</c> and <c>/maximize</c>, and this driver served only the
+    /// literal <c>/window/current/...</c> — so a client addressing a window by
+    /// the handle the path exists to carry got "Command not recognized".
+    /// </para>
+    /// <para>
+    /// Measured by probing all 59 endpoints in WinAppDriver's own
+    /// <c>SupportedAPIs.md</c> against a running server: eleven answered
+    /// unknown-command, and this family was six of them. Not a W3C nicety —
+    /// a hole in the compatibility floor, invisible because Selenium 3.8 sends
+    /// <c>current</c>.
+    /// </para>
+    /// </remarks>
+    [TestCase("current", TestName = "WindowGeometry_ByCurrent")]
+    [TestCase("0x2222", TestName = "WindowGeometry_ByHandle")]
+    [TestCase("", TestName = "WindowGeometry_ByNoHandleAtAll")]
+    public async Task WindowGeometry_IsAddressableThreeWays(string handle)
+    {
+        string session = await NewSession();
+
+        string window = handle.Length == 0
+            ? $"/session/{session}/window"
+            : $"/session/{session}/window/{handle}";
+
+        JsonElement size = JsonDocument.Parse(await GetValue($"{window}/size")).RootElement;
+
+        // The recorded shape: height before width. Asserted rather than assumed,
+        // because a refactor that routes through a new handler is exactly where
+        // a serialisation order quietly changes.
+        size.GetProperty("width").GetInt32().ShouldBe(300);
+        size.GetProperty("height").GetInt32().ShouldBe(400);
+
+        JsonElement position = JsonDocument.Parse(await GetValue($"{window}/position")).RootElement;
+
+        position.GetProperty("x").GetInt32().ShouldBe(10);
+        position.GetProperty("y").GetInt32().ShouldBe(20);
+
+        ((int)(await Post($"{window}/maximize", "{}")).StatusCode).ShouldBe(200);
+    }
+
+    /// <summary>A window can be put back after being maximized.</summary>
+    /// <remarks>
+    /// W3C defines <c>POST /window/minimize</c> alongside <c>maximize</c> and
+    /// this driver served only the second, so a client could enlarge a window
+    /// and never restore it. The last of the by-dialect lens's window findings,
+    /// and the one that needed a Platform capability rather than a route alias —
+    /// which is why it stayed OPEN in the ledger for two passes.
+    /// </remarks>
+    [Test]
+    public async Task Minimize_IsServedAndReachesTheWindow()
+    {
+        string session = await NewSession();
+
+        ((int)(await Post($"/session/{session}/window/minimize", "{}")).StatusCode).ShouldBe(200);
+
+        // It reached the window, rather than answering 200 for nothing. A route
+        // that returns success without calling the platform is the exact defect
+        // the /actions key sources had.
+        _windows.Received().Minimize(Handle);
+    }
+
+    /// <summary>A handle the session does not own is refused, not redirected.</summary>
+    /// <remarks>
+    /// THE CONTROL THAT MATTERS. The tempting shortcut is to fall back to the
+    /// session's own window whenever the segment is not a handle it recognises —
+    /// which would resize a window the client never named and report success.
+    /// Nothing in the suite could catch that, because the suite only ever sends
+    /// <c>current</c>.
+    /// </remarks>
+    [Test]
+    public async Task AWindowThisSessionDoesNotOwn_IsRefused()
+    {
+        string session = await NewSession();
+
+        // Exists, but belongs to another process. Scoped to this one handle so
+        // the fixture-wide "everything is ours" default survives for every other
+        // test — this fixture builds its server once and does not rearm.
+        _windows.ClearReceivedCalls();
+        _windows.GetOwningProcessId(0x9999).Returns(5555);
+
+        HttpResponseMessage response = await _client.GetAsync(
+            new Uri($"/session/{session}/window/0x9999/size", UriKind.Relative));
+
+        // The JSON Wire status CODE, not the HTTP one: "no such window" is
+        // status 23 over HTTP 400 in this protocol, and asserting the transport
+        // code would pin the wrong number and read as a validation failure.
+        JsonElement body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+        body.GetProperty("status").GetInt32()
+            .ShouldBe(23, "someone else's window is no such window, not this session's");
+
+        // AND IT DID NOT ANSWER ABOUT THE SESSION'S OWN WINDOW. A fallback that
+        // quietly used the session handle would return 200 with a real size —
+        // measuring a window the client never named.
+        _windows.DidNotReceive().GetBounds(Handle);
     }
 
     private async Task<string> NewSession()

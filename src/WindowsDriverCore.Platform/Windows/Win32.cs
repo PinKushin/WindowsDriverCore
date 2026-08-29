@@ -255,6 +255,15 @@ internal static partial class Win32
     /// <summary>ShowWindow: maximize.</summary>
     internal const int SW_MAXIMIZE = 3;
 
+    /// <summary>ShowWindow: minimize without activating the next window.</summary>
+    /// <remarks>
+    /// <c>SW_MINIMIZE</c> (6) minimizes AND activates whatever is next in the
+    /// Z order, which steals the foreground from a window the client never
+    /// mentioned. <c>SW_SHOWMINNOACTIVE</c> minimizes and leaves activation
+    /// alone, which is what a driver command should do.
+    /// </remarks>
+    internal const int SW_SHOWMINNOACTIVE = 7;
+
     /// <summary>ShowWindow: restore.</summary>
     internal const int SW_RESTORE = 9;
 

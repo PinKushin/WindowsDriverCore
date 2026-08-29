@@ -189,6 +189,23 @@ public sealed class WindowLocator : IWindowLocator
     }
 
     /// <inheritdoc />
+    public bool Minimize(nint handle)
+    {
+        if (!Exists(handle))
+        {
+            return false;
+        }
+
+        // SW_SHOWMINNOACTIVE rather than SW_MINIMIZE: the latter activates the
+        // next window in the Z order, so minimizing the session's window would
+        // hand the foreground to whatever happened to be behind it - possibly
+        // another agent's application on a shared desktop. Same result for the
+        // window the client named, without touching one it did not.
+        Win32.ShowWindow(handle, Win32.SW_SHOWMINNOACTIVE);
+        return true;
+    }
+
+    /// <inheritdoc />
     public bool WaitForInputProcessed(nint handle)
     {
         if (!Exists(handle))

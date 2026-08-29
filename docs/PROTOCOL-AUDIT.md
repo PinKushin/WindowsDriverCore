@@ -110,9 +110,16 @@ A pass is **clean** when its lens finds nothing. The audit is clean when
 **three consecutive passes are clean, one per lens, with no code change between
 them.**
 
-Any finding resets the count. Fix it, then start the three again — because a
-fix is itself a change that can introduce a gap, and the point of the third pass
-is to see the code as it will actually ship.
+Any **new** finding resets the count. Fix it, then start the three again —
+because a fix is itself a change that can introduce a gap, and the point of the
+third pass is to see the code as it will actually ship.
+
+**"New" is load-bearing, and it was missing here until pass 6.** An item already
+in the ledger is a known gap, not a discovery; re-encountering one resets
+nothing. Without that word the rule is unsatisfiable the moment anything needs
+work beyond a route alias, since every later pass re-finds it. See *The
+completion rule, corrected* further down — the correction is worth more than the
+original wording.
 
 Two rules that make the count mean something:
 
@@ -138,7 +145,7 @@ not the list of open items.
 | 2026-08-29 | dialect | `GET /element/active` — W3C changed the VERB, we served POST only | fixed, aliased |
 | 2026-08-29 | dialect | `POST /window/maximize` — W3C dropped the handle from the path | fixed, aliased |
 | 2026-08-29 | dialect | `GET`/`POST /window/rect` not served — W3C replaced size+position and there is NO JWP fallback, so a Selenium 4 client could not read or set geometry at all | fixed |
-| 2026-08-29 | dialect | `POST /window/minimize` not served | **OPEN** — needs a Platform capability, `IWindowLocator` has no minimize |
+| 2026-08-29 | dialect | `POST /window/minimize` not served | fixed, `IWindowLocator.Minimize` + `W3CRequestShapeTests` |
 | 2026-08-29 | dialect | `POST /window/fullscreen` not served | **WILL NOT FIX as specified** — see below |
 | 2026-08-29 | route (pass 4) | `GET /session/{id}/timeouts` not served — W3C reads them back and this driver could only be written to | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route (pass 4) | `POST /session/{id}/timeouts/implicit_wait` not served — the legacy JWP spelling, which Selenium 3.8 does not send | fixed, `W3CRequestShapeTests` |
@@ -146,6 +153,11 @@ not the list of open items.
 | 2026-08-29 | parameter (pass 5) | **`key` input sources in `/actions` were SKIPPED and the request answered 200.** Every Selenium 4 keystroke goes through `ActionChains`, so that client could not type at all | fixed, `KeyActionRunner` + `ActionsKeySourceTests` |
 | 2026-08-29 | parameter (pass 5) | `/touch/down`, `/touch/move`, `/touch/up` never set `InputPending` — the only input path that did not, so a read after a hand-built gesture outran the application | fixed, `DispatchedInputDrainsBeforeAReadTests` |
 | 2026-08-29 | parameter (pass 5) | `requiredCapabilities` never read — the other half of the JSON Wire session body, so a client stating its app as required was told its capabilities were bad | fixed, `W3CRequestShapeTests` |
+| 2026-08-29 | dialect (pass 6) | **`/window/{handle}/size`, `/position` and `/maximize` served only the literal `current`.** A client addressing a window by the handle the path exists to carry got unknown-command — six of WinAppDriver's own 59 documented endpoints | fixed, `AddressedWindow` + `W3CRequestShapeTests` |
+| 2026-08-29 | dialect (pass 6) | The handle-less `/window/size` and `/window/position`, also in WinAppDriver's documented list, not served | fixed, same handler |
+| 2026-08-29 | dialect (pass 6) | `POST /window/minimize` — carried OPEN since pass 3, now closed | fixed, `SW_SHOWMINNOACTIVE` so it does not steal the foreground |
+| 2026-08-29 | dialect (pass 6) | `GET /session/{id}/location` — geolocation, in WinAppDriver's documented list and its own suite (`Location.cs`) | **OPEN** — see below |
+| 2026-08-29 | dialect (pass 6) | `/execute`, `/execute_async`, alert handling, `/log`, `/log/types`, `/url`, `/refresh`, `/element/{id}/submit` | **OPEN, out of scope for this audit** — see below |
 | 2026-08-29 | route | `DELETE /actions` (Release Actions) not served at all — a W3C client releasing input state got the unknown-command fallback | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route | `GET /window/handles` (W3C) not served — only `/window_handles` | fixed, aliased onto one handler |
 | 2026-08-29 | route | `GET /window` (W3C current handle) not served — only `/window_handle`; POST and DELETE on that path existed, so the gap was one verb | fixed, aliased |
@@ -192,9 +204,50 @@ it is asking for a keystroke, not a window-manager operation.
 | 2026-08-29 | dialect | every command where JWP and W3C diverge | **6 findings** — count reset |
 | 2026-08-29 | route (pass 4) | every mapped endpoint against the W3C endpoint list, re-run | **3 findings** — count reset |
 | 2026-08-29 | parameter (pass 5) | every key the Routing layer reads, against each endpoint's defined body | **3 findings** — count reset |
+| 2026-08-29 | dialect (pass 6) | all 59 endpoints in WinAppDriver's `SupportedAPIs.md`, probed against a running server, plus every W3C-only spelling | **4 fixed, 2 recorded open** — count reset |
 
-**Still zero of three.** Five passes, every one productive — 3, 3, 6, 3 and 3.
+**Still zero of three.** Six passes, every one productive — 3, 3, 6, 3, 3 and 6.
 The count cannot start until a lens comes back empty.
+
+### The completion rule, corrected — it was unsatisfiable as written
+
+"Any finding resets the count" plus a backlog of items needing work beyond a
+route alias means the count can **never** start: every pass re-finds the same
+open items and resets on them. That is a rule that cannot be satisfied, which
+makes it a rule nobody can act on.
+
+**A pass is clean when it finds nothing NEW.** An item already in the table
+above is a *known* gap, not a discovery, and re-encountering one does not reset
+anything. What resets the count is a gap this document did not already name.
+
+Two consequences worth stating, because the loophole is obvious:
+
+- **An open item must be written down at the moment it is found**, with what it
+  needs, or "already known" becomes a way to launder anything inconvenient.
+- **Clean means "no new gaps", not "no gaps".** A clean audit with four open
+  items is an honest state; a clean audit reached by not looking is not.
+
+### Pass 6 changed the instrument, and that is why it found six
+
+Passes 1–5 read source. Pass 6 **probed a running server**: all 59 endpoints in
+WinAppDriver's own `SupportedAPIs.md`, plus every W3C-only spelling, each
+classified by whether the response was the unknown-command fallback — with a
+deliberate `/definitely-not-a-route` control proving the probe could detect an
+absence at all.
+
+That directly answers pass 4's instrument defect, where a literal-path grep
+invented thirteen false positives. It also produced something no source read
+would have: **six of the missing endpoints were in the reference's own
+documented list**, not in the W3C spec. The audit had been looking outward at
+W3C and had not checked the API this project exists to implement.
+
+Three of the eleven "missing" were errors in WinAppDriver's own table — it
+writes `GET` for `/element/:id/element`, which is a POST, and truncates
+`/equals/:other`. Confirmed served under the correct verb and path rather than
+assumed, because a doc typo and a real gap look identical from a probe.
+
+**The probe belongs in the repo, not in a shell history.** Until it is,
+`docs/PROTOCOL-AUDIT.md` is the only record that it was run and what it said.
 
 **The by-parameter lens keeps out-earning the by-route one, and pass 5 says why
 in one line.** `POST /actions` is *served*. It validates a dozen fields against
@@ -248,3 +301,80 @@ Not just the code. Each needs:
 3. **A mutation check.** Disable the new spelling and watch the right test go
    red. Mutate a VALUE or a key string, never a use — removing a use orphans a
    constant and the BUILD fails, which looks exactly like an uncaught mutant.
+
+---
+
+## Open items, and why each is open
+
+Recorded here at the moment they were found, per the completion rule above. Each
+names what it needs, so "already known" cannot be used to launder work.
+
+### `GET /session/{id}/location`
+
+In WinAppDriver's documented list and in its own suite (`Location.cs`, which
+asserts a latitude within ±90 and a longitude within ±180). Not served here at
+all.
+
+Needs `Windows.Devices.Geolocation.Geolocator`, which is a new Platform
+capability and a new contract — and which raises an unauthorised error on a
+machine without location consent, so most of the time the honest answer is a
+refusal. Note that `GetLocation` is one of the nine environmental failures the
+reference driver ALSO has on the guest, for exactly that reason.
+
+**Fabricating a coordinate is not an option.** A plausible latitude is the same
+defect as a 200 for an action that did not happen, and it is worse than a
+refusal because the client cannot tell.
+
+### `/execute` and `/execute_async`
+
+WinAppDriver's vendor commands ride on `/execute` — `windows: startApp`,
+`windows: click`, `windows: keys`, `windows: hover`, `windows: scroll` and the
+rest. That is a real API surface of the thing this project reimplements, and it
+is entirely absent here.
+
+Large enough to be its own piece of work rather than an audit fix, and it wants
+a decision first: which vendor commands to serve, and whether new ones belong
+under `windows:` or a name of this driver's own. The project rule already points
+at the answer — *"where a capability has no expression in the protocol, add a
+vendor extension rather than silently choosing for the caller"* — but the
+inventory is the work.
+
+### Alert handling
+
+`/alert_text`, `/accept_alert`, `/dismiss_alert` (JSON Wire) and `/alert/text`,
+`/alert/accept`, `/alert/dismiss` (W3C). None served, in either dialect.
+
+Windows modal dialogs are real and this driver already finds them — the Notepad
+discard prompt is a WinUI `ContentDialog` in the app's own UIA subtree with no
+HWND of its own, and `SecondaryButton` is matched by automation id today. So the
+capability exists; what is missing is the routes and a definition of "the
+current alert" on a desktop, where there is no single browser-modal concept.
+
+### `/log` and `/log/types`
+
+WinAppDriver serves both. This driver has a richer transcript than the reference
+(`IInteractionLog`, the EventSource channel) and no way for a client to ask for
+any of it.
+
+Worth doing and cheap, but it needs the privacy rule applied deliberately:
+locators are logged, `SetValue` and `SendKeys` arguments never are, and a log
+endpoint is exactly where that boundary would be crossed by accident.
+
+### `/url`, `/refresh`, `/element/{id}/submit`
+
+Browser-shaped commands with no obvious desktop meaning. `back` and `forward`
+ARE served, which makes the asymmetry deliberate-looking when it is not — they
+exist because the suite tests them.
+
+Needs a decision rather than an implementation: either serve them as the
+keystrokes they would be (F5, Enter) or refuse them explicitly, the way
+`/window/fullscreen` is refused. **Serving them as no-ops is the one option
+ruled out.**
+
+### Not gaps, recorded so they are not re-found
+
+`/frame`, `/frame/parent`, `/element/{id}/shadow`, `/element/{id}/css/{name}`,
+`/print` and `/window/new`. These are DOM and browser concepts with no UI
+Automation counterpart — there is no document to switch into, no shadow root, no
+stylesheet. Refusing them is correct, and the unknown-command fallback already
+says so.
