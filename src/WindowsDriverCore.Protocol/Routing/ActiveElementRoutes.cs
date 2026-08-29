@@ -41,7 +41,47 @@ public static class ActiveElementRoutes
     {
         ArgumentNullException.ThrowIfNull(app);
 
+        // W3C CHANGED THE VERB. JSON Wire asks for the focused element with a
+        // POST; W3C uses a GET, and a Selenium 4 client therefore got the
+        // unknown-command fallback for a command this driver fully implements.
+        //
+        // The same delegate under both verbs rather than a second copy - two
+        // implementations of "which element has focus" is how WinAppDriver's own
+        // XPath singular and plural drifted apart into issue #1079.
         app.MapPost("/session/{sessionId}/element/active",
+            static (HttpContext context,
+                    IElementInspector inspector,
+                    IElementRegistry registry,
+                    IWindowLocator windows) =>
+            {
+                DriverSession session = context.GetSession();
+
+                ElementRead<string> focused = inspector.FocusedElementId(session.WindowHandle);
+
+                if (focused.Outcome != ElementReadOutcome.Read)
+                {
+                    // There is no element id to attribute this to - the failure
+                    // is the window, not an element the client named - so the
+                    // id passed to the fault is empty rather than invented.
+                    return ElementFault.For(
+                        focused.Outcome, session, string.Empty, registry, windows);
+                }
+
+                string elementId = focused.Value ?? string.Empty;
+
+                // Recorded only when there IS one. Recording an empty id would
+                // put a value in the issued-id set that no client can ever use,
+                // and would make a later empty answer look like a stale element.
+                if (elementId.Length > 0)
+                {
+                    registry.Record(session.Id, elementId);
+                }
+
+                return Results.Json(
+                    JsonWireResponse.ForSession(session.Id, new ElementReference(elementId)));
+            }).RequiresSession();
+
+        app.MapGet("/session/{sessionId}/element/active",
             static (HttpContext context,
                     IElementInspector inspector,
                     IElementRegistry registry,

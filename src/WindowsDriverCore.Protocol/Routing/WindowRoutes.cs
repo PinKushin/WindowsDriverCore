@@ -27,6 +27,22 @@ public sealed record WindowSize(
     [property: JsonPropertyName("height")] int Height,
     [property: JsonPropertyName("width")] int Width);
 
+/// <summary>A window's whole rectangle, which is how W3C reports it.</summary>
+/// <param name="X">Left edge in screen pixels.</param>
+/// <param name="Y">Top edge in screen pixels.</param>
+/// <param name="Width">Width in pixels.</param>
+/// <param name="Height">Height in pixels.</param>
+/// <remarks>
+/// <b>W3C replaced size and position with one rectangle</b>, and there is no
+/// JSON Wire route a client can fall back to - so a Selenium 4 client without
+/// this cannot read or set window geometry at all.
+///
+/// Every field is nullable because W3C makes each optional on the way IN: a
+/// null means "leave this one alone", not "set it to zero". The same record
+/// serves the response, where all four are always present.
+/// </remarks>
+public sealed record WindowRect(int? X, int? Y, int? Width, int? Height);
+
 /// <summary>A window's position, as the protocol reports it.</summary>
 /// <param name="X">Left edge in screen pixels.</param>
 /// <param name="Y">Top edge in screen pixels.</param>
@@ -192,12 +208,56 @@ public static class WindowRoutes
                 : WindowClosed();
         }).RequiresSession();
 
-        app.MapPost("/session/{sessionId}/window/current/maximize", (HttpContext context, IWindowLocator windows) =>
+        // W3C DROPPED THE HANDLE FROM THE PATH. JSON Wire addresses a window as
+        // /window/{handle}/maximize with "current" as the alias this driver
+        // uses; W3C is simply /window/maximize. Same handler, both spellings.
+        app.MapPost("/session/{sessionId}/window/current/maximize", MaximizeWindow).RequiresSession();
+        app.MapPost("/session/{sessionId}/window/maximize", MaximizeWindow).RequiresSession();
+
+        // W3C REPLACED SIZE AND POSITION WITH ONE RECTANGLE. A client that
+        // wants to know where a window is, or to put it somewhere, has no
+        // JSON Wire route to fall back to - so without these a Selenium 4
+        // client cannot read or set window geometry at all.
+        app.MapGet("/session/{sessionId}/window/rect", (HttpContext context, IWindowLocator windows) =>
+        {
+            DriverSession session = context.GetSession();
+            WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
+
+            return bounds is null
+                ? WindowClosed()
+                : Results.Json(JsonWireResponse.ForSession(
+                    session.Id,
+                    new WindowRect(bounds.X, bounds.Y, bounds.Width, bounds.Height)));
+        }).RequiresSession();
+
+        app.MapPost("/session/{sessionId}/window/rect",
+            async (HttpContext context, IWindowLocator windows) =>
         {
             DriverSession session = context.GetSession();
 
-            return windows.Maximize(session.WindowHandle)
-                ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+            WindowRect? wanted = await context.Request
+                .ReadFromJsonAsync<WindowRect>(context.RequestAborted)
+                .ConfigureAwait(false);
+
+            WindowBounds? current = windows.GetBounds(session.WindowHandle);
+            if (current is null)
+            {
+                return WindowClosed();
+            }
+
+            // EVERY FIELD IS OPTIONAL IN W3C, and a null means "leave it alone"
+            // rather than "move it to zero". A client nudging only the position
+            // must not have its window resized to nothing.
+            WindowBounds target = new(
+                wanted?.X ?? current.X,
+                wanted?.Y ?? current.Y,
+                wanted?.Width ?? current.Width,
+                wanted?.Height ?? current.Height);
+
+            return windows.SetBounds(session.WindowHandle, target)
+                ? Results.Json(JsonWireResponse.ForSession(
+                    session.Id,
+                    new WindowRect(target.X, target.Y, target.Width, target.Height)))
                 : WindowClosed();
         }).RequiresSession();
 
@@ -386,6 +446,23 @@ public static class WindowRoutes
             JsonWireResponse.ForFault(
                 WebDriverFault.InvalidArgument, $"Missing Command Parameter: {names}"),
             statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+
+    /// <summary>Maximizes the session window.</summary>
+    /// <param name="context">The request, carrying the session.</param>
+    /// <param name="windows">Performs the maximize.</param>
+    /// <returns>Void, or the closed-window fault.</returns>
+    /// <remarks>
+    /// Served at both <c>/window/current/maximize</c> (JSON Wire) and
+    /// <c>/window/maximize</c> (W3C).
+    /// </remarks>
+    private static IResult MaximizeWindow(HttpContext context, IWindowLocator windows)
+    {
+        DriverSession session = context.GetSession();
+
+        return windows.Maximize(session.WindowHandle)
+            ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+            : WindowClosed();
+    }
 
     /// <summary>The handle of the window this session is driving.</summary>
     /// <param name="context">The request, carrying the session.</param>

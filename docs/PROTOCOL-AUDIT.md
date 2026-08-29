@@ -133,10 +133,49 @@ not the list of open items.
 | 2026-08-29 | dialect | `POST /window` read only `name`; a W3C client switching windows got *"Missing Command Parameter: name"* | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | dialect | `element/{id}/value` read only the JWP array; a Selenium 4 client typed NOTHING and got a 200 | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | parameter | `/touch/flick` ignored `speed`; the anonymous `xspeed`/`yspeed` form was read as absent offsets and went nowhere | fixed |
-| earlier | dialect | `/timeouts` and `/rect` request shapes | fixed |
+| earlier | dialect | `/timeouts` and element `/rect` request shapes | fixed |
+| 2026-08-29 | dialect | `GET /element/{id}/property/{name}` not served — W3C's spelling of `attribute` | fixed, aliased |
+| 2026-08-29 | dialect | `GET /element/active` — W3C changed the VERB, we served POST only | fixed, aliased |
+| 2026-08-29 | dialect | `POST /window/maximize` — W3C dropped the handle from the path | fixed, aliased |
+| 2026-08-29 | dialect | `GET`/`POST /window/rect` not served — W3C replaced size+position and there is NO JWP fallback, so a Selenium 4 client could not read or set geometry at all | fixed |
+| 2026-08-29 | dialect | `POST /window/minimize` not served | **OPEN** — needs a Platform capability, `IWindowLocator` has no minimize |
+| 2026-08-29 | dialect | `POST /window/fullscreen` not served | **WILL NOT FIX as specified** — see below |
 | 2026-08-29 | route | `DELETE /actions` (Release Actions) not served at all — a W3C client releasing input state got the unknown-command fallback | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route | `GET /window/handles` (W3C) not served — only `/window_handles` | fixed, aliased onto one handler |
 | 2026-08-29 | route | `GET /window` (W3C current handle) not served — only `/window_handle`; POST and DELETE on that path existed, so the gap was one verb | fixed, aliased |
+
+### Fullscreen is not maximize, and mapping it there would be a lie
+
+W3C's Fullscreen Window is *"the window manager-specific full screen
+operation"*. On Windows the window manager's operation **is maximize** — there
+is no OS-level way to make an arbitrary window fullscreen. Real fullscreen is
+app-specific: F11 in Explorer and browsers, custom elsewhere, absent in most.
+
+The owner's read, and it is the right one:
+
+> "maximize is full screen basically isnt it? only thing fuller screen that
+> maximize is f11 or something, which wouldnt we just implement as the keypress,
+> because not every app even uses full screen outside the stock one."
+
+So there are three options and two of them are lies:
+
+- **Map it to maximize.** Reports success for something else. This is the exact
+  defect the driver exists to avoid — the same reason `ActionRoutes` refuses a
+  valid payload it cannot perform rather than accepting it, and the same reason
+  page-load and script timeouts answer 501 instead of being quietly stored.
+- **Send F11 blindly.** A guess about the application, delivered to whatever
+  holds the foreground, reported as success whether or not anything happened.
+- **Refuse it.** Honest, and consistent with everything else here.
+
+If fullscreen is ever wanted it belongs as a **vendor extension** the caller
+opts into — `windows: fullscreen` sending F11 — which is the project's stated
+rule: *"Where a capability has no expression in the protocol, add a vendor
+extension rather than silently choosing for the caller."* The caller then knows
+it is asking for a keystroke, not a window-manager operation.
+
+`minimize` is different and is genuinely open: it is a real OS operation
+(`ShowWindow(SW_MINIMIZE)`) and can be implemented honestly. It needs a new
+`IWindowLocator` member, which is Platform work rather than a route alias.
 
 ### Passes
 
@@ -144,10 +183,12 @@ not the list of open items.
 |---|---|---|---|
 | 2026-08-29 | parameter | every request record and every `TryGetProperty` in Routing | **3 findings** — count reset |
 | 2026-08-29 | route | every mapped endpoint against the W3C endpoint list | **3 findings** — count reset |
+| 2026-08-29 | dialect | every command where JWP and W3C diverge | **6 findings** — count reset |
 
-**Still zero of three.** Two lenses have now run and each found three things;
-the by-dialect lens has not been run as a pass of its own, and the count cannot
-start until a lens comes back empty.
+**Still zero of three.** All three lenses have now run once and every one found
+something — 3, 3 and 6. The count cannot start until a lens comes back empty,
+and on this evidence the next pass of any lens is more likely to find more than
+to be the first clean one.
 
 ---
 
