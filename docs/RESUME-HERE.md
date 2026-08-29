@@ -1,26 +1,51 @@
-# Resume here — paused 2026-08-23
+# Resume here — updated 2026-08-29
 
 The single entry point after a break. Read this, then `docs/LIMITATIONS.md` for
 the detail behind any line of it.
 
 ---
 
+## 0. What changed on 2026-08-29, and what it means
+
+**Last measured: 268/290, backlog 13** (`b207b92`). Several commits since are
+unmeasured; a run was in flight when this was written.
+
+**Three protocol gaps found by audit, none of which the suite can see.**
+`/touch/flick` ignored the spec's `speed`; `element/{id}/value` read only the
+JSON Wire array so a Selenium 4 client typed nothing and got a 200;
+`POST /window` read only `name` so a W3C client could not switch windows. See
+`docs/PROTOCOL-AUDIT.md` — the audit is a standing sweep now, and by its own
+standard it stands at **zero of three clean passes**.
+
+**The scroll family is understood.** A `LoopingSelector` flings on VELOCITY, and
+`/touch/scroll` used a fixed 300 ms whatever the distance — 55 px over 300 ms is
+183 px/s, below the fling threshold, measured 0/3 against the reference's 3/3.
+Now paced by speed. The two `/actions` scroll tests carry a client-stated
+duration and are NOT fixed by this.
+
+**Three mechanisms for the scroll family died before that one:** the overrun
+theory (refuted — frames fit their slot at 1.0x), dirty start state (refuted —
+two runs of identical code after full runs still differed by three tests), and
+the gesture-threshold theory (refuted — the gesture is deterministic in
+isolation, 6/6). The fourth was measured rather than reasoned.
+
+---
+
 ## 1. The first thing to do, before writing any code
 
-**Six commits are unmeasured.** The last full guest run was `bfa5638` at
-**265/290**. Everything after it was built and unit-tested but never scored,
-because the runs were stopped mid-flight:
+**Commits are unmeasured.** The last full guest run was `b207b92` at
+**268/290**. Since then, and never scored:
 
 ```
-fb8578c  desktop title read from UIA        expect: GetTitle_Desktop,
-e79607b                                             CreateSession_Desktop
-b653227  a mouse drag walks its path        expect: MouseDownMoveUp
-4527b0d
-66692f5  Compare-Runs.ps1                   tooling, no behaviour
-83a846e  reaction floor + gesture           expect: possibly MouseClick,
-         InputPending                               ClickElement,
-                                                    GetElementDisplayedState
+758f9ec  flick speed + W3C request shapes   expect: nothing in the suite -
+                                            it is a Selenium 3 client and
+                                            cannot send these
+834cd17  scroll paced by SPEED              expect: TouchScrollOnElement_Vertical
 ```
+
+Earlier commits now confirmed by the `b207b92` run: the desktop-title fix landed
+(`CreateSession_Desktop`, `GetTitle_Desktop` both recovered), and the mouse-drag
+path did NOT fix `MouseDownMoveUp`, which is still failing and still unexplained.
 
 So the first action is one full run and one comparison:
 
@@ -45,18 +70,22 @@ swamp a two-test gain.
 | | score | commit |
 |---|---|---|
 | WinAppDriver 1.2.1 (the reference) | **281/290** | `044b71c8` |
-| this driver, last measured | **265/290** | `bfa5638` |
-| this driver, best measured | **267/290** | `352357a` |
-| **backlog** | **16 named tests** | |
+| this driver, last measured | **268/290** | `b207b92` |
+| this driver, best measured | **269/290** | `8dfd26f` |
+| **backlog** | **13 named tests** | |
 
-`265 + 16 = 281` closes exactly, which is the check that two runs are
+`268 + 13 = 281` closes exactly, which is the check that two runs are
 comparable. `Compare-Runs.ps1` prints it and says so when it does not close.
 
 Conditions for every number above: Windows 10 19045 guest, Alarms & Clock
 `10.1906.2182.0`, offline, static 4 GB, cold, **no store reset, no warm step**.
 A score quoted without those is not comparable to these.
 
-### The 16, and what is known about each
+### The 13, and what is known about each
+
+Three entries below are now resolved and kept for the record:
+`CreateSession_Desktop` and `GetTitle_Desktop` PASSED at `b207b92`, and
+`TouchScrollOnElement_Vertical` has a measured cause and a fix awaiting a run.
 
 | test | what is known |
 |---|---|
@@ -67,13 +96,13 @@ A score quoted without those is not comparable to these.
 | `MouseDownMoveUp` | **Cause found and fixed** in `4527b0d`, unmeasured. `MoveTo` sent one absolute jump; a drag needs a path. |
 | `TouchDoubleTap` | Same family as the clicks. Passed once in an isolated filtered run after the PRIMARY flag; not confirmed in a full run. |
 | `TouchLongTap` | **Never passed in any of 9 runs.** See §5 — this is the interesting one. |
-| `Pen_Scroll_Vertical` | Intermittent. Fails 2 of 9. |
-| `Touch_Scroll_Vertical` | Intermittent. Fails 1 of 9. |
-| `TouchScrollOnElement_Vertical` | Intermittent. Fails **6 of 9** — the worst of the three. |
+| `Pen_Scroll_Vertical` | `/actions`, 200 px over a CLIENT-stated 500 ms = 400 px/s, near the fling boundary. Not fixed by the speed change — the duration is the client's. |
+| `Touch_Scroll_Vertical` | Same. The three scroll tests are ANTI-CORRELATED: when one passes the others fail, because they share one session and one selector and nothing resets its scroll position. |
+| `TouchScrollOnElement_Vertical` | **Cause found and fixed** in `834cd17`, unmeasured. `/touch/scroll` ran at 183 px/s, below the fling threshold; measured 0/3 against the reference's 3/3. |
 | `NavigateBack_ModernApp` | Fails 7 of 9. Cause understood, fix did not work. See §6. |
 | `NavigateBack_SystemApp` | Not investigated. File Explorer back-navigation; title stayed "Temp" instead of "File Explorer". |
-| `CreateSession_Desktop` | **Cause found and fixed** in `e79607b`, unmeasured. |
-| `GetTitle_Desktop` | Same fix. |
+| ~~`CreateSession_Desktop`~~ | **PASSES** as of `b207b92`. The desktop has no Win32 caption; its title comes from UIA. |
+| ~~`GetTitle_Desktop`~~ | Same fix, same run. |
 | `FindNestedElement_ByRuntimeId` | Not fixed. See §7. |
 | `MiscellaneousSessionError_StaleSessionId` | Not fixed. See §8. |
 
