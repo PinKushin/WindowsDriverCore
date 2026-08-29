@@ -202,7 +202,7 @@ public sealed class UiaElementInteractor : IElementInteractor
             // reading a side effect this method has no way to name.
             if (Has(element, UiaPropertyIds.IsValuePatternAvailable))
             {
-                SettleValue(element);
+                SettleValue(element, window);
             }
 
             return ElementAction.Performed(path);
@@ -242,7 +242,12 @@ public sealed class UiaElementInteractor : IElementInteractor
     /// budget in this codebase makes.
     /// </para>
     /// </remarks>
-    private static void SettleValue(IUIAutomationElement element)
+    /// <param name="window">
+    /// The window whose input queue is drained to confirm the first agreement.
+    /// Needed because the drain is per-window, and the element alone does not
+    /// name one.
+    /// </param>
+    private void SettleValue(IUIAutomationElement element, nint window)
     {
         string? Read()
         {
@@ -261,7 +266,14 @@ public sealed class UiaElementInteractor : IElementInteractor
             }
         }
 
-        WaitForValueToSettle(Read, SettleBudget);
+        // Null when no window locator was supplied. The loop then falls back to
+        // agreement alone, which is what it did before this — worse, but not
+        // broken, and better than refusing to settle at all.
+        Action? drain = _windows is null
+            ? null
+            : () => _windows.WaitForInputProcessed(window);
+
+        WaitForValueToSettle(Read, SettleBudget, drain);
     }
 
     /// <summary>
@@ -287,6 +299,12 @@ public sealed class UiaElementInteractor : IElementInteractor
     /// a scripted sequence and no COM interop at all.
     /// </param>
     /// <param name="budget">How long to keep polling before giving up.</param>
+    /// <param name="drain">
+    /// Blocks until the application has consumed the input already dispatched to
+    /// it, or null when no window locator is available. Injected for the same
+    /// reason as <paramref name="read"/>: the ordering decision is the thing
+    /// under test, and it should be testable without Win32.
+    /// </param>
     /// <remarks>
     /// <para>
     /// <b>Requiring an observed CHANGE before accepting stability is the whole
@@ -305,8 +323,39 @@ public sealed class UiaElementInteractor : IElementInteractor
     /// That is a known, accepted cost of a condition-based wait: it is
     /// bounded, and it is the trade every other budget in this codebase makes.
     /// </para>
+    /// <para>
+    /// <b>AND AGREEMENT ALONE IS NOT ENOUGH EITHER, which CI found and this
+    /// desktop never did.</b> When the application is consuming a STREAM of
+    /// keystrokes — ten backspaces, say — the value moves on nearly every poll,
+    /// so the "changed" half is satisfied at once. Any two polls that then land
+    /// between two keystrokes read the same value and end the wait with input
+    /// still queued. <c>DeletingByBackspace_ReadsAsEmpty_ImmediatelyAfter</c>
+    /// failed exactly that way on Windows Server, three runs in five, leaving
+    /// the FRONT of the string behind.
+    /// </para>
+    /// <para>
+    /// A faster poll relative to the application's message loop makes it MORE
+    /// likely, which is why the slower machine is the one that failed.
+    /// </para>
+    /// <para>
+    /// <b>The answer is not more agreeing reads.</b> Three or five makes the
+    /// race rarer and leaves it a race, and an intermittent failure is a defect
+    /// in synchronisation rather than noise. Instead, the first agreement is
+    /// treated as a HYPOTHESIS: drain the application's input queue, and only
+    /// accept the value if it still agrees afterwards. If the drain releases
+    /// more keystrokes the value moves again and the loop carries on.
+    /// </para>
+    /// <para>
+    /// The drain is only meaningful HERE, after a change has been observed. Right
+    /// after <c>SendInput</c> the keys are still in the system's raw input queue
+    /// and the process genuinely is idle — measured, <c>WaitForInputIdle</c>
+    /// answered "idle" in under a millisecond 80 times out of 101. Once the value
+    /// has moved, the input has reached the thread and the same primitive becomes
+    /// a real question.
+    /// </para>
     /// </remarks>
-    internal static void WaitForValueToSettle(Func<string?> read, TimeSpan budget)
+    internal static void WaitForValueToSettle(
+        Func<string?> read, TimeSpan budget, Action? drain = null)
     {
         string? baseline = read();
         if (ReferenceEquals(baseline, DeadElement))
@@ -316,6 +365,7 @@ public sealed class UiaElementInteractor : IElementInteractor
 
         string? previous = baseline;
         bool changed = false;
+        bool confirmed = false;
 
         long deadline = Stopwatch.GetTimestamp() + (long)(budget.TotalSeconds * Stopwatch.Frequency);
 
@@ -333,7 +383,22 @@ public sealed class UiaElementInteractor : IElementInteractor
             }
             else if (string.Equals(current, previous, StringComparison.Ordinal))
             {
-                return;
+                if (drain is null || confirmed)
+                {
+                    return;
+                }
+
+                // ONCE, and only after agreement. Draining on every poll would
+                // charge a slow application's whole idle wait per iteration; and
+                // draining before anything has changed asks the question at the
+                // exact moment it is known to answer wrongly.
+                //
+                // Not reset when the value moves again: the drain has already
+                // returned once, so everything dispatched before this call has
+                // been consumed. A later change is the provider catching up, not
+                // more queued input.
+                confirmed = true;
+                drain();
             }
 
             previous = current;
