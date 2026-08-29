@@ -4003,3 +4003,43 @@ did exactly that.
 The true result of that run was **265**, down from 267: `Pen_LongClick`
 recovered and the three scroll tests flipped back, all within their measured
 variance.
+
+
+### REFUTED: that a batched double click is too fast to register
+
+`MouseDoubleClick` fails on the guest at
+`Assert.IsFalse(maximizeButton.Text.Contains("Maximize"))` — it double-clicks
+the title bar and the window does not maximize.
+
+`DoubleClick` sends all four events in ONE `SendInput` batch — down, up, down,
+up, same call, same tick count, zero gap. Plausible that Windows needs a real
+interval between the two clicks.
+
+**Measured on the host**, `tools/probe-is-a-double-click-too-fast.ps1`, asserting
+the Maximize button's label rather than any HTTP status:
+
+```
+  case                             before               after                maximized?
+  doubleclick (one batch)          Maximize Calculator  Restore Calculator   YES
+  two separate /click requests     Maximize Calculator  Restore Calculator   YES
+  a single click (control)         Maximize Calculator  Maximize Calculator  no
+```
+
+**Refuted.** The batch maximizes the window. The control earns its place: a
+single click does NOT, so the probe can distinguish a double click from any
+click at all — without it, "YES" would only prove that something changed the
+window, and the restore step between rows is itself a click on that same button.
+
+Note also the A/B: two separate `/click` requests also register as a double
+click, so the HTTP round trip between them is well inside the double-click time.
+
+**It is also not a read race.** That test sleeps a full second before asserting,
+unlike `MouseClick` and `ClickElement`, so it does not belong to the
+we-are-faster family despite the duration gap (reference 4.26 s, ours 1.03 s).
+
+**What is left**, and it needs guest evidence rather than another host probe:
+where the click lands. The guest transcript shows `moveto -> (337,171) of 54x16`
+against the `AppName` element — a 54x16 text label. Whether that point is inside
+the ApplicationFrameWindow's draggable caption region on Windows 10 is the open
+question, and the host cannot answer it because Calculator there is a WinUI app
+with a different title bar entirely.
