@@ -31,10 +31,15 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <!-- The integration suite is the only coverage this project has, and it
-         needs to reach IsPackagedApplication, which is internal because nothing
-         outside the launcher should branch on it. -->
+    <!-- The integration suite reaches IsPackagedApplication, which is internal
+         because nothing outside the launcher should branch on it. -->
     <InternalsVisibleTo Include="WindowsDriverCore.Tests.Integration" />
+
+    <!-- Not everything in here needs a desktop. SyntheticPointer.Span turns a
+         centre and a size into a contact box and is pure arithmetic, so it
+         belongs in the unit suite - which also means it runs on CI, where there
+         is no desktop and the integration coverage skips. -->
+    <InternalsVisibleTo Include="WindowsDriverCore.Tests.Unit" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Drawing.Common" />

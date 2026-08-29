@@ -117,12 +117,17 @@ internal sealed class WinRtTouchInjector
                 // A contact with no area is rejected by some targets, so the
                 // frame carries a small square rather than a bare pixel - the
                 // same reason the Win32 path sets rcContact.
+                // THE CALLER'S AREA, exactly as the Win32 path now uses. Fixed
+                // at four pixels here too until the by-parameter audit found
+                // W3C's width and height being validated and dropped - and this
+                // is the injector that actually runs for touch, so leaving it
+                // behind would have fixed the gap only on the fallback.
                 Contact = new InjectedInputRectangle
                 {
-                    Left = contact.X - 2,
-                    Top = contact.Y - 2,
-                    Right = contact.X + 2,
-                    Bottom = contact.Y + 2,
+                    Left = SyntheticPointer.Span(contact.X, contact.Width).Low,
+                    Top = SyntheticPointer.Span(contact.Y, contact.Height).Low,
+                    Right = SyntheticPointer.Span(contact.X, contact.Width).High,
+                    Bottom = SyntheticPointer.Span(contact.Y, contact.Height).High,
                 },
             });
         }

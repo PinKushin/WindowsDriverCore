@@ -1179,7 +1179,21 @@ public sealed class PointerActionRunner
             Number(step, "pressure", 0.5),
             (int)Number(step, "tiltX", 0),
             (int)Number(step, "tiltY", 0),
-            ButtonOf(kind, step));
+            ButtonOf(kind, step),
+
+            // VALIDATED SINCE THE ROUTE WAS WRITTEN AND DISCARDED EVER SINCE.
+            // ActionRoutes checks width and height against the compatibility
+            // suite's own messages - two tests pin them character for character -
+            // and twist against 0..359 including rejecting a float, because the
+            // message says "integer". None of the three reached the contact, so a
+            // client asking for a 40 px fingertip got the fixed 4 px box and a
+            // rotated pen arrived unrotated. Answered 200 both times.
+            //
+            // The same defect as /touch/flick ignoring `speed`, and harder to
+            // see: the validation is what makes the route look finished.
+            (int)Number(step, "width", SyntheticContact.DefaultContactSize),
+            (int)Number(step, "height", SyntheticContact.DefaultContactSize),
+            (int)Number(step, "twist", 0));
 
     /// <summary>Which part of the pen a step is pressing with.</summary>
     /// <remarks>
