@@ -8,6 +8,19 @@ using WindowsDriverCore.Protocol.Sessions;
 
 namespace WindowsDriverCore.Protocol.Routing;
 
+/// <summary>The timeouts a session is holding, as W3C reports them.</summary>
+/// <param name="Implicit">How long a find waits, in milliseconds.</param>
+/// <param name="PageLoad">Always zero: this driver refuses to store one.</param>
+/// <param name="Script">Always zero, for the same reason.</param>
+/// <remarks>
+/// <b>Page load and script are reported as zero rather than omitted or
+/// invented.</b> They are refused on the way in - answered 501 rather than
+/// quietly stored - so there is no value to report, and zero is what a client
+/// that never set them should see. Reporting a number the driver never accepted
+/// would be inventing state.
+/// </remarks>
+public sealed record TimeoutsReport(int Implicit, int PageLoad, int Script);
+
 /// <summary>
 /// <c>POST /session/{id}/timeouts</c>.
 /// </summary>
@@ -28,6 +41,9 @@ namespace WindowsDriverCore.Protocol.Routing;
 public static class TimeoutRoutes
 {
     private const string ImplicitType = "implicit";
+
+    private const string BadMilliseconds =
+        "\"ms\" in a timeouts payload is undefined or is not a number greater than or equal to 0";
     private const string PageLoadType = "page load";
     private const string ScriptType = "script";
 
@@ -38,6 +54,48 @@ public static class TimeoutRoutes
     public static IEndpointRouteBuilder MapTimeoutRoutes(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        // W3C CAN READ THEM BACK, and this driver could only be written to. A
+        // Selenium 4 client asking what the timeouts are got the unknown-command
+        // fallback.
+        //
+        // Only the implicit wait is real here: page load and script are refused
+        // on the way in rather than quietly stored, so reporting a number for
+        // them would invent state that does not exist. They are reported as
+        // zero, which is what a client that never set them should see.
+        app.MapGet("/session/{sessionId}/timeouts", (HttpContext context) =>
+        {
+            DriverSession session = context.GetSession();
+
+            return Results.Json(JsonWireResponse.ForSession(
+                session.Id,
+                new TimeoutsReport((int)session.ImplicitWait.TotalMilliseconds, 0, 0)));
+        }).RequiresSession();
+
+        // THE LEGACY JSON WIRE SPELLING, which predates the {type, ms} body and
+        // is what an older client sends to set an implicit wait. Selenium 3.8
+        // uses the newer form - which is why the suite never exercised this and
+        // could not have caught its absence.
+        app.MapPost("/session/{sessionId}/timeouts/implicit_wait", async (HttpContext context) =>
+        {
+            DriverSession session = context.GetSession();
+
+            using JsonDocument legacy = await JsonDocument
+                .ParseAsync(context.Request.Body)
+                .ConfigureAwait(false);
+
+            if (legacy.RootElement.TryGetProperty("ms", out JsonElement ms) &&
+                ms.TryGetDouble(out double milliseconds) &&
+                milliseconds >= 0)
+            {
+                session.ImplicitWait = TimeSpan.FromMilliseconds(milliseconds);
+                return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
+            }
+
+            return Results.Json(
+                JsonWireResponse.ForFault(WebDriverFault.InvalidArgument, BadMilliseconds),
+                statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+        }).RequiresSession();
 
         app.MapPost("/session/{sessionId}/timeouts", async (HttpContext context) =>
         {

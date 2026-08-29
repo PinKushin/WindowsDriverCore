@@ -180,6 +180,46 @@ public static class SessionRoutes
         // application, and this refuses because reporting the orientation of a
         // window that does not exist is a statement about a window that does not
         // exist.
+        // SETTING IT IS REFUSED RATHER THAN ACCEPTED AND IGNORED. Both dialects
+        // define a POST, and a desktop has exactly one orientation - so the
+        // honest answer to "make it PORTRAIT" is no, not a 200 that changes
+        // nothing. Same rule as page-load timeouts and an unperformable action
+        // sequence: reporting success for work not done is the defect this
+        // driver exists to fix.
+        //
+        // LANDSCAPE is accepted, because a client asking for the state it is
+        // already in has not been refused anything.
+        app.MapPost("/session/{sessionId}/orientation",
+            async (HttpContext context, IWindowLocator windows) =>
+            {
+                DriverSession session = context.GetSession();
+
+                if (!windows.Exists(session.WindowHandle))
+                {
+                    return Results.Json(
+                        JsonWireResponse.ForFault(
+                            WebDriverFault.NoSuchWindow, ElementFault.WindowClosedMessage),
+                        statusCode: WebDriverFault.NoSuchWindow.HttpStatus);
+                }
+
+                using JsonDocument body = await JsonDocument
+                    .ParseAsync(context.Request.Body)
+                    .ConfigureAwait(false);
+
+                string? wanted = body.RootElement.TryGetProperty("orientation", out JsonElement value)
+                    ? value.GetString()
+                    : null;
+
+                return string.Equals(wanted, "LANDSCAPE", StringComparison.OrdinalIgnoreCase)
+                    ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
+                    : Results.Json(
+                        JsonWireResponse.ForFault(
+                            WebDriverFault.InvalidArgument,
+                            "A desktop session is always LANDSCAPE and cannot be rotated"),
+                        statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+            })
+            .RequiresSession();
+
         app.MapGet("/session/{sessionId}/orientation",
             (HttpContext context, IWindowLocator windows) =>
             {
