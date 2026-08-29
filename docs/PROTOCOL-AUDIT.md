@@ -442,16 +442,27 @@ Bounded at 5000 lines dropping the OLDEST, and it DRAINS, which is the protocol'
 contract: a client polls it, and one re-reading its whole history would report
 every line again on every call.
 
-### `/url`, `/refresh`, `/element/{id}/submit`
+### `/url`, `/refresh`, `/element/{id}/submit` — CLOSED 2026-08-29
 
-Browser-shaped commands with no obvious desktop meaning. `back` and `forward`
-ARE served, which makes the asymmetry deliberate-looking when it is not — they
-exist because the suite tests them.
+**Served in order to refuse**, which is not the same as not serving them. The
+unknown-command fallback says "I do not recognise this"; these say "I know what
+you asked for, it does not exist here, use this instead" — and only the second is
+something a client author can act on. The first reads as a wrong driver, a wrong
+version, or a typo.
 
-Needs a decision rather than an implementation: either serve them as the
-keystrokes they would be (F5, Enter) or refuse them explicitly, the way
-`/window/fullscreen` is refused. **Serving them as no-ops is the one option
-ruled out.**
+WinAppDriver makes the same distinction and this matches it: 501 for `/url` and
+`/refresh`, 404 for anything unrouted. What it does not do is say why — its 501
+carries no body at all.
+
+**Refusing rather than inventing an equivalent is the decision.** Each has a
+plausible-looking analogue and every one is a guess about the caller's intent:
+`submit` as Enter, when a dialog's default button often is not; `refresh` as F5,
+which is meaningful in a browser and destructive in some editors; `url` as the
+app id, a plausible string that is not an address and which a client would then
+try to navigate to.
+
+Each refusal names an alternative, because a refusal that only says no leaves the
+caller exactly where the fallback would have.
 
 ### Not gaps, recorded so they are not re-found
 
@@ -555,6 +566,7 @@ than assumed:
 | `POST /window/minimize` | not served | served |
 | alert text, accept, dismiss | 404 | served, both dialects |
 | `GET /log/types`, `POST /log` | 404 | served, drains, teed off the transcript |
+| `/url`, `/refresh`, `submit` | 501/404, no body | refused BY NAME, each pointing at an alternative |
 | `GET /location` | in its list, fails environmentally | served, refuses honestly |
 | `GET`/`POST /window/rect` | not served | served |
 | every W3C request spelling | not served | served |
@@ -568,6 +580,6 @@ than assumed:
   port. `DECISIONS.md` #7b, and a test asserts it stays absent.
 - **`POST /alert_text`** — typing into a prompt. No canonical input field exists
   on a Windows dialog; `/element` names one explicitly.
-- **`/url`, `/refresh`, `/element/{id}/submit`** — open, listed above
-  with what each needs. The reference serves none of them either (404, or 501 for
-  the middle two), so these are *plus more* work rather than gaps.
+- **`GET /status` in the W3C shape** — the one item still needing an owner
+  decision. The dialects disagree at the root and the request cannot tell them
+  apart; see above for the two real options.

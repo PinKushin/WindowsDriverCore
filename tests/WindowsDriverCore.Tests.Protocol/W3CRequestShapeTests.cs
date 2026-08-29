@@ -788,6 +788,45 @@ public sealed class W3CRequestShapeTests : IDisposable
             .ShouldBe(100, "invalid argument");
     }
 
+    /// <summary>A command with no desktop meaning says so, and says what to use.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Served in order to REFUSE, which is not the same as not serving.</b>
+    /// The fallback says "I do not recognise this"; these say "I know what you
+    /// asked for, it does not exist here, use this instead". Only the second is
+    /// something a client author can act on.
+    /// </para>
+    /// <para>
+    /// WinAppDriver makes the same distinction — 501 for <c>/url</c> and
+    /// <c>/refresh</c>, 404 for anything unrouted — but its 501 carries no body,
+    /// so it says nothing about why.
+    /// </para>
+    /// </remarks>
+    [TestCase("GET", "url", "address", TestName = "Url_IsRefusedWithAReason")]
+    [TestCase("POST", "refresh", "F5", TestName = "Refresh_IsRefusedWithAReason")]
+    [TestCase("POST", "element/e1/submit", "forms", TestName = "Submit_IsRefusedWithAReason")]
+    public async Task AnInapplicableCommand_NamesWhyAndWhatToUseInstead(
+        string method, string path, string expected)
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = method == "GET"
+            ? await _client.GetAsync(new Uri($"/session/{session}/{path}", UriKind.Relative))
+            : await Post($"/session/{session}/{path}", "{}");
+
+        string message = JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("value").GetProperty("message").GetString() ?? string.Empty;
+
+        // NOT the fallback's text. That is the whole distinction being made, and
+        // asserting only the status code would pass against no route at all.
+        message.ShouldNotContain("Command not recognized");
+        message.ShouldContain(expected);
+
+        // AND IT NAMES AN ALTERNATIVE. A refusal that only says no leaves the
+        // caller exactly where the fallback would have.
+        message.ShouldContain("/session/");
+    }
+
     private async Task<string> NewSession()
     {
         _interactor.ClearReceivedCalls();
