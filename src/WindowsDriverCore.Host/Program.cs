@@ -200,6 +200,19 @@ public partial class Program
         // The keyboard half of /actions. A peer of the pointer runner rather
         // than a part of it: they share a payload and nothing else.
         builder.Services.AddSingleton<KeyActionRunner>();
+
+        // The clipboard and the windows: vendor commands. The clipboard is an
+        // interface rather than a static so a protocol test cannot overwrite
+        // whatever the person running the suite had copied - the same reason the
+        // pointer is substituted in those fixtures.
+        builder.Services.AddSingleton<IClipboard, WindowsClipboard>();
+        builder.Services.AddSingleton<VendorCommandRunner>();
+
+        // The wheel half of /actions.
+        builder.Services.AddSingleton<WheelActionRunner>();
+
+        // GET /location. Answers a refusal on most machines, which is honest.
+        builder.Services.AddSingleton<IGeolocation, WindowsGeolocation>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<UiaElementFinder>();
         builder.Services.AddSingleton<IElementFinder>(provider =>

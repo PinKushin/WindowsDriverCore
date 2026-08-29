@@ -384,3 +384,99 @@ inverts the usual intuition that a fast dev machine is the harsh test.
 An unlocked local run that fails once and passes on re-run is contention (6c). A
 CI failure that repeats is a defect. Neither is ever answered by re-running for a
 green result.
+
+---
+
+## 7. `/execute` serves the `windows:` vocabulary, minus arbitrary code execution
+
+The owner, on the audit's open items:
+
+> "yea we need to fix that mising api surface we are suppose to be a complete
+> replacement for winappdriver"
+
+Right, and the work landed — but the first thing it produced was a correction.
+
+### 7a. The reference does not implement `/execute` at all
+
+`docs/PROTOCOL-AUDIT.md` had recorded that WinAppDriver's vendor commands "ride
+on `/execute`". That was asserted from memory and never checked, which is this
+repository's signature failure — see `docs/FOUNDING-PREMISE.md`.
+
+Measured against WinAppDriver 1.2.2009 in the guest, with an invented route as
+the control:
+
+```
+CONTROL invented-route  -> 404      unrecognised
+POST /execute           -> 501      ROUTED, not implemented
+  windows: click / keys -> 501      same, whatever the script says
+POST /execute_async     -> 404      not routed at all
+POST /refresh, GET /url -> 501      ROUTED, not implemented
+alerts, log, submit     -> 404
+```
+
+**501 versus 404 is the finding.** The reference routes three commands and
+implements none of them; it has no `windows:` vocabulary whatsoever. That
+vocabulary belongs to **appium-windows-driver**, the Node driver that WRAPS
+WinAppDriver.
+
+So this is not "closing a gap against the reference" — the reference has nothing
+here. It is the *plus more* half of the goal, aimed at the Appium clients that
+actually speak `windows:`. A 501 is a limitation rather than a contract, and the
+project rule is to fix those rather than reproduce them.
+
+The probe ships as `tools/vm/probe-does-winappdriver-serve-execute.ps1` so the
+claim stays checkable.
+
+### 7b. `windows: execPowerShell` is NOT served, and that is deliberate
+
+appium-windows-driver has it. It runs a shell command on the machine hosting the
+driver.
+
+**That is remote code execution by design, reachable by anything that can open a
+socket to this process** — and this driver binds a TCP port, with `*` as a
+documented argument form for binding all interfaces. There is no authentication
+on the wire, because the protocol has none.
+
+Serving it would mean any process on the machine, and on the network when bound
+broadly, could run arbitrary commands as the user running the driver. "Appium has
+it" is not a reason; it is the same reasoning that would have this driver
+reproduce every WinAppDriver defect for fidelity.
+
+`ExecPowerShell_IsNotServed` asserts both that it is refused and that it is absent
+from the supported list, so a later change adding it "for completeness" fails a
+test rather than shipping.
+
+**If it is ever wanted it needs an explicit opt-in switch**, off by default,
+named so that turning it on is a decision rather than a default — and that is the
+owner's call, not one to make while ticking off an API surface.
+
+### 7c. What the vendor commands do NOT invent
+
+Three refusals that could each have been a silent success, and each is the defect
+this driver exists to fix:
+
+- **A `pause` in `windows: keys` is refused.** This driver has no timed wait in an
+  input path by rule. Delivering the keys untimed and answering 200 would report a
+  timed sequence that was not timed.
+- **A `windows: scroll` with no delta is refused** rather than dispatched as a
+  no-op — which is also what distinguishes "I read your deltas" from "I ignored
+  them", the exact way `/touch/flick`'s `speed` hid for the life of that route.
+- **Malformed base64 in `setClipboard` is refused**, not pasted literally. Falling
+  back to the raw string would put `not!base64` on the clipboard when the caller
+  asked for whatever it decoded to.
+
+And raw JavaScript is refused **with a reason and the vocabulary** — a UIA tree is
+not a document, so there is nothing for a script to run against. WinAppDriver
+answers a bare 501 with no body.
+
+### 7d. The mouse wheel was missing entirely, and `/actions` was hiding it
+
+`windows: scroll` needed a wheel, and `IPointerInput` had none — no
+`MOUSEEVENTF_WHEEL` anywhere in the codebase.
+
+Which surfaced a third silently-skipped input source: W3C's `/actions` defines a
+**`wheel`** source type alongside `pointer` and `key`, and this driver skipped
+anything that was not a pointer. `key` sources were found the same way one pass
+earlier. The pattern is worth naming: **`/actions` is one route with three
+independent implementations behind it, and two of the three were missing while
+the route answered 200.**

@@ -31,6 +31,25 @@ public sealed class SendInputPointer : IPointerInput
     private const uint MiddleDown = 0x0020;
     private const uint MiddleUp = 0x0040;
 
+    /// <summary>MOUSEEVENTF_WHEEL — the vertical wheel.</summary>
+    private const uint VerticalWheel = 0x0800;
+
+    /// <summary>MOUSEEVENTF_HWHEEL — the tilt wheel, a SEPARATE event.</summary>
+    /// <remarks>
+    /// Separate because <c>mouseData</c> carries one value, so a single input
+    /// cannot express both axes. A diagonal scroll is two events, and sending
+    /// only one would silently drop an axis the caller asked for.
+    /// </remarks>
+    private const uint HorizontalWheel = 0x01000;
+
+    /// <summary>One notch of the wheel, as Windows counts it.</summary>
+    /// <remarks>
+    /// <c>WHEEL_DELTA</c>. A caller states notches and this scales them, because
+    /// 120 is a Win32 detail rather than something a protocol talks about — W3C
+    /// and the vendor commands both count clicks.
+    /// </remarks>
+    private const int WheelDelta = 120;
+
     private const int SmXVirtualScreen = 76;
     private const int SmYVirtualScreen = 77;
     private const int SmCxVirtualScreen = 78;
@@ -140,6 +159,53 @@ public sealed class SendInputPointer : IPointerInput
     /// <inheritdoc />
     public bool Click(PointerButton button) =>
         Send(Mouse(0, 0, DownFlag(button)), Mouse(0, 0, UpFlag(button)));
+
+    /// <inheritdoc />
+    public bool Scroll(int deltaX, int deltaY)
+    {
+        // NOTHING SENT FOR A ZERO AXIS. An input with mouseData 0 is a wheel
+        // event that turned no notches, and some targets act on the event rather
+        // than on its magnitude - so a purely vertical scroll would deliver a
+        // spurious horizontal one.
+        List<Win32.Input> batch = new(2);
+
+        if (deltaY != 0)
+        {
+            batch.Add(Wheel(VerticalWheel, deltaY));
+        }
+
+        if (deltaX != 0)
+        {
+            batch.Add(Wheel(HorizontalWheel, deltaX));
+        }
+
+        // A caller asking for no movement at all has been served: there is
+        // nothing to send, and reporting failure would make a no-op look broken.
+        return batch.Count == 0 || Send([.. batch]);
+    }
+
+    /// <summary>One wheel event, with the notches scaled into mouseData.</summary>
+    private static Win32.Input Wheel(uint axis, int notches) => new()
+    {
+        Type = InputMouse,
+        Union = new Win32.InputUnion
+        {
+            Mouse = new Win32.MouseInput
+            {
+                X = 0,
+                Y = 0,
+
+                // mouseData is a SIGNED value in an unsigned field. A negative
+                // scroll has to be reinterpreted rather than converted, or it
+                // arrives as a very large positive number and the wheel spins
+                // the wrong way by an absurd amount.
+                MouseData = unchecked((uint)(notches * WheelDelta)),
+                Flags = axis,
+                Time = 0,
+                ExtraInfo = 0,
+            },
+        },
+    };
 
     /// <inheritdoc />
     public bool Press(PointerButton button)

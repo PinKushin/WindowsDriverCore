@@ -54,34 +54,17 @@ public sealed class SendInputKeyboard : IKeyboardInput
     ];
 
     /// <summary>WebDriver's private-use key codes, as virtual-key codes.</summary>
-    private static readonly Dictionary<char, ushort> SpecialKeys = new()
-    {
-        [''] = 0x08,  // backspace
-        [''] = 0x09,  // tab
-        [''] = 0x0D,  // return
-        [''] = 0x0D,  // enter
-        [''] = 0x1B,  // escape
-        [''] = 0x20,  // space
-        [''] = 0x21,  // page up
-        [''] = 0x22,  // page down
-        [''] = 0x23,  // end
-        [''] = 0x24,  // home
-        [''] = 0x25,  // left
-        [''] = 0x26,  // up
-        [''] = 0x27,  // right
-        [''] = 0x28,  // down
-        [''] = 0x2D,  // insert
-        [''] = 0x2E,  // delete
-    };
+    /// <summary>Keys that press and release.</summary>
+    /// <remarks>
+    /// THE TABLE MOVED TO <see cref="KeyboardKeys"/> and is read from there
+    /// rather than copied. `windows: keys` needs the same map in reverse, and two
+    /// copies of one mapping is how WinAppDriver's XPath singular and plural
+    /// drifted apart into issue #1079.
+    /// </remarks>
+    private static IReadOnlyDictionary<char, ushort> SpecialKeys => KeyboardKeys.Special;
 
     /// <summary>Modifiers, which toggle rather than press.</summary>
-    private static readonly Dictionary<char, ushort> Modifiers = new()
-    {
-        [''] = 0x10,  // shift
-        [''] = 0x11,  // control
-        [''] = 0x12,  // alt
-        [''] = 0x5B,  // meta / windows
-    };
+    private static IReadOnlyDictionary<char, ushort> Modifiers => KeyboardKeys.Modifiers;
 
     /// <inheritdoc />
     public bool Type(string keys) => Send(BuildBatch(keys, null));

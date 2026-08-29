@@ -260,6 +260,35 @@ public interface IPointerInput
     /// the application must see the pair.
     /// </remarks>
     bool DoubleClick(PointerButton button);
+
+    /// <summary>Turns the mouse wheel where the pointer currently is.</summary>
+    /// <param name="deltaX">
+    /// Horizontal notches, positive to the right. Delivered as a TILT wheel,
+    /// which is a separate event from the vertical one.
+    /// </param>
+    /// <param name="deltaY">
+    /// Vertical notches, positive AWAY from the user — which scrolls content UP.
+    /// </param>
+    /// <returns>False if the input could not be dispatched.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The sign is the trap, and the two protocols disagree with Win32.</b>
+    /// Windows measures a wheel in notches of <c>WHEEL_DELTA</c> where positive
+    /// means rotated away from the user, and every application scrolls its
+    /// content UP for that. W3C's <c>deltaY</c> is the opposite: positive scrolls
+    /// content DOWN, like a scrollbar position. The translation belongs to the
+    /// caller that knows which protocol it is speaking, so this member is stated
+    /// in WIN32's terms and says so.
+    /// </para>
+    /// <para>
+    /// <b>Not a substitute for a touch scroll.</b> A wheel event is what a mouse
+    /// sends; a flick is a gesture a digitiser sends, and an application is
+    /// entitled to treat them differently — a XAML <c>LoopingSelector</c> flings
+    /// on one and steps on the other. Serving a wheel request with a synthetic
+    /// touch drag would report that the wrong thing happened.
+    /// </para>
+    /// </remarks>
+    bool Scroll(int deltaX, int deltaY);
 }
 
 /// <summary>Which pointer button an action applies to.</summary>

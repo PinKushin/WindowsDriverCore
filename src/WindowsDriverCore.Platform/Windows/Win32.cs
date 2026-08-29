@@ -13,6 +13,78 @@ namespace WindowsDriverCore.Platform.Windows;
 /// </remarks>
 internal static partial class Win32
 {
+    // THE CLIPBOARD, and every one of these must run on an STA thread.
+    // WindowsClipboard owns that; declaring them here does not make them safe to
+    // call from a request thread.
+
+    /// <summary>Opens the clipboard for this thread.</summary>
+    /// <param name="hWndNewOwner">The owning window, or 0 for the current task.</param>
+    /// <returns>False when another process holds it, which is ordinary.</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool OpenClipboard(nint hWndNewOwner);
+
+    /// <summary>Closes the clipboard, releasing it for other processes.</summary>
+    /// <returns>False on failure.</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseClipboard();
+
+    /// <summary>Empties the clipboard and takes ownership of it.</summary>
+    /// <returns>False on failure.</returns>
+    /// <remarks>Required before SetClipboardData, which needs the ownership.</remarks>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool EmptyClipboard();
+
+    /// <summary>The clipboard's data in one format.</summary>
+    /// <param name="format">A clipboard format, such as CF_UNICODETEXT.</param>
+    /// <returns>A global handle, or 0 when the clipboard holds no such format.</returns>
+    /// <remarks>
+    /// The handle belongs to the CLIPBOARD. It must not be freed, and it is only
+    /// valid until CloseClipboard.
+    /// </remarks>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial nint GetClipboardData(uint format);
+
+    /// <summary>Places data on the clipboard in one format.</summary>
+    /// <param name="format">A clipboard format.</param>
+    /// <param name="hMem">A moveable global handle.</param>
+    /// <returns>The handle on success, 0 on failure.</returns>
+    /// <remarks>
+    /// <b>On success the SYSTEM owns hMem.</b> Freeing it afterwards corrupts the
+    /// clipboard for every process on the desktop, so the caller must forget the
+    /// handle rather than release it.
+    /// </remarks>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial nint SetClipboardData(uint format, nint hMem);
+
+    /// <summary>Allocates moveable global memory.</summary>
+    /// <param name="flags">GMEM flags; the clipboard needs GMEM_MOVEABLE.</param>
+    /// <param name="bytes">How many bytes.</param>
+    /// <returns>The handle, or 0.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial nint GlobalAlloc(uint flags, nuint bytes);
+
+    /// <summary>Frees global memory this process still owns.</summary>
+    /// <param name="hMem">The handle.</param>
+    /// <returns>0 on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial nint GlobalFree(nint hMem);
+
+    /// <summary>Locks global memory and returns a pointer to it.</summary>
+    /// <param name="hMem">The handle.</param>
+    /// <returns>A pointer, or 0.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial nint GlobalLock(nint hMem);
+
+    /// <summary>Unlocks global memory.</summary>
+    /// <param name="hMem">The handle.</param>
+    /// <returns>False when the lock count reached zero, which is not an error.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GlobalUnlock(nint hMem);
+
     /// <summary>The desktop window, which covers the whole screen.</summary>
     /// <returns>The desktop window handle.</returns>
     [LibraryImport("user32.dll")]
