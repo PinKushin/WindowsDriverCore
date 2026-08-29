@@ -4441,3 +4441,56 @@ green" is the expected outcome either way.
 That rules out the suite as the primary instrument for this defect. What replaces
 it: the mechanism proved directly by a targeted test, and a diagnostic that names
 what holds the foreground when a raise fails. The suite becomes corroboration.
+
+---
+
+## 2026-08-29 (latest) — five runs at one commit, after the foreground fix
+
+`e7a454a`, five times, nothing changed between runs: **269, 270, 270, 269, 273**.
+
+### The parity gap is 8
+
+17 tests fail in all five. Nine of those are the reference's own environmental
+failures, so:
+
+```
+FindNestedElement_ByRuntimeId              MouseDownMoveUp
+MiscellaneousSessionError_StaleSessionId   NavigateBack_SystemApp
+MouseClick                                 TouchDoubleTap
+MouseDoubleClick                           TouchLongTap
+```
+
+| | |
+|---|---|
+| WinAppDriver 1.2.1 | 281/290 |
+| this driver, best run | **273/290** |
+| **gap** | **8 tests** |
+
+`ClickElement` and `Pen_Scroll_Vertical` moved OUT of the stable set at five
+samples — they are band members, not gap members. Three samples had them stable,
+which is a reminder that "stable" is a function of how many runs you took.
+
+### The band is 6
+
+```
+ClickElement                                   4 of 5
+NavigateBack_ModernApp                         3 of 5
+Pen_Scroll_Vertical                            3 of 5
+Touch_Scroll_Vertical                          2 of 5
+CreateSessionWithWorkingDirectoryAndArguments  1 of 5
+Pen_LongClick                                  1 of 5
+```
+
+### The foreground fix: suggestive, not proven
+
+**`SendKeys_*` does not appear in the band at all** — it passed in all five runs,
+where before the fix it failed in 2 of 7. And `NOT RAISED` was **1 in every
+run**, against 2 in a pre-fix good run and 23 in a cascading one.
+
+So the desktop short-circuit is confirmed (it removed exactly one event, every
+time), and the cascade has not recurred in six post-fix runs.
+
+**Six clean runs against a ~29% event rate is about 13% by luck**, which is
+suggestive and not proof. Ten would make it ~4%. Recorded as unproven rather
+than fixed, because the temptation to bank it is exactly how the earlier wrong
+attributions on this page happened.
