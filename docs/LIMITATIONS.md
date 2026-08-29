@@ -4381,3 +4381,63 @@ application has caught up by the time the assertion runs.
 
 So the realistic decomposition is **roughly four investigations, not nine**:
 the click family, the two touch gestures, and three singletons.
+
+---
+
+## 2026-08-29 (later) — three runs of ONE binary, and a much better picture
+
+`5bfdfa0` run three times with **nothing changed between runs**: 269, 269, 271.
+That is the right experiment for separating flake from change, and the earlier
+write-up on this page is superseded by it.
+
+### The parity gap is 10 named tests
+
+19 tests fail in all three runs. The reference fails 9 on this guest, all
+environmental. Subtracting:
+
+```
+ClickElement                MouseClick                 ← one family:
+MouseDoubleClick            MouseDownMoveUp            ← the click
+TouchDoubleTap              TouchLongTap
+Pen_Scroll_Vertical
+FindNestedElement_ByRuntimeId
+MiscellaneousSessionError_StaleSessionId
+NavigateBack_SystemApp
+```
+
+| | |
+|---|---|
+| WinAppDriver 1.2.1 | 281/290 |
+| this driver, stable | **271/290** |
+| **gap** | **10 tests** |
+
+**Four of the ten are one family**, and its cause is already measured:
+`MouseClick` takes the reference 3.9 s and takes us 0.067 s. The suite has no
+synchronisation of its own — the reference passes because it is slow enough that
+the application has caught up before the assertion runs.
+
+So roughly **four investigations**: the click family, the two touch gestures, the
+pen scroll, and three singletons.
+
+### The flake is 3 tests plus one cascade
+
+Across the three identical runs only three tests moved:
+
+```
+CreateSessionWithWorkingDirectoryAndArguments   1 of 3
+NavigateBack_ModernApp                          2 of 3
+Pen_LongClick                                   1 of 3
+```
+
+`NOT RAISED` was **2 in all three** — the good mode. The `SendKeys` cascade did
+not fire once in these runs.
+
+### The cascade is ~30%, which changes how it can be measured
+
+Across seven full runs it has fired twice. Three consecutive good runs has a ~34%
+chance by luck alone, so **three runs cannot validate a fix for it** — "all
+green" is the expected outcome either way.
+
+That rules out the suite as the primary instrument for this defect. What replaces
+it: the mechanism proved directly by a targeted test, and a diagnostic that names
+what holds the foreground when a raise fails. The suite becomes corroboration.
