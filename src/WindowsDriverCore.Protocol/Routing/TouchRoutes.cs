@@ -158,6 +158,42 @@ public static class TouchRoutes
         }).RequiresSession();
     }
 
+    /// <summary>Where a drag or flick begins.</summary>
+    /// <param name="runner">Resolves elements and the pointer's position.</param>
+    /// <param name="window">The session window.</param>
+    /// <param name="request">The body, which may name an element or neither.</param>
+    /// <param name="anonymousFlick">Whether this is the velocity-only form.</param>
+    /// <returns>The point, or why it could not be established.</returns>
+    /// <remarks>
+    /// Three cases and they are genuinely different: an element flick or scroll
+    /// starts at the element's centre, an anonymous flick starts wherever the
+    /// pointer already is, and anything else has not said where to begin.
+    /// </remarks>
+    private static (int X, int Y, PointerRefusal? Failure) StartingPoint(
+        PointerActionRunner runner, nint window, TouchRequest? request, bool anonymousFlick)
+    {
+        if (request?.Element is { Length: > 0 } element)
+        {
+            return runner.CentreOf(window, element);
+        }
+
+        return anonymousFlick
+            ? runner.WhereThePointerIs(window)
+            : (0, 0, PointerRefusal.Reason("A touch drag needs an element to start from"));
+    }
+
+    /// <summary>How long an anonymous flick's stated velocity is applied for.</summary>
+    /// <remarks>
+    /// <b>The one thing the driver must choose on this route.</b> JSON Wire's
+    /// anonymous flick gives a speed in pixels per second and no duration, so a
+    /// distance only exists once a time is picked. A tenth of a second is a
+    /// flick's worth: the suite's own <c>Flick(0, 180)</c> then travels 18 px,
+    /// and its comment says "good value typically goes around 160 - 200 pixels
+    /// with diminishing delta on the bigger values" — which is about the speed,
+    /// not the distance.
+    /// </remarks>
+    private const double AnonymousFlickSeconds = 0.1;
+
     private static void MapDrag(IEndpointRouteBuilder app, string suffix)
     {
         app.MapPost($"/session/{{sessionId}}/touch/{suffix}",
@@ -176,14 +212,32 @@ public static class TouchRoutes
 
             TouchRequest? request = await Read(context).ConfigureAwait(false);
 
-            (int x, int y, PointerRefusal? failure) = request?.Element is { Length: > 0 } element
-                ? runner.CentreOf(session.WindowHandle, element)
-                : (0, 0, PointerRefusal.Reason("A touch drag needs an element to start from"));
+            // THE ANONYMOUS FLICK CARRIES NO ELEMENT AND NO OFFSETS - only a
+            // velocity per axis, and it flicks from wherever the pointer is.
+            // The suite sends exactly that: touchScreen.Flick(0, 180). Requiring
+            // an element here refused it outright.
+            bool anonymousFlick =
+                request?.Element is not { Length: > 0 } &&
+                (request?.XSpeed is not null || request?.YSpeed is not null);
+
+            (int x, int y, PointerRefusal? failure) = StartingPoint(
+                runner, session.WindowHandle, request, anonymousFlick);
 
             if (failure is null)
             {
-                failure = runner.Drag(
-                    x, y, x + (request?.XOffset ?? 0), y + (request?.YOffset ?? 0));
+                // OFFSETS FROM THE OFFSETS, or from the velocity when that is
+                // all the caller gave. JSON Wire's anonymous flick states pixels
+                // per second and leaves the duration to the driver, so the
+                // distance is the speed applied for one flick's worth of time.
+                (int dx, int dy) = anonymousFlick
+                    ? ((int)((request?.XSpeed ?? 0) * AnonymousFlickSeconds),
+                       (int)((request?.YSpeed ?? 0) * AnonymousFlickSeconds))
+                    : (request?.XOffset ?? 0, request?.YOffset ?? 0);
+
+                // AND THE SPEED IS THE CALLER'S WHEN THEY GAVE ONE. Only when
+                // they did not does the driver choose - which is every
+                // /touch/scroll, since JSON Wire gives scroll no speed at all.
+                failure = runner.Drag(x, y, x + dx, y + dy, request?.Speed);
             }
 
             if (failure is null)
@@ -246,13 +300,29 @@ public static class TouchRoutes
                 statusCode: WebDriverFault.UnknownError.HttpStatus);
 
     /// <summary>The body every touch command takes.</summary>
-    /// <param name="Element">The element to act on.</param>
-    /// <param name="XOffset">Horizontal distance, for scroll and flick.</param>
-    /// <param name="YOffset">Vertical distance, for scroll and flick.</param>
+    /// <param name="Element">The element to gesture on, when there is one.</param>
+    /// <param name="XOffset">Horizontal distance, for scroll and the element flick.</param>
+    /// <param name="YOffset">Vertical distance, for scroll and the element flick.</param>
+    /// <param name="Speed">Pixels per second, for the element flick.</param>
+    /// <param name="XSpeed">Horizontal velocity, for the anonymous flick.</param>
+    /// <param name="YSpeed">Vertical velocity, for the anonymous flick.</param>
     private sealed record TouchRequest(
         [property: JsonPropertyName("element")] string? Element,
         [property: JsonPropertyName("xoffset")] int XOffset,
-        [property: JsonPropertyName("yoffset")] int YOffset);
+        [property: JsonPropertyName("yoffset")] int YOffset,
+
+        // THE CLIENT SAYS HOW FAST. JSON Wire gives /touch/flick a speed in
+        // PIXELS PER SECOND, and this record did not read it - so a caller that
+        // asked for a slow flick and one that asked for a fast one got the same
+        // gesture, and the driver's own invented pace won every time.
+        [property: JsonPropertyName("speed")] double? Speed,
+
+        // The ANONYMOUS flick form, which carries no element and no offsets at
+        // all - only a velocity per axis. The suite sends exactly this:
+        // touchScreen.Flick(0, 180). Read as xoffset/yoffset it was two absent
+        // properties defaulting to zero, which is a gesture that goes nowhere.
+        [property: JsonPropertyName("xspeed")] double? XSpeed,
+        [property: JsonPropertyName("yspeed")] double? YSpeed);
 
     /// <summary>Maps one phase of a multi-request touch gesture.</summary>
     /// <remarks>
