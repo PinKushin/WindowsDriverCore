@@ -349,19 +349,53 @@ reference driver ALSO has on the guest, for exactly that reason.
 defect as a 200 for an action that did not happen, and it is worse than a
 refusal because the client cannot tell.
 
-### `/execute` and `/execute_async`
+### `/execute` and `/execute_async` — and a CORRECTION
 
-WinAppDriver's vendor commands ride on `/execute` — `windows: startApp`,
-`windows: click`, `windows: keys`, `windows: hover`, `windows: scroll` and the
-rest. That is a real API surface of the thing this project reimplements, and it
-is entirely absent here.
+**What this section said before was wrong, and it was wrong in this repository's
+signature way: asserted from memory, never measured.** It read:
 
-Large enough to be its own piece of work rather than an audit fix, and it wants
-a decision first: which vendor commands to serve, and whether new ones belong
-under `windows:` or a name of this driver's own. The project rule already points
-at the answer — *"where a capability has no expression in the protocol, add a
-vendor extension rather than silently choosing for the caller"* — but the
-inventory is the work.
+> WinAppDriver's vendor commands ride on `/execute` — `windows: startApp`,
+> `windows: click`, `windows: keys`, `windows: hover`, `windows: scroll` and the
+> rest. That is a real API surface of the thing this project reimplements.
+
+Two things should have stopped that sentence being written. `/execute` is not in
+WinAppDriver's own `Docs/SupportedAPIs.md` — 59 endpoints, zero mentions — and
+none of its samples or tests call it.
+
+**Measured 2026-08-29 against WinAppDriver 1.2.2009 in the guest**, session
+created against Alarms & Clock, with an invented route as the control:
+
+```
+CONTROL invented-route  -> 404      unrecognised
+POST /execute           -> 501      ROUTED, not implemented
+  ...windows: keys      -> 501      same, whatever the script says
+  ...windows: click     -> 501
+  ...powerShell         -> 501
+POST /execute_async     -> 404      not routed at all
+POST /refresh           -> 501      ROUTED, not implemented
+GET  /url               -> 501      ROUTED, not implemented
+alert_text / accept_alert / dismiss_alert  -> 404
+log / log/types         -> 404
+element/{id}/submit     -> 404
+```
+
+**501 versus 404 is the whole finding.** WinAppDriver *routes* `/execute`,
+`/refresh` and `/url` and answers "not implemented"; everything else it does not
+recognise. So it has no `windows:` vocabulary of any kind, and a client sending
+one gets the same 501 as a client sending an empty script.
+
+The `windows:` vocabulary belongs to **appium-windows-driver**, the Node driver
+that WRAPS WinAppDriver. That is a different thing to be a complete replacement
+for, and conflating the two is what produced the wrong claim.
+
+**This does not close the item — it re-aims it.** The goal is stated as
+WinAppDriver's API *plus more*, and 501 is a limitation rather than a contract,
+which the project rule says to fix rather than to reproduce. What changes is the
+justification: serving `/execute` is going BEYOND the reference, for the
+Appium clients that actually speak `windows:`, rather than closing a gap against
+it.
+
+Scope decided at implementation time is recorded in `docs/DECISIONS.md`.
 
 ### Alert handling
 
