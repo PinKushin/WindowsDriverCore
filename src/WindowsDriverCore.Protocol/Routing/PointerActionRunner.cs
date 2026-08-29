@@ -52,7 +52,7 @@ public sealed class PointerActionRunner
     /// rather than only the gap between its frames.
     /// </para>
     /// </remarks>
-    private static readonly TimeSpan DragDuration = TimeSpan.FromMilliseconds(300);
+    private const double DragPixelsPerSecond = 900;
 
     /// <summary>
     /// The least separation that makes injected frames distinct input events.
@@ -704,7 +704,8 @@ public sealed class PointerActionRunner
         // instantly moves nothing. The caller supplies no duration on this
         // route, so it gets the one a person's flick takes.
         PointerRefusal? moved = Move(
-            SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true, DragDuration);
+            SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true,
+            DragDurationFor(fromX, fromY, toX, toY));
         if (moved is not null)
         {
             return moved;
@@ -713,6 +714,62 @@ public sealed class PointerActionRunner
         return _synthetic.Inject([Plain(toX, toY, SyntheticContactPhase.Up)])
             ? null
             : PointerRefusal.Reason("The system refused to lift a touch contact");
+    }
+
+    /// <summary>How long a drag of this length should take.</summary>
+    /// <param name="fromX">Where it starts.</param>
+    /// <param name="fromY">Where it starts.</param>
+    /// <param name="toX">Where it ends.</param>
+    /// <param name="toY">Where it ends.</param>
+    /// <returns>The duration, never shorter than one frame separation.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A SPEED, NOT A DURATION, AND THE DIFFERENCE IS THE WHOLE BUG.</b> This
+    /// was a fixed 300 ms whatever the distance, so a short scroll was slow and
+    /// a long one was fast - and the application reacts to VELOCITY. A
+    /// <c>LoopingSelector</c> either flings or merely drags, and 55 px over
+    /// 300 ms is 183 px/s, which does not fling.
+    /// </para>
+    /// <para>
+    /// <b>MEASURED on the guest, <c>/touch/scroll</c> of -55 px against
+    /// Alarms &amp; Clock's minute selector, three attempts per row:</b>
+    /// </para>
+    /// <code>
+    ///   WinAppDriver, -55 px      hid "00"  3/3     &lt;- the reference
+    ///   ours, -55 px /  60 ms     hid "00"  3/3
+    ///   ours, -55 px / 150 ms     hid "00"  3/3
+    ///   ours, -55 px / 300 ms     hid "00"  0/3     &lt;- as shipped
+    /// </code>
+    /// <para>
+    /// So the threshold is between 183 px/s and 367 px/s for that control, and
+    /// the shipped value sat below it - which is why
+    /// <c>TouchScrollOnElement_Vertical</c> failed rather than flapped.
+    /// </para>
+    /// <para>
+    /// <b>The first sweep of this was one sample per duration and told a clean
+    /// story that was not true.</b> Single rows gave 60 yes, 100 no, 150 no, 200
+    /// yes, 250 yes, 300 no - an ordering no velocity can produce. Three
+    /// attempts per condition removed it entirely. One observation is not a
+    /// measurement, even when six of them line up into an explanation.
+    /// </para>
+    /// <para>
+    /// 900 px/s is roughly two and a half times the slowest speed measured
+    /// working, and is what the 60 ms row ran at.
+    /// </para>
+    /// <para>
+    /// <b>Floored at one frame separation</b>, because below that the frames are
+    /// coalesced into a single jump and the gesture stops existing - a tiny
+    /// offset would otherwise compute a duration too short to deliver.
+    /// </para>
+    /// </remarks>
+    private static TimeSpan DragDurationFor(int fromX, int fromY, int toX, int toY)
+    {
+        double distance = Math.Sqrt(
+            Math.Pow((double)toX - fromX, 2) + Math.Pow((double)toY - fromY, 2));
+
+        TimeSpan wanted = TimeSpan.FromSeconds(distance / DragPixelsPerSecond);
+
+        return wanted < FrameSeparation ? FrameSeparation : wanted;
     }
 
     /// <summary>The centre of an element, in screen pixels.</summary>

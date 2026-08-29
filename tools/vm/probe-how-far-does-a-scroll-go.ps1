@@ -69,7 +69,7 @@ function SelectorState($session, $sel) {
 # the cmdlet and dies with "a positional parameter cannot be found". Second
 # alias collision in this project after Clear/Clear-Host - a probe function
 # named after a PowerShell verb will be shadowed, silently or loudly.
-function MeasureDriver($driverName, $exePath) {
+function MeasureDriver($driverName, $exePath, $cases) {
     ''
     '=========================================================='
     "  $driverName"
@@ -78,6 +78,17 @@ function MeasureDriver($driverName, $exePath) {
     Get-Process WinAppDriver, WindowsDriverCore -ErrorAction SilentlyContinue | Stop-Process -Force
     Get-Process Time -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 3
+
+    # Set BEFORE the driver starts, and echoed, because a sweep whose value
+    # never reached the process looks exactly like a value that made no
+    # difference.
+    # Cleared first: an env var set for a previous driver would otherwise
+    # persist into this one and the row would report the wrong condition.
+    Remove-Item Env:\WDC_SCROLL_MS -ErrorAction SilentlyContinue
+    if ($null -ne $cases[0].Ms) {
+        $env:WDC_SCROLL_MS = "$($cases[0].Ms)"
+        "  driver env: WDC_SCROLL_MS=$($cases[0].Ms)"
+    }
 
     $srv = Start-Process -FilePath $exePath -PassThru
     for ($i = 0; $i -lt 40; $i++) {
@@ -89,8 +100,17 @@ function MeasureDriver($driverName, $exePath) {
         if (-not $session) { '  no session'; return }
         Start-Sleep -Seconds 3
 
-        # Three attempts, because our result is the thing that varies.
-        for ($round = 1; $round -le 3; $round++) {
+        # TWO CANDIDATE EXPLANATIONS, AND THE PAIR OF VARIABLES SEPARATES THEM.
+        #
+        # The reference hides "00" with a -55 scroll and we do not, both
+        # deterministically. Either we scroll LITERALLY the offset while it adds
+        # momentum - in which case a bigger offset works and the duration does
+        # not matter - or our gesture is too slow to fling at all, in which case
+        # a shorter duration works at the same -55.
+        #
+        # A sweep of one variable could not tell those apart.
+        foreach ($case in $cases) {
+            $round = "$($case.Offset)px/$($case.Ms)ms"
 
             # Navigate to the time picker, fresh each round.
             $add = Find $session 'AddAlarmButton'
@@ -112,30 +132,19 @@ function MeasureDriver($driverName, $exePath) {
                 "  readable attributes: Value='$($before.Value)' Name='$($before.Name)' Text='$($before.Text)'"
             }
 
-            # THE SUITE'S OWN GESTURE: element origin, contact down, move 200 px
-            # up over 500 ms, lift.
+            # /touch/scroll, WHICH IS JWP AND THE REFERENCE ACCEPTS IT.
             #
-            # THE W3C ELEMENT KEY, NOT THE JWP ONE. The dialect split is PER
-            # COMMAND: the suite is Selenium 3.8, which speaks JWP for classic
-            # commands and W3C inside /actions. A JWP "ELEMENT" origin is
-            # REFUSED by WinAppDriver - measured here, three rounds out of
-            # three, before this comment existed. We accept both, so sending the
-            # JWP spelling looks fine right up until the reference is asked the
-            # same question.
-            $body = @"
-{"actions":[{"type":"pointer","id":"finger","parameters":{"pointerType":"touch"},"actions":[
- {"type":"pointerMove","origin":{"ELEMENT":"$sel","element-6066-11e4-a52e-4f735466cecf":"$sel"},"x":0,"y":0},
- {"type":"pointerDown","button":0},
- {"type":"pointerMove","origin":{"ELEMENT":"$sel","element-6066-11e4-a52e-4f735466cecf":"$sel"},"x":0,"y":-200,"duration":500},
- {"type":"pointerUp","button":0}]}]}
-"@
-            # THE BODY, READ OFF THE RESPONSE STREAM. "REFUSED" alone says a
-            # request failed and nothing about why, which cost two rounds of
-            # guessing at the payload shape. Invoke-RestMethod does not populate
-            # ErrorDetails for a 400 with a JSON body on Windows PowerShell 5.1,
-            # so the stream is the only reliable source.
+            # The /actions form was refused by WinAppDriver three rounds out of
+            # three and the reason is still unknown - and chasing it is beside
+            # the point, because TouchScrollOnElement_Vertical uses THIS route
+            # and the reference passes it. Asking both drivers the same question
+            # on a route both answer is worth more than making the other payload
+            # work.
             $note = 'ok'
-            try { PostRaw "/session/$session/actions" $body | Out-Null }
+            try {
+                PostRaw "/session/$session/touch/scroll" `
+                    "{`"element`":`"$sel`",`"xoffset`":0,`"yoffset`":$($case.Offset)}" | Out-Null
+            }
             catch {
                 $note = 'REFUSED'
                 $resp = $_.Exception.Response
@@ -149,10 +158,20 @@ function MeasureDriver($driverName, $exePath) {
             }
             Start-Sleep -Seconds 1
 
-            $after = SelectorState $session $sel
+            # WHERE IT LANDED, which is the whole measurement. The three scroll
+            # tests share one session and one selector and nothing resets its
+            # position between them, so the item this comes to rest on is what
+            # the NEXT test inherits. A LoopingSelector snaps to an item; if we
+            # land somewhere the reference does not, the difference compounds.
+            $picker = Find $session 'AlarmTimePicker'
+            $landed = '(no picker)'
+            if ($picker) {
+                try {
+                    $landed = (Invoke-RestMethod -TimeoutSec 20 `
+                        -Uri "$base/session/$session/element/$picker/attribute/Name").value
+                } catch { $landed = '(err)' }
+            }
 
-            # "00" visibility as well, so the magnitude can be lined up against
-            # the assertion the suite actually makes.
             $zeroVisible = '?'
             try {
                 $z = (PostRaw "/session/$session/element" '{"using":"name","value":"00"}').value.ELEMENT
@@ -162,8 +181,8 @@ function MeasureDriver($driverName, $exePath) {
                 }
             } catch { $zeroVisible = 'not found' }
 
-            '  round {0}: before Value=''{1}''  after Value=''{2}''   00 displayed={3}   {4}' -f `
-                $round, $before.Value, $after.Value, $zeroVisible, $note
+            '  round {0}: landed on ''{1}''   00 displayed={2}   {3}' -f `
+                $round, $landed, $zeroVisible, $note
 
             # Leave the picker so the next round starts from the list.
             foreach ($id in 'CancelButton', 'Back') {
@@ -182,8 +201,46 @@ function MeasureDriver($driverName, $exePath) {
     }
 }
 
-MeasureDriver 'WinAppDriver 1.2.1 (the reference)' 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe'
-MeasureDriver 'WindowsDriverCore (ours)'           'C:\baseline\host\WindowsDriverCore.exe'
+$REF  = 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe'
+$OURS = 'C:\baseline\host\WindowsDriverCore.exe'
+
+# The reference at the suite's own values: the control, and the thing to match.
+MeasureDriver 'reference: -55px' $REF @(
+    @{ Offset = -55; Ms = $null }
+    @{ Offset = -55; Ms = $null }
+    @{ Offset = -55; Ms = $null }
+)
+
+# Ours, with ONE variable moved at a time. Two candidate explanations and this
+# is what separates them: either we scroll LITERALLY the offset while the
+# reference adds momentum - so a bigger offset works and the duration does not
+# matter - or our gesture is too slow to fling at all, so a shorter duration
+# works at the same -55. A sweep of one variable could not tell those apart.
+# WHERE IS THE FLING THRESHOLD? Both knobs moved the result in the same
+# direction, so the variable is VELOCITY: 55 px in 300 ms is 183 px/s and does
+# not fling, 55 px in 60 ms is 917 px/s and does. This walks the duration at a
+# fixed offset to find the boundary, so the shipped value is chosen with a
+# measured margin rather than because it was the one number tried.
+#
+# Each row is a SEPARATE driver start, because the duration is read from the
+# environment once at startup.
+# THREE ATTEMPTS PER CONDITION, and the previous version of this had one.
+#
+# A single sample per duration produced a clean velocity story - 300 ms no,
+# 60 ms yes, 1000 ms no, a bigger offset yes - which a wider single-sample sweep
+# then contradicted non-monotonically: 60 yes, 100 no, 150 no, 200 yes, 250 yes,
+# 300 no. Velocity cannot order that. The outcome is stochastic at these values,
+# so one row per condition was measuring the coin rather than the condition.
+#
+# The duration is read from the environment once at startup, so a driver start
+# per condition with three rounds inside it is the shape that gives repeats.
+foreach ($ms in 60, 150, 300) {
+    MeasureDriver "ours: -55px / ${ms}ms" $OURS @(
+        @{ Offset = -55; Ms = $ms }
+        @{ Offset = -55; Ms = $ms }
+        @{ Offset = -55; Ms = $ms }
+    )
+}
 
 ''
 '=== probe complete ==='
