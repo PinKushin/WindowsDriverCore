@@ -4103,3 +4103,61 @@ identical to one still in progress.
 Same family as `dotnet test --filter` matching nothing and exiting 0. Any filter
 over a run's output must include the failure vocabulary — `ABORT`, `FAILED`,
 `error`, `refus` — or it is a filter that can only report success.
+
+
+### REFUTED, one message after proposing it: "a full run after a full run is stable"
+
+A third full run settles it. `b207b92` differs from `8dfd26f` only by a doc and a
+probe file — **the product code is identical** — so any difference is flake:
+
+```
+8dfd26f  269/290    Touch_Scroll_Vertical FAIL   Pen_Scroll_Vertical pass   TouchScrollOnElement pass
+b207b92  268/290    Touch_Scroll_Vertical pass   Pen_Scroll_Vertical FAIL   TouchScrollOnElement FAIL
+```
+
+Both were preceded by a full run. Three tests still moved. So the dirty-state
+story — that a filtered run leaves alarms behind and poisons the next
+measurement — does **not** explain the variance, and the tidy two-data-point
+hypothesis in the entry above is dead. It may still be true that filtered runs
+leave debris; it is not what makes the score move.
+
+### What the variance actually is: the scroll family
+
+Across four full runs (`bfa5638` twice, `8dfd26f`, `b207b92`) the tests that
+change verdict are dominated by three:
+
+```
+Touch_Scroll_Vertical           /actions touch, 200 px over 500 ms
+Pen_Scroll_Vertical             /actions pen,   200 px over 500 ms
+TouchScrollOnElement_Vertical   /touch/scroll,   55 px over our invented 300 ms
+```
+
+plus `GetElementDisplayedState`, `NavigateBack_ModernApp` and
+`FindElements_ByName` moving once each.
+
+All three scroll tests do the same thing: scroll `MinuteLoopingSelector` and
+assert whether the "00" minute is visible. **Both directions fail in different
+runs** — the hide assertion in one, the restore assertion in another — which is
+the signature of a gesture landing near a threshold rather than a systematic
+under- or over-scroll.
+
+**The reference is deterministic here.** Across five WinAppDriver runs the only
+tests that ever moved were `SendKeys_ModifierAlt`,
+`SendKeys_ModifierWindowsKey` and `CompareElementsError_StaleElementParameter`.
+The scroll tests never moved once. So WinAppDriver produces a gesture the
+`LoopingSelector` resolves the same way every time, and we produce one that sits
+on the boundary.
+
+**That is the single highest-value target left**, because it is three of the
+thirteen backlog entries AND the bulk of the flake — the two goals are the same
+work here, not competing.
+
+**Do not tune the frame rate or duration against it by trial.** Two mechanisms
+have already been proposed for this family and both died: the overrun theory
+(refuted by measurement — frames fit their slot at 1.0x) and the dirty-state
+theory (refuted above). The next step is the project's own rule: **ask the
+reference.** What does WinAppDriver actually emit for a 200 px / 500 ms move —
+how many frames, at what spacing, and what is the velocity in the last samples
+before the lift? A `LoopingSelector` computes its fling from exactly those, and
+we currently emit a constant-velocity path with the lift immediately after the
+final frame.
