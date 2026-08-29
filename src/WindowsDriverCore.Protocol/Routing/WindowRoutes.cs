@@ -258,9 +258,30 @@ public static class WindowRoutes
             using JsonDocument body = await JsonDocument
                 .ParseAsync(context.Request.Body).ConfigureAwait(false);
 
+            // W3C SPELLS THE SAME COMMAND DIFFERENTLY. JSON Wire switches windows
+            // by "name", W3C by "handle", and reading only the first meant a
+            // Selenium 4 client got "Missing Command Parameter: name" for a
+            // perfectly well-formed request. Selenium 4 support is a stated goal
+            // of this driver, so a request shape it cannot read is a gap in the
+            // goal rather than a nicety.
+            //
+            // Same class as the /timeouts and /rect request shapes already
+            // fixed, and as the "text" spelling on element/value - which is the
+            // point: the RESPONSE dialect was translated in one place and the
+            // REQUEST shapes were left to be found one at a time.
             string? name = body.RootElement.TryGetProperty("name", out JsonElement value)
                 ? value.GetString()
                 : null;
+
+            // The W3C spelling, read only when the JSON Wire one is ABSENT.
+            // A client sending an empty "name" has still named the parameter,
+            // and SwitchWindowsError_EmptyValue asserts it is reported as
+            // missing rather than falling through to a different key.
+            if (!body.RootElement.TryGetProperty("name", out _) &&
+                body.RootElement.TryGetProperty("handle", out JsonElement w3cHandle))
+            {
+                name = w3cHandle.GetString();
+            }
 
             // EMPTY counts as missing, not as an unparseable handle.
             // SwitchWindowsError_EmptyValue sends "" and asserts

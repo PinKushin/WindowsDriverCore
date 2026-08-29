@@ -13,12 +13,35 @@ namespace WindowsDriverCore.Protocol.Routing;
 
 /// <summary>The body of <c>POST /element/{id}/value</c>.</summary>
 /// <param name="Value">
+/// <param name="Text">The W3C spelling: one string rather than an array.</param>
 /// The text, as an array of strings. Selenium 3 and the Appium .NET client both
 /// send the characters split across an array rather than a single string, so it
 /// is joined rather than indexed.
 /// </param>
 public sealed record SetValueRequest(
-    [property: JsonPropertyName("value")] IReadOnlyList<string>? Value);
+    [property: JsonPropertyName("value")] IReadOnlyList<string>? Value,
+
+    // W3C SPELLS THE SAME COMMAND DIFFERENTLY, and reading only the JSON Wire
+    // form meant a Selenium 4 client typed nothing at all - the request parsed,
+    // the route answered 200, and no text arrived. Selenium 4 support is a
+    // stated goal of this driver, so a request shape it cannot read is a gap in
+    // the goal rather than a nicety.
+    //
+    // JSON Wire: {"value": ["h","i"]}   an array of single characters
+    // W3C:       {"text": "hi"}          one string
+    [property: JsonPropertyName("text")] string? Text)
+{
+    /// <summary>The text to type, whichever dialect the client used.</summary>
+    /// <remarks>
+    /// <b>The array wins when both are present.</b> Selenium 3 sends only
+    /// <c>value</c>, Selenium 4 only <c>text</c>, and a client sending both has
+    /// said the same thing twice - but the array is the one this driver has
+    /// always honoured, so preferring it cannot change any behaviour that
+    /// already works.
+    /// </remarks>
+    public string? Typed =>
+        Value is { Count: > 0 } ? string.Concat(Value) : Text;
+}
 
 /// <summary>
 /// Element routes that change something: click, clear, value.
@@ -73,7 +96,7 @@ public static class ElementActionRoutes
                 ElementAction action = interactor.SendKeys(
                     session.WindowHandle,
                     elementId,
-                    string.Concat(request?.Value ?? []));
+                    request?.Typed ?? string.Empty);
 
                 if (action.Outcome == ElementActionOutcome.Performed)
                 {

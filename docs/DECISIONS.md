@@ -241,3 +241,57 @@ The assistant reported two regressions as "known flappers" and moved on, and had
 to be corrected. The instinct to discount an intermittent failure is strong
 precisely because it is the cheapest reading available, and it is the reading
 that made four earlier published scores meaningless.
+
+---
+
+## 5. Audit against the SPEC, and three clean passes before it counts
+
+**2026-08-29.** After `/touch/flick` was found ignoring the protocol's own
+`speed` parameter, the owner:
+
+> "this likely means there missing stuff like this all over the place despite
+> the fact we are really close to passing all the tests we can. so audit for
+> that after you fix thius"
+
+Right on both halves. The same sweep immediately found two more — `element/value`
+reading only the JSON Wire array, and `POST /window` reading only `name` — each
+of which breaks every Selenium 4 client while the compatibility score stays two
+tests off its ceiling.
+
+**Being close to passing is what made this invisible.** The suite is one
+Selenium 3.8 client driving one application: every W3C request shape, every
+parameter it never sends and every command it never calls is outside what it can
+observe. A green score is not evidence about the protocol surface.
+
+### The reference is the spec
+
+> "we dont want to follow winappdriver anyway because its flakey, slow, and not
+> up to date, but we do want to implement the winappdrivers api plus more"
+
+So the audit compares against JSON Wire, W3C, and what real clients send —
+never against WinAppDriver's implementation. Consequences worth stating because
+they are easy to get backwards:
+
+- **"WinAppDriver does not implement it either" does not close a finding.** The
+  goal is its API *plus more*; a gap it shares is still ours.
+- Its behaviour is **evidence, not authority**. Where it is measurably wrong,
+  match the API and fix the behaviour.
+- This differs from the TF2 salvage project's audit, which has the Source SDK to
+  check against. Here there is no reference implementation worth copying, so the
+  written protocol is the only authority.
+
+### Three clean passes, three different lenses
+
+`docs/PROTOCOL-AUDIT.md` carries the procedure. The standard:
+
+**Not clean until three consecutive passes find nothing, one per lens, with no
+code change between them.** By route, by parameter, by dialect. Any finding
+resets the count.
+
+Three *different* lenses rather than the same sweep three times, because a
+static check repeated is one check — and the by-route pass is precisely what
+skims over a missing parameter, since the route looks implemented. Only the
+by-parameter lens found `speed`.
+
+The reset after a fix is not ceremony: a fix is a change, and the third pass
+exists to see the code as it will actually ship.

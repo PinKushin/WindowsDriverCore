@@ -52,6 +52,12 @@ public sealed class PointerActionRunner
     /// rather than only the gap between its frames.
     /// </para>
     /// </remarks>
+    /// <summary>How fast a drag goes when the CLIENT did not say.</summary>
+    /// <remarks>
+    /// <b>Only /touch/scroll reaches this.</b> JSON Wire gives <c>/touch/flick</c>
+    /// a <c>speed</c> and scroll none, so a stated speed is always the caller's
+    /// and this is the fallback for the one route that has no way to express it.
+    /// </remarks>
     private const double DragPixelsPerSecond = 900;
 
     /// <summary>
@@ -686,8 +692,12 @@ public sealed class PointerActionRunner
     /// <param name="fromY">Screen y to start at.</param>
     /// <param name="toX">Screen x to finish at.</param>
     /// <param name="toY">Screen y to finish at.</param>
+    /// <param name="pixelsPerSecond">
+    /// How fast the caller asked it to go, or null to let the driver choose.
+    /// </param>
     /// <returns>Null when performed, or why it could not be.</returns>
-    public PointerRefusal? Drag(int fromX, int fromY, int toX, int toY)
+    public PointerRefusal? Drag(
+        int fromX, int fromY, int toX, int toY, double? pixelsPerSecond = null)
     {
         if (!_synthetic.CanInject(SyntheticPointerKind.Touch))
         {
@@ -705,7 +715,7 @@ public sealed class PointerActionRunner
         // route, so it gets the one a person's flick takes.
         PointerRefusal? moved = Move(
             SyntheticPointerKind.Touch, fromX, fromY, toX, toY, down: true,
-            DragDurationFor(fromX, fromY, toX, toY));
+            DragDurationFor(fromX, fromY, toX, toY, pixelsPerSecond));
         if (moved is not null)
         {
             return moved;
@@ -721,6 +731,7 @@ public sealed class PointerActionRunner
     /// <param name="fromY">Where it starts.</param>
     /// <param name="toX">Where it ends.</param>
     /// <param name="toY">Where it ends.</param>
+    /// <param name="pixelsPerSecond">The caller's speed, or null for the default.</param>
     /// <returns>The duration, never shorter than one frame separation.</returns>
     /// <remarks>
     /// <para>
@@ -762,14 +773,41 @@ public sealed class PointerActionRunner
     /// offset would otherwise compute a duration too short to deliver.
     /// </para>
     /// </remarks>
-    private static TimeSpan DragDurationFor(int fromX, int fromY, int toX, int toY)
+    private static TimeSpan DragDurationFor(
+        int fromX, int fromY, int toX, int toY, double? pixelsPerSecond)
     {
         double distance = Math.Sqrt(
             Math.Pow((double)toX - fromX, 2) + Math.Pow((double)toY - fromY, 2));
 
-        TimeSpan wanted = TimeSpan.FromSeconds(distance / DragPixelsPerSecond);
+        // THE CALLER'S SPEED WHEN THEY GAVE ONE. JSON Wire's /touch/flick takes
+        // a speed in pixels per second; /touch/scroll takes none, so only there
+        // does the driver choose. A driver that overrode a stated speed would be
+        // deciding something the protocol hands to the client - the same rule as
+        // /actions, where the duration is spent exactly as asked.
+        double speed = pixelsPerSecond is > 0 ? pixelsPerSecond.Value : DragPixelsPerSecond;
+
+        TimeSpan wanted = TimeSpan.FromSeconds(distance / speed);
 
         return wanted < FrameSeparation ? FrameSeparation : wanted;
+    }
+
+    /// <summary>Where this window's pointer is, for a gesture with no element.</summary>
+    /// <param name="window">The session window.</param>
+    /// <returns>The point, or why it could not be established.</returns>
+    /// <remarks>
+    /// <b>For the ANONYMOUS flick</b>, which JSON Wire defines with neither an
+    /// element nor offsets - only a velocity - so it flicks from wherever the
+    /// pointer already is. A source that has never moved sits at the viewport
+    /// origin, which is the same rule <c>/actions</c> follows.
+    /// </remarks>
+    public (int X, int Y, PointerRefusal? Failure) WhereThePointerIs(nint window)
+    {
+        if (_pointers.TryGetValue(new PointerSource(window, string.Empty), out (int X, int Y) held))
+        {
+            return (held.X, held.Y, null);
+        }
+
+        return WindowOrigin(window, 0, 0);
     }
 
     /// <summary>The centre of an element, in screen pixels.</summary>
