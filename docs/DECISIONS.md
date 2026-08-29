@@ -480,3 +480,66 @@ anything that was not a pointer. `key` sources were found the same way one pass
 earlier. The pattern is worth naming: **`/actions` is one route with three
 independent implementations behind it, and two of the three were missing while
 the route answered 200.**
+
+---
+
+## 8. WebDriver BiDi: serve the spec where it applies, invent nothing, and not yet
+
+Raised by the owner after BiDi came up as a contrast while discussing whether
+event loops are foundational here.
+
+### What was asked, and the correction that mattered
+
+> "Wait so its part of Sel 4? then we probably are going to need to serve it too,
+> since i want this driver to first match winappdriver, then be fully sel 4
+> compat."
+
+**BiDi is not required for Selenium 4 compatibility, and that is the load-bearing
+fact.** Selenium 4 drives drivers over W3C WebDriver **Classic** — plain HTTP —
+for every command a desktop client issues: find, click, send keys, actions,
+window management. BiDi is opt-in (`webSocketUrl: true`) and exists for browser
+features: network interception, console log streaming, DOM mutation events.
+
+A Selenium 4 client pointed at a Classic-only driver works completely. So the
+three goals separate cleanly:
+
+| goal | needs | state |
+|---|---|---|
+| match WinAppDriver | its 59 documented endpoints | done |
+| full Selenium 4 compatibility | W3C Classic request/response shapes | done |
+| BiDi | a websocket plus browser-shaped modules | optional, later |
+
+### The owner's position on how, which settles the design question
+
+> "i meant it like we dont create anything new for bidi, but we implement it as
+> its spec is, like we did the rest of the Sel 4 stuff"
+
+Agreed and recorded as the rule: **implement the specification as written, or do
+not implement it.** No desktop reinterpretation of `browsingContext`, no vendor
+events smuggled in under a standard name. That is the same discipline that made
+the Classic work correct — the spec decides the shape, and where a capability has
+no honest expression it is refused rather than approximated.
+
+The practical consequence is that the applicable subset is small. `session`
+(new / status / subscribe / end) and `input.performActions` map to a desktop
+without reinterpretation. `script`, `network` and `browsingContext` are browser
+concepts with nothing here to serve.
+
+### Why "not yet" rather than "no"
+
+The owner's own reason:
+
+> "it would be nice things to have for automating browsers"
+
+Which is true and worth noting for what it implies: **serving BiDi's browser
+modules faithfully would mean talking a browser's own protocol, not UI
+Automation.** This driver drives Edge today the way it drives any window — as a
+desktop application through UIA. Reporting a network request or a console entry
+is not something UIA can answer; it would require proxying or embedding a
+browser driver. That is a different product, and naming it here is the point:
+the decision to go there should be deliberate rather than arrived at by
+implementing modules one at a time.
+
+**Nothing is blocked by this.** BiDi is additive by construction — a websocket
+alongside the existing HTTP surface, negotiated by a capability old clients never
+send — so parking it costs nothing and forecloses nothing.
