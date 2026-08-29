@@ -65,6 +65,20 @@ param(
     [string] $Root = "F:\Hyper-V",
     [int] $TimeoutMinutes = 30,
 
+    # HOW MANY TIMES TO RUN THE SAME BINARY.
+    #
+    # The SendKeys cascade fires in roughly 30% of runs, so one run attributes
+    # nothing and three consecutive green ones are the EXPECTED outcome whether
+    # or not anything was fixed. Repeating is how that variance gets measured
+    # rather than guessed at.
+    #
+    # Inside the script rather than a loop around it, for a reason that bit
+    # twice: the HEAD guard re-checks the working tree on every invocation, so a
+    # commit made while an external loop was running aborted the next run.
+    # Publishing once and repeating only the queue removes that, and skips a
+    # redundant publish and bundle push per run.
+    [ValidateRange(1, 20)][int] $Repeat = 1,
+
     # OPT IN TO RESETTING. IT IS NOT THE DEFAULT, BECAUSE IT COSTS 21 TESTS.
     #
     # MEASURED 2026-08-11, WinAppDriver 1.2.1, same guest, same commit, cold:
@@ -481,6 +495,10 @@ if ($Driver -eq 'WindowsDriverCore') {
     Write-Host 'bundle pushed to the guest'
 }
 
+for ($attempt = 1; $attempt -le $Repeat; $attempt++) {
+
+if ($Repeat -gt 1) { Write-Host "--- run $attempt of $Repeat at $Commit ---" }
+
 $name = "compat-$(Get-Date -Format HHmmss)"
 Invoke-Command -VMName $VMName -Credential $credential -ArgumentList $job, $name -ScriptBlock {
     param($text, $jobName)
@@ -488,6 +506,7 @@ Invoke-Command -VMName $VMName -Credential $credential -ArgumentList $job, $name
 }
 Write-Host "queued $name ($Driver at $Commit)"
 
+$finished = $false
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 while ((Get-Date) -lt $deadline) {
     $log = Invoke-Command -VMName $VMName -Credential $credential -ArgumentList $name -ScriptBlock {
@@ -513,8 +532,10 @@ while ((Get-Date) -lt $deadline) {
             throw "The guest aborted the run. See the log above."
         }
 
-        return
+        $finished = $true
+        break
     }
     Start-Sleep -Seconds 15
 }
-throw "The run did not finish within $TimeoutMinutes minutes."
+if (-not $finished) { throw "Run $attempt did not finish within $TimeoutMinutes minutes." }
+}
