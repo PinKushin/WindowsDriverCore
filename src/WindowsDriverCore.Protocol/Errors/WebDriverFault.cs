@@ -93,6 +93,23 @@ public sealed record WebDriverFault(int Status, string Error, int HttpStatus)
     public static WebDriverFault InvalidArgument { get; } =
         new(100, "invalid argument", 400);
 
+    /// <summary>A command needed a modal dialog and there was none.</summary>
+    /// <remarks>
+    /// <para>
+    /// JSON Wire status 27, W3C name <c>no such alert</c>. A distinct fault
+    /// rather than "no such element" because clients map it to a distinct
+    /// exception - Selenium raises <c>NoAlertPresentException</c> - and a test
+    /// that catches that is asking a different question from one catching a
+    /// missing element.
+    /// </para>
+    /// <para>
+    /// WinAppDriver never sends this: it does not serve the alert commands at
+    /// all, measured 2026-08-29, and answers 404 to every one of them.
+    /// </para>
+    /// </remarks>
+    public static WebDriverFault NoAlertPresent { get; } =
+        new(27, "no such alert", 400);
+
     /// <summary>No session exists with the requested id.</summary>
     /// <remarks>
     /// WinAppDriver uses 101. Selenium's enum has <c>NoSuchDriver = 6</c>.

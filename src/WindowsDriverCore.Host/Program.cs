@@ -213,6 +213,9 @@ public partial class Program
 
         // GET /location. Answers a refusal on most machines, which is honest.
         builder.Services.AddSingleton<IGeolocation, WindowsGeolocation>();
+
+        // The alert commands. WinAppDriver serves none of them.
+        builder.Services.AddSingleton<IAlertInspector, UiaAlertInspector>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<UiaElementFinder>();
         builder.Services.AddSingleton<IElementFinder>(provider =>
