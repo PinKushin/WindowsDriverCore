@@ -200,6 +200,15 @@ public sealed class PointerActionRunner
         _windows = windows;
     }
 
+    /// <summary>True if the payload has a source this runner owns.</summary>
+    /// <param name="payload">The action sequence.</param>
+    /// <remarks>
+    /// Asked by the route so a key-only sequence is not refused for the absence
+    /// of a pointer injector it never needed.
+    /// </remarks>
+    public static bool HasPointerSource(JsonElement payload) =>
+        KeyActionRunner.HasSourceOfType(payload, "pointer");
+
     /// <summary>Performs every pointer source in the payload.</summary>
     /// <param name="payload">A payload that has already been validated.</param>
     /// <param name="window">The session's window, for element origins.</param>

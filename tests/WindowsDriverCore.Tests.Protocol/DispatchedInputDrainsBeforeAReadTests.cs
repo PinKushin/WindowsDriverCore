@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -98,6 +99,13 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         IElementInspector inspector = Substitute.For<IElementInspector>();
         inspector.Text(Arg.Any<nint>(), Arg.Any<string>()).Returns(ElementRead.Success("whatever"));
 
+        // A touch injector that reports it can inject and does nothing. Without
+        // it the container resolves the REAL one and /touch/down puts a finger
+        // on the actual desktop — which two protocol tests have done for real.
+        ISyntheticPointer synthetic = Substitute.For<ISyntheticPointer>();
+        synthetic.CanInject(Arg.Any<SyntheticPointerKind>()).Returns(true);
+        synthetic.Inject(Arg.Any<IReadOnlyList<SyntheticContact>>()).Returns(true);
+
         _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
@@ -105,6 +113,7 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
                 services.AddSingleton(_windows);
                 services.AddSingleton(keyboard);
                 services.AddSingleton(pointer);
+                services.AddSingleton(synthetic);
                 services.AddSingleton(inspector);
                 services.AddSingleton(interactor);
             }));
@@ -128,6 +137,15 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         _windows.Exists(Arg.Any<nint>()).Returns(true);
         _windows.WaitForInputProcessed(Arg.Any<nint>()).Returns(true);
         _windows.BringToForeground(Arg.Any<nint>()).Returns(true);
+
+        // A PLACED WINDOW THAT OWNS ITS OWN POINTS, or the touch route refuses
+        // before it injects anything and the drain under test never happens.
+        // A substitute answers null for GetBounds and false for OwnsThePointAt,
+        // and either one makes a passing test unfalsifiable: no contact is
+        // dispatched, so no wait is owed, so the assertion would be measuring
+        // the missing collaborator rather than the route.
+        _windows.GetBounds(Arg.Any<nint>()).Returns(new WindowBounds(0, 0, 800, 600));
+        _windows.OwnsThePointAt(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<nint>()).Returns(true);
     }
 
     [OneTimeTearDown]
@@ -218,6 +236,39 @@ public sealed class DispatchedInputDrainsBeforeAReadTests : IDisposable
         await _client.PostAsync(
             new Uri($"/session/{sessionId}/element/1.2/click", UriKind.Relative),
             new StringContent("{}", Encoding.UTF8, "application/json"));
+
+    private async Task TouchDown(string sessionId) =>
+        await _client.PostAsync(
+            new Uri($"/session/{sessionId}/touch/down", UriKind.Relative),
+            new StringContent("{\"x\":10,\"y\":10}", Encoding.UTF8, "application/json"));
+
+    /// <summary>A hand-built touch gesture owes the same wait as a tap.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The last input path that never flagged its own input.</b> click,
+    /// longclick, doubleclick, scroll, flick and <c>/actions</c> all set
+    /// <c>InputPending</c>; <c>/touch/down</c>, <c>/touch/move</c> and
+    /// <c>/touch/up</c> did not. So a client that spells a gesture out one phase
+    /// per request — which is the only way JSON Wire lets it hold a contact
+    /// across calls — got a read that outran the application.
+    /// </para>
+    /// <para>
+    /// Found by the by-parameter audit lens rather than by a failure. The route
+    /// LOOKED complete: it read <c>x</c> and <c>y</c> correctly, injected the
+    /// right phase and answered 200. Nothing about it invites a second look,
+    /// which is exactly the case the by-route lens skims past.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task ReadingAfterATouchContact_WaitsForItToLand()
+    {
+        string sessionId = await NewSession();
+
+        await TouchDown(sessionId);
+        await ReadText(sessionId);
+
+        _windows.Received(1).WaitForInputProcessed(TheWindow);
+    }
 
     [Test]
     public async Task ReadingAfterAMouseClick_WaitsForItToLand()

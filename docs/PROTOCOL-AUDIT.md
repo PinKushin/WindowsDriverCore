@@ -143,6 +143,9 @@ not the list of open items.
 | 2026-08-29 | route (pass 4) | `GET /session/{id}/timeouts` not served — W3C reads them back and this driver could only be written to | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route (pass 4) | `POST /session/{id}/timeouts/implicit_wait` not served — the legacy JWP spelling, which Selenium 3.8 does not send | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route (pass 4) | `POST /session/{id}/orientation` not served — both dialects define it and we served only the GET | fixed, refuses PORTRAIT rather than accepting it |
+| 2026-08-29 | parameter (pass 5) | **`key` input sources in `/actions` were SKIPPED and the request answered 200.** Every Selenium 4 keystroke goes through `ActionChains`, so that client could not type at all | fixed, `KeyActionRunner` + `ActionsKeySourceTests` |
+| 2026-08-29 | parameter (pass 5) | `/touch/down`, `/touch/move`, `/touch/up` never set `InputPending` — the only input path that did not, so a read after a hand-built gesture outran the application | fixed, `DispatchedInputDrainsBeforeAReadTests` |
+| 2026-08-29 | parameter (pass 5) | `requiredCapabilities` never read — the other half of the JSON Wire session body, so a client stating its app as required was told its capabilities were bad | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route | `DELETE /actions` (Release Actions) not served at all — a W3C client releasing input state got the unknown-command fallback | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route | `GET /window/handles` (W3C) not served — only `/window_handles` | fixed, aliased onto one handler |
 | 2026-08-29 | route | `GET /window` (W3C current handle) not served — only `/window_handle`; POST and DELETE on that path existed, so the gap was one verb | fixed, aliased |
@@ -188,9 +191,20 @@ it is asking for a keystroke, not a window-manager operation.
 | 2026-08-29 | route | every mapped endpoint against the W3C endpoint list | **3 findings** — count reset |
 | 2026-08-29 | dialect | every command where JWP and W3C diverge | **6 findings** — count reset |
 | 2026-08-29 | route (pass 4) | every mapped endpoint against the W3C endpoint list, re-run | **3 findings** — count reset |
+| 2026-08-29 | parameter (pass 5) | every key the Routing layer reads, against each endpoint's defined body | **3 findings** — count reset |
 
-**Still zero of three.** Four passes, every one of them productive — 3, 3, 6 and
-3. The count cannot start until a lens comes back empty.
+**Still zero of three.** Five passes, every one productive — 3, 3, 6, 3 and 3.
+The count cannot start until a lens comes back empty.
+
+**The by-parameter lens keeps out-earning the by-route one, and pass 5 says why
+in one line.** `POST /actions` is *served*. It validates a dozen fields against
+the spec's own messages, it performs pointer input, it has its own test fixture
+and it answers 200. By route it is finished. By parameter it dropped every
+keyboard sequence a Selenium 4 client can send — the runner's comment called key
+sources "someone else's job" and no such job was ever written.
+
+That is the shape to look for: not a missing endpoint, but **a served one whose
+own comment defers work to somewhere that does not exist.**
 
 ### The instrument was wrong in pass 4, and it failed toward MORE work
 
