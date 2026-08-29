@@ -421,26 +421,48 @@ typing into a prompt's field; a Windows message box has no field, and a dialog
 with several has no canonical one. A client that wants that has `/element` and
 can name it.
 
-### `/log` and `/log/types`
+### `/log` and `/log/types` — CLOSED 2026-08-29
 
-WinAppDriver serves both. This driver has a richer transcript than the reference
-(`IInteractionLog`, the EventSource channel) and no way for a client to ask for
-any of it.
+**And the note above was wrong about the reference too.** It said "WinAppDriver
+serves both". Measured: both answer **404**. Another claim written from memory
+in the same sitting as the `/execute` one, and caught by the same probe.
 
-Worth doing and cheap, but it needs the privacy rule applied deliberately:
-locators are logged, `SetValue` and `SendKeys` arguments never are, and a log
-endpoint is exactly where that boundary would be crossed by accident.
+Served now, and it is the clearest case of this driver having more to offer than
+the reference: the transcript records a find's match count and a click's chosen
+strategy, and none of it was reachable except by reading the server's console.
 
-### `/url`, `/refresh`, `/element/{id}/submit`
+**The privacy rule holds by construction rather than by care.** The buffer is a
+`TextWriter` TEED off the existing transcript, so it serves the same formatted
+lines the console gets. Locators are logged and `SetValue`/`SendKeys` arguments
+never are — `IInteractionLog` has no parameter that could carry one — so an HTTP
+log cannot contain a password the console would not. A second, independent
+reader of the raw events could have, which is why it is not one.
 
-Browser-shaped commands with no obvious desktop meaning. `back` and `forward`
-ARE served, which makes the asymmetry deliberate-looking when it is not — they
-exist because the suite tests them.
+Bounded at 5000 lines dropping the OLDEST, and it DRAINS, which is the protocol's
+contract: a client polls it, and one re-reading its whole history would report
+every line again on every call.
 
-Needs a decision rather than an implementation: either serve them as the
-keystrokes they would be (F5, Enter) or refuse them explicitly, the way
-`/window/fullscreen` is refused. **Serving them as no-ops is the one option
-ruled out.**
+### `/url`, `/refresh`, `/element/{id}/submit` — CLOSED 2026-08-29
+
+**Served in order to refuse**, which is not the same as not serving them. The
+unknown-command fallback says "I do not recognise this"; these say "I know what
+you asked for, it does not exist here, use this instead" — and only the second is
+something a client author can act on. The first reads as a wrong driver, a wrong
+version, or a typo.
+
+WinAppDriver makes the same distinction and this matches it: 501 for `/url` and
+`/refresh`, 404 for anything unrouted. What it does not do is say why — its 501
+carries no body at all.
+
+**Refusing rather than inventing an equivalent is the decision.** Each has a
+plausible-looking analogue and every one is a guess about the caller's intent:
+`submit` as Enter, when a dialog's default button often is not; `refresh` as F5,
+which is meaningful in a browser and destructive in some editors; `url` as the
+app id, a plausible string that is not an address and which a client would then
+try to navigate to.
+
+Each refusal names an alternative, because a refusal that only says no leaves the
+caller exactly where the fallback would have.
 
 ### Not gaps, recorded so they are not re-found
 
@@ -543,6 +565,8 @@ than assumed:
 | `GET /timeouts` | not served | reports the implicit wait |
 | `POST /window/minimize` | not served | served |
 | alert text, accept, dismiss | 404 | served, both dialects |
+| `GET /log/types`, `POST /log` | 404 | served, drains, teed off the transcript |
+| `/url`, `/refresh`, `submit` | 501/404, no body | refused BY NAME, each pointing at an alternative |
 | `GET /location` | in its list, fails environmentally | served, refuses honestly |
 | `GET`/`POST /window/rect` | not served | served |
 | every W3C request spelling | not served | served |
@@ -556,6 +580,60 @@ than assumed:
   port. `DECISIONS.md` #7b, and a test asserts it stays absent.
 - **`POST /alert_text`** — typing into a prompt. No canonical input field exists
   on a Windows dialog; `/element` names one explicitly.
-- **`/log`, `/url`, `/refresh`, `/element/{id}/submit`** — open, listed above
-  with what each needs. The reference serves none of them either (404, or 501 for
-  the middle two), so these are *plus more* work rather than gaps.
+- **`GET /status` in the W3C shape** — the one item still needing an owner
+  decision. The dialects disagree at the root and the request cannot tell them
+  apart; see above for the two real options.
+
+---
+
+## Passes 9 and 10 — the first clean ones
+
+### Pass 9, by DIALECT — clean
+
+Every command where JSON Wire and W3C diverge, probed against a running server in
+BOTH spellings, with `/definitely-not-a-route` as the control: `/execute` and
+`/execute/sync`, both window-handle pairs, `attribute` and `property`, active
+element by POST and GET, maximize with and without the handle, `current/size`
+and `rect`, timeouts read and written and the legacy spelling, all six alert
+forms, orientation both ways, actions POST and DELETE. **27 served, 0 missing.**
+
+And the half a path probe cannot see: a **W3C session** — created with
+`capabilities.alwaysMatch` — was pointed at four of the newest routes and each
+answered in the W3C envelope (`value`, no top-level `status` or `sessionId`).
+The dialect filter covers them because they use the standard envelope, which was
+measured rather than assumed.
+
+### Pass 10, by ROUTE, run in the INVERSE direction — clean
+
+Passes 4 and 7 walked the spec and checked it against us. This one walked OUR
+routes and checked them against the spec — a different question, and the one that
+finds a route we should not be serving.
+
+**It found no protocol gap and one instrument defect**, which is now permanently
+fixed.
+
+The grep that enumerated our routes **silently missed `/back`, `/click` and
+`/buttondown`**. That is the dangerous direction for this lens: pass 4's grep
+over-reported and merely wasted time, but an under-reporting grep leaves a stray
+route unexamined and reports clean.
+
+`TheServedSurfaceTests` replaces it by reading `EndpointDataSource` — the table
+the server itself dispatches on, which cannot disagree with what is served. A
+test rather than a script so it runs on every build and a route added tomorrow
+appears without anybody re-running anything.
+
+It asserts PROPERTIES, not a frozen list: every route under a protocol prefix,
+28 named family members present, exactly one catch-all. A test that pinned the
+count would fail on every addition and teach people to update it without reading
+it.
+
+**It corrected two of my assumptions on its first run** — the fallback is
+registered as `/{*path:nonfile}`, with a leading slash and a route constraint,
+and neither guess matched. That is the instrument working.
+
+### The count: 2 of 3
+
+Pass 10 added a test and changed no shipping code. Recorded as clean on that
+basis, and the reasoning is stated rather than assumed: the reset exists because
+*a fix can introduce a gap*, and a test cannot change what the server serves.
+A production change would reset it.

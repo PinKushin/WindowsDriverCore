@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -724,6 +725,106 @@ public sealed class W3CRequestShapeTests : IDisposable
         JsonDocument.Parse(await response.Content.ReadAsStringAsync())
             .RootElement.ToString()
             .ShouldNotContain("latitude", Case.Insensitive);
+    }
+
+    /// <summary>The log endpoints answer, and the log DRAINS.</summary>
+    /// <remarks>
+    /// <para>
+    /// WinAppDriver serves neither — measured, both 404. This is the one place
+    /// this driver has clearly more to offer: the transcript records a find's
+    /// match count and a click's chosen strategy, and until now none of it was
+    /// reachable except by reading the server's console.
+    /// </para>
+    /// <para>
+    /// <b>Draining is asserted, not assumed.</b> It is the protocol's contract:
+    /// a client polls this, and one that re-read its whole history every time
+    /// would report every line again on every call.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task TheServerLog_IsReadableAndDrains()
+    {
+        string session = await NewSession();
+
+        JsonDocument.Parse(await GetValue($"/session/{session}/log/types"))
+            .RootElement.EnumerateArray().First().GetString()
+            .ShouldBe("server");
+
+        // Creating the session above produced transcript lines, so the first
+        // read has something in it - which is what makes the second read's
+        // emptiness meaningful rather than vacuous.
+        JsonElement first = JsonDocument.Parse(
+            await (await Post($"/session/{session}/log", """{"type":"server"}"""))
+                .Content.ReadAsStringAsync()).RootElement.GetProperty("value");
+
+        first.GetArrayLength().ShouldBeGreaterThan(0, "the session's own requests were logged");
+
+        JsonElement second = JsonDocument.Parse(
+            await (await Post($"/session/{session}/log", """{"type":"server"}"""))
+                .Content.ReadAsStringAsync()).RootElement.GetProperty("value");
+
+        // Only the one request between the two reads, so the second is short -
+        // asserted as "fewer" rather than "empty", because reading the log is
+        // itself a logged request.
+        second.GetArrayLength().ShouldBeLessThan(
+            first.GetArrayLength(), "the first read took the entries");
+    }
+
+    /// <summary>An unknown log type is refused, not answered with the server log.</summary>
+    /// <remarks>
+    /// THE CONTROL. Handing back the request transcript for "performance" would
+    /// have a client draw timing conclusions from records that are not timings.
+    /// </remarks>
+    [Test]
+    public async Task AnUnknownLogType_IsRefused()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = await Post(
+            $"/session/{session}/log", """{"type":"performance"}""");
+
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("status").GetInt32()
+            .ShouldBe(100, "invalid argument");
+    }
+
+    /// <summary>A command with no desktop meaning says so, and says what to use.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Served in order to REFUSE, which is not the same as not serving.</b>
+    /// The fallback says "I do not recognise this"; these say "I know what you
+    /// asked for, it does not exist here, use this instead". Only the second is
+    /// something a client author can act on.
+    /// </para>
+    /// <para>
+    /// WinAppDriver makes the same distinction — 501 for <c>/url</c> and
+    /// <c>/refresh</c>, 404 for anything unrouted — but its 501 carries no body,
+    /// so it says nothing about why.
+    /// </para>
+    /// </remarks>
+    [TestCase("GET", "url", "address", TestName = "Url_IsRefusedWithAReason")]
+    [TestCase("POST", "refresh", "F5", TestName = "Refresh_IsRefusedWithAReason")]
+    [TestCase("POST", "element/e1/submit", "forms", TestName = "Submit_IsRefusedWithAReason")]
+    public async Task AnInapplicableCommand_NamesWhyAndWhatToUseInstead(
+        string method, string path, string expected)
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage response = method == "GET"
+            ? await _client.GetAsync(new Uri($"/session/{session}/{path}", UriKind.Relative))
+            : await Post($"/session/{session}/{path}", "{}");
+
+        string message = JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("value").GetProperty("message").GetString() ?? string.Empty;
+
+        // NOT the fallback's text. That is the whole distinction being made, and
+        // asserting only the status code would pass against no route at all.
+        message.ShouldNotContain("Command not recognized");
+        message.ShouldContain(expected);
+
+        // AND IT NAMES AN ALTERNATIVE. A refusal that only says no leaves the
+        // caller exactly where the fallback would have.
+        message.ShouldContain("/session/");
     }
 
     private async Task<string> NewSession()

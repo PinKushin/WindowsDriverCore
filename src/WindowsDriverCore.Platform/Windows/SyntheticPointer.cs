@@ -214,8 +214,30 @@ public sealed class SyntheticPointer : ISyntheticPointer
 
         frame[0].penInfo.penFlags = PenFlagsFor(contact.Button);
 
-        frame[0].penInfo.penMask =
-            PEN_MASK_PRESSURE | PEN_MASK_TILT_X | PEN_MASK_TILT_Y | PEN_MASK_ROTATION;
+        // THE ROTATION BIT IS SET ONLY WHEN A ROTATION WAS ASKED FOR, and that
+        // is a fix rather than a nicety.
+        //
+        // MEASURED on the guest: setting it unconditionally cost Pen_LongClick
+        // and Pen_Scroll_Vertical, which passed at 758f9ec9 and failed at
+        // 6481cbb0 - and the only pen-specific change in those 23 commits was
+        // this mask. A mask bit is an assertion that the field beside it is
+        // meaningful, so asserting a rotation of zero is not the same as saying
+        // nothing about rotation.
+        //
+        // Semantically identical for the caller: zero degrees IS unrotated, so a
+        // client asking for it gets what a client saying nothing gets.
+        //
+        // My own comment on the line below said this was "NOT VERIFIABLE BY TEST
+        // HERE". The guest verified it, negatively - which is what the guest is
+        // for.
+        uint penMask = PEN_MASK_PRESSURE | PEN_MASK_TILT_X | PEN_MASK_TILT_Y;
+
+        if (contact.Twist != 0)
+        {
+            penMask |= PEN_MASK_ROTATION;
+        }
+
+        frame[0].penInfo.penMask = penMask;
 
         // W3C carries pressure as 0..1; the pointer API wants 0..1024.
         frame[0].penInfo.pressure = (uint)Math.Clamp(contact.Pressure * 1024, 0, 1024);
