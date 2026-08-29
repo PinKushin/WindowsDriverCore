@@ -295,3 +295,92 @@ by-parameter lens found `speed`.
 
 The reset after a fix is not ceremony: a fix is a change, and the third pass
 exists to see the code as it will actually ship.
+
+---
+
+## 6. The audit's completion rule is "nothing NEW", and the local suite runs under the lock
+
+Two corrections made on 2026-08-29, one to the audit and one to how I work. Both
+recorded because the reason is what will be missing later.
+
+### 6a. "Any finding resets the count" was unsatisfiable
+
+Decision #5 above states the standard as *any finding resets the count*. That
+cannot be met. As soon as one finding needs more than a route alias — a Platform
+capability, or a decision the owner has to make — it stays open, every later pass
+re-encounters it, and the count resets forever.
+
+**A pass is clean when it finds nothing NEW.** An item already in the ledger is a
+known gap, not a discovery.
+
+The loophole is obvious, so two conditions travel with it:
+
+- **An open item is recorded the moment it is found**, with what it needs.
+  Otherwise "already known" becomes a way to launder anything inconvenient.
+- **Clean means "no new gaps", never "no gaps".** A clean audit with six open
+  items is an honest state. A clean audit reached by not looking is not.
+
+Six open items are now written down in `docs/PROTOCOL-AUDIT.md` with what each
+needs: `/location`, `/execute` and its `windows:` vendor commands, alert
+handling, `/log`, the browser-shaped commands, and the DOM concepts that are
+correctly refused.
+
+**This does not weaken #5.** The bar it was reaching for — that a clean audit
+means somebody actually looked — is unchanged, and the recording requirement is
+what keeps it.
+
+### 6b. Audit the API this project implements, not only the spec it aims at
+
+Pass 6 replaced the instrument: instead of reading source, it **probed a running
+server** with every endpoint in WinAppDriver's own `SupportedAPIs.md`.
+
+Six of the gaps it found were in the reference's documented API rather than in
+the W3C spec. `/window/:windowHandle/size`, `/position` and `/maximize` accepted
+only the literal string `current`, so a client addressing a window by the handle
+the path exists to carry got "Command not recognized".
+
+Five passes of auditing outward at W3C had never checked the API this project
+exists to implement. `tools/audit/Probe-Endpoints.ps1` carries the probe, because
+a shell history is not a record.
+
+### 6c. The local suite runs under `run-exclusive.ps1` — the owner's correction
+
+I ran `dotnet test WindowsDriverCore.slnx` directly. One integration test failed
+and passed on a re-run, and I was about to investigate the test. The owner:
+
+> "you didnt run exclusive so you got stepped on in that last run"
+
+Right. Re-running under the lock named the holder — another agent's DirectX
+viewer, driving a window on the same desktop — and all three suites then passed.
+
+**This repo's integration tests are desktop work**, not only the suite tagged
+`Desktop`. They drive real windows and the UIA tree, so the whole-solution run
+takes the machine-wide lock:
+
+```powershell
+C:\Users\pinku\source\repos\PinKushin\run-exclusive.ps1 -TimeoutMinutes 45 `
+  dotnet test WindowsDriverCore.slnx --filter "TestCategory!=Comparison"
+```
+
+**The lock is also the diagnosis.** It prints the current holder's PID and
+command line while waiting, so "why did that fail once" is answered by the wait
+banner rather than by an investigation. Without it, a foreign foreground steal
+and a real defect are indistinguishable.
+
+### 6d. Red CI on a green desktop is a defect, not CI flake
+
+Related and worth stating beside 6c, because both look "intermittent" and only
+one is contention.
+
+`DeletingByBackspace_ReadsAsEmpty_ImmediatelyAfter` passed here every run and
+failed CI three runs in a row, at 3 of 5 attempts and then 1 of 5. It was a real
+race in `WaitForValueToSettle`: two agreeing reads taken mid-stream are the poll
+outrunning the application, not the application finishing.
+
+**The slower machine is the more sensitive instrument** for this class of bug,
+because the race is poll rate against the application's message loop. That
+inverts the usual intuition that a fast dev machine is the harsh test.
+
+An unlocked local run that fails once and passes on re-run is contention (6c). A
+CI failure that repeats is a defect. Neither is ever answered by re-running for a
+green result.
