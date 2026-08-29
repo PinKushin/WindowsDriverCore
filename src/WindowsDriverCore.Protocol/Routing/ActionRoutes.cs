@@ -59,6 +59,9 @@ public static class ActionRoutes
     private const string NotImplemented =
         "Unimplemented Command: no pointer injector is registered on this server";
 
+    private const string KeysRefused =
+        "The key actions in this sequence could not be delivered to the keyboard";
+
     /// <summary>Maps the actions route.</summary>
     /// <param name="app">The route builder.</param>
     /// <returns>The same builder, for chaining.</returns>
@@ -100,6 +103,7 @@ public static class ActionRoutes
             async (
                 HttpContext context,
                 PointerActionRunner? runner,
+                KeyActionRunner? keys,
                 IElementRegistry registry,
                 IWindowLocator windows) =>
         {
@@ -116,6 +120,35 @@ public static class ActionRoutes
                 return Results.Json(
                     JsonWireResponse.ForFault(WebDriverFault.InvalidArgument, rejection),
                     statusCode: WebDriverFault.InvalidArgument.HttpStatus);
+            }
+
+            // THE KEYBOARD HALF, which this route used to drop on the floor.
+            // The runner's own comment called key sources "someone else's job"
+            // and no such job existed, so a Selenium 4 ActionChains keystroke
+            // sequence was answered 200 having typed nothing.
+            //
+            // Performed BEFORE the pointer half, because that is the order the
+            // client wrote them in for the common case - hold a modifier, then
+            // click - and because a pointer refusal must not swallow keystrokes
+            // that already went out.
+            if (keys is not null && KeyActionRunner.HasKeySource(body.RootElement))
+            {
+                if (!keys.Perform(body.RootElement, session.Modifiers))
+                {
+                    return Results.Json(
+                        JsonWireResponse.ForFault(WebDriverFault.UnknownError, KeysRefused),
+                        statusCode: WebDriverFault.UnknownError.HttpStatus);
+                }
+
+                session.InputPending = true;
+
+                // A KEY-ONLY SEQUENCE IS COMPLETE HERE. Falling through to the
+                // 501 below would refuse a payload that has just been performed
+                // in full, purely because no pointer injector is registered.
+                if (!PointerActionRunner.HasPointerSource(body.RootElement))
+                {
+                    return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
+                }
             }
 
             if (runner is null)

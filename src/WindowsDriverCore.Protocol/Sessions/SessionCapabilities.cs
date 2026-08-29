@@ -142,6 +142,26 @@ public sealed record SessionCapabilities(
                 desired = always;
                 dialect = ProtocolDialect.W3C;
             }
+            else if (body.TryGetProperty("requiredCapabilities", out JsonElement required) &&
+                     required.ValueKind == JsonValueKind.Object)
+            {
+                // THE OTHER HALF OF THE JSON WIRE SHAPE. The spec's session
+                // body is {desiredCapabilities, requiredCapabilities}, and only
+                // the first was ever read - so a JWP client that stated its
+                // application as REQUIRED rather than DESIRED was told its
+                // capabilities were bad, for a request the protocol defines.
+                //
+                // Read only as a fallback, so a client sending both keeps the
+                // behaviour it already had. The distinction between the two is
+                // about NEGOTIATION - required means refuse rather than
+                // substitute - and this driver has one platform to offer and
+                // negotiates nothing, so honouring the key is the whole of the
+                // work.
+                //
+                // Selenium 3.8 sends only desiredCapabilities, which is why 290
+                // green tests say nothing about this.
+                desired = required;
+            }
             else
             {
                 return Rejected(BadCapabilitiesMessage, dialect);

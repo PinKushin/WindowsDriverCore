@@ -196,6 +196,10 @@ public partial class Program
         builder.Services.AddSingleton<ISyntheticPointer, SyntheticPointer>();
         builder.Services.AddSingleton<PointerActionRunner>();
         builder.Services.AddSingleton<IKeyboardInput, SendInputKeyboard>();
+
+        // The keyboard half of /actions. A peer of the pointer runner rather
+        // than a part of it: they share a payload and nothing else.
+        builder.Services.AddSingleton<KeyActionRunner>();
         builder.Services.AddSingleton<IUIAutomation>(_ => new CUIAutomationClass());
         builder.Services.AddSingleton<UiaElementFinder>();
         builder.Services.AddSingleton<IElementFinder>(provider =>

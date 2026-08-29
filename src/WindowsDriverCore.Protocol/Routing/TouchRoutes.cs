@@ -366,6 +366,21 @@ public static class TouchRoutes
 
                 PointerRefusal? failure = runner.Contact(session.WindowHandle, x, y, phase);
 
+                if (failure is null)
+                {
+                    // A CONTACT IS DISPATCHED INPUT TOO, and these three routes
+                    // were the only input path that never said so. click,
+                    // longclick, doubleclick, scroll and flick all flag it; a
+                    // hand-built gesture spelled down/move/up did not, so a read
+                    // straight after one never waited for the application.
+                    //
+                    // Found by the by-parameter audit lens, which enumerates
+                    // what each route touches rather than whether it answers.
+                    // The route looked complete: correct coordinates, correct
+                    // phase, 200 back.
+                    session.InputPending = true;
+                }
+
                 return failure is null
                     ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
                     : Fault(failure, session, registry, windows);

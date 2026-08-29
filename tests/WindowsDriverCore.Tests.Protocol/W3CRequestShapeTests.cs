@@ -447,6 +447,65 @@ public sealed class W3CRequestShapeTests : IDisposable
         (await GetValue($"/session/{session}/orientation")).ShouldBe("LANDSCAPE");
     }
 
+    /// <summary>The JSON Wire session body has two halves, not one.</summary>
+    /// <remarks>
+    /// <para>
+    /// The protocol defines <c>{desiredCapabilities, requiredCapabilities}</c>
+    /// and only the first was read, so a client that stated its application as
+    /// REQUIRED — the stricter, more explicit of the two — was told its
+    /// capabilities were bad for a request the spec defines.
+    /// </para>
+    /// <para>
+    /// Not a W3C shape, despite the fixture: this is JSON Wire that Selenium 3.8
+    /// happens never to send. Same blind spot, opposite dialect.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task RequiredCapabilities_CreateASessionToo()
+    {
+        HttpResponseMessage created = await Post(
+            "/session",
+            """
+            {"requiredCapabilities":{"app":"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}}
+            """);
+
+        ((int)created.StatusCode).ShouldBe(200, "requiredCapabilities is a defined shape");
+
+        JsonElement body = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement;
+
+        body.GetProperty("sessionId").GetString().ShouldNotBeNullOrEmpty();
+
+        // The app has to have REACHED the launcher, not merely been parsed. A
+        // session id proves a session; echoing the capability back proves the
+        // driver read the one the client actually stated.
+        body.GetProperty("value").GetProperty("app").GetString()
+            .ShouldBe("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App");
+    }
+
+    /// <summary>Desired still wins where both are present.</summary>
+    /// <remarks>
+    /// THE CONTROL. <c>requiredCapabilities</c> is read as a FALLBACK, so a
+    /// client sending both keeps exactly the behaviour it had. A change that
+    /// preferred the new key would silently redirect every existing JSON Wire
+    /// session that sends both.
+    /// </remarks>
+    [Test]
+    public async Task DesiredCapabilities_StillWinWhenBothAreSent()
+    {
+        HttpResponseMessage created = await Post(
+            "/session",
+            """
+            {"desiredCapabilities":{"app":"Root"},
+             "requiredCapabilities":{"app":"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}}
+            """);
+
+        ((int)created.StatusCode).ShouldBe(200);
+
+        JsonDocument.Parse(await created.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("value").GetProperty("app").GetString()
+            .ShouldBe("Root", "desired is what a client sending both already got");
+    }
+
     private async Task<string> NewSession()
     {
         _interactor.ClearReceivedCalls();
