@@ -67,6 +67,35 @@ public static class ActionRoutes
     {
         ArgumentNullException.ThrowIfNull(app);
 
+        // RELEASE ACTIONS, which W3C defines and this driver did not serve at
+        // all. A client that ends a sequence by releasing its input state got
+        // the unknown-command fallback.
+        //
+        // The compatibility suite never sends it - a full run has 25 POSTs to
+        // /actions and ZERO DELETEs, which is measured - so nothing here could
+        // ever have caught the omission. That is the whole reason for the
+        // standing audit rather than a green score.
+        //
+        // It clears what /actions accumulates: the per-source pointer positions
+        // and any contact still down. Modifiers are released too, because a
+        // key left held by an interrupted sequence would otherwise apply to
+        // every later command in the session.
+        app.MapDelete("/session/{sessionId}/actions",
+            (HttpContext context, PointerActionRunner? runner, IKeyboardInput? keyboard) =>
+            {
+                DriverSession session = context.GetSession();
+
+                runner?.ForgetContacts();
+
+                if (keyboard is not null && session.Modifiers.All.Count > 0)
+                {
+                    keyboard.ReleaseHeld(session.Modifiers);
+                }
+
+                return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
+            })
+            .RequiresSession();
+
         app.MapPost("/session/{sessionId}/actions",
             async (
                 HttpContext context,

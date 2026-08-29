@@ -134,12 +134,20 @@ not the list of open items.
 | 2026-08-29 | dialect | `element/{id}/value` read only the JWP array; a Selenium 4 client typed NOTHING and got a 200 | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | parameter | `/touch/flick` ignored `speed`; the anonymous `xspeed`/`yspeed` form was read as absent offsets and went nowhere | fixed |
 | earlier | dialect | `/timeouts` and `/rect` request shapes | fixed |
+| 2026-08-29 | route | `DELETE /actions` (Release Actions) not served at all — a W3C client releasing input state got the unknown-command fallback | fixed, `W3CRequestShapeTests` |
+| 2026-08-29 | route | `GET /window/handles` (W3C) not served — only `/window_handles` | fixed, aliased onto one handler |
+| 2026-08-29 | route | `GET /window` (W3C current handle) not served — only `/window_handle`; POST and DELETE on that path existed, so the gap was one verb | fixed, aliased |
 
 ### Passes
 
 | date | lens | covered | result |
 |---|---|---|---|
 | 2026-08-29 | parameter | every request record and every `TryGetProperty` in Routing | **3 findings** — count reset |
+| 2026-08-29 | route | every mapped endpoint against the W3C endpoint list | **3 findings** — count reset |
+
+**Still zero of three.** Two lenses have now run and each found three things;
+the by-dialect lens has not been run as a pass of its own, and the count cannot
+start until a lens comes back empty.
 
 ---
 
