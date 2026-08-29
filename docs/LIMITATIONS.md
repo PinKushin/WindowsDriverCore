@@ -4279,9 +4279,38 @@ something the caller did not. Commit `ada8ab6` claims a measured regression fix
 and that claim is **not supported** — this entry is the correction, since the
 commit cannot be rewritten.
 
+### But "ten unstable tests" overstates it, and this repo already knew
+
+The owner, reading the above: *"i thought we had the pen stuff fixed and unflaky
+before this, but idk maybe i was wrong"* — and the second half is the part to
+correct rather than the first.
+
+**`Pen_LongClick` was never stable, and this file says so already.** It is
+recorded regressing in one earlier run and recovering in another, with the note
+that those movers are "known-intermittent … within their measured variance". It
+also appears in the list of 17 tests that regressed between WinAppDriver 1.2.1
+and 1.2.99 — a test that moves under the REFERENCE too.
+
+So the instinct was right: the vendor work did not break it. My attribution to my
+own commit was wrong in that direction as well as the other.
+
+**And counting ten movers is the mistake `flake-is-failure` already names:**
+
+> A failure that always co-occurs with others is ONE defect. Counting rows
+> instead of columns inflated our flake list four-fold. … `Pen_LongClick` plus
+> four `SendKeys_*` together in one run.
+
+An earlier nine-run analysis found these cluster into a couple of upsets rather
+than ten independent problems. **Three runs cannot resolve that** — in mine the
+SendKeys group and `Pen_LongClick` are anti-correlated across runs 1 and 2 and
+co-fail in run 3, which is consistent with either story.
+
+The honest state: **18 stable failures, ~13 of them ours, plus a band whose
+internal structure needs more than three runs to see.** Not ten separate defects.
+
 ### What this makes the priority
 
-**Ten unstable tests is the finding**, not the score. The owner's standard:
+**The band is the finding**, not the score. The owner's standard:
 
 > "we dont have parity if we have flake, winappdriver doesnt have flake"
 
