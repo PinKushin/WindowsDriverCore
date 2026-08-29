@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc.Testing;
+using NSubstitute;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using Shouldly;
+using WindowsDriverCore.Platform.Windows;
 
 namespace WindowsDriverCore.Tests.Protocol;
 
@@ -45,7 +47,30 @@ public sealed class TheServedSurfaceTests : IDisposable
     [OneTimeSetUp]
     public void ReadTheEndpointTable()
     {
-        _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>();
+        // SUBSTITUTED EVEN THOUGH THIS FIXTURE SENDS NO REQUESTS.
+        //
+        // NoProtocolTestReachesTheDesktopTests flagged this file for naming
+        // /click, /keys and /touch in its TestCase attributes. It only reads the
+        // endpoint table and dispatches nothing, so that is a false positive -
+        // but the guard is deliberately conservative, it exists because a
+        // protocol test has twice sent real input to somebody's desktop, and
+        // weakening it to recognise this file would trade a strong guard for a
+        // cosmetic one.
+        //
+        // Substituting costs five lines and is defence in depth regardless: this
+        // fixture DOES boot the real container, so the real injectors are
+        // constructed as singletons even though nothing calls them.
+        IPointerInput mouse = Substitute.For<IPointerInput>();
+        IKeyboardInput keyboard = Substitute.For<IKeyboardInput>();
+        ISyntheticPointer synthetic = Substitute.For<ISyntheticPointer>();
+
+        _factory = new WebApplicationFactory<WindowsDriverCore.Host.Program>()
+            .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+            {
+                services.AddSingleton(mouse);
+                services.AddSingleton(keyboard);
+                services.AddSingleton(synthetic);
+            }));
 
         // Forces the host to build; the endpoint table does not exist until it
         // has.

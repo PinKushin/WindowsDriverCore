@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using WindowsDriverCore.Automation;
@@ -142,7 +143,34 @@ public sealed class VendorCommandRunner
                 "so there is nothing for JavaScript to run against. " + WhatIsSupported);
         }
 
-        return script[Prefix.Length..] switch
+        string command = script[Prefix.Length..];
+
+        // A PARAMETER THIS COMMAND DOES NOT IMPLEMENT IS REFUSED, NOT IGNORED.
+        //
+        // This is the whole protocol audit generalised into a guard. Every gap
+        // the audit found had the same shape - a key read into a local and
+        // dropped, or never read at all, with the request answered 200 - and
+        // each was found one at a time, by hand, months apart. `speed` on
+        // /touch/flick, `width` and `height` and `twist` on /actions,
+        // `modifierKeys` on three of these four commands.
+        //
+        // Refusing at the boundary converts that entire class from a silent
+        // wrong answer into a loud one, and it does not need a complete
+        // inventory of what the caller MIGHT send: it needs only what this
+        // driver implements, which is knowable exactly.
+        //
+        // It also fails safe in the useful direction. A parameter we have not
+        // implemented yet is refused by name, so a client learns immediately
+        // rather than after debugging why a duration had no effect.
+        if (Unknown(command, argument) is { } stray)
+        {
+            return VendorOutcome.Refused(
+                $"'{stray}' is not a parameter of '{script}'. This driver refuses parameters " +
+                "it does not implement rather than ignoring them, because a silently dropped " +
+                $"parameter reports success for work not done. Understood: {Understood(command)}");
+        }
+
+        return command switch
         {
             "click" => Click(argument, session, times: 1),
             "doubleClick" => Click(argument, session, times: 2),
@@ -155,6 +183,55 @@ public sealed class VendorCommandRunner
             _ => VendorOutcome.Refused($"Unknown command '{script}'. {WhatIsSupported}"),
         };
     }
+
+    /// <summary>What each command reads, and nothing else.</summary>
+    /// <remarks>
+    /// <b>Stated per command rather than pooled.</b> A shared list would accept
+    /// <c>deltaY</c> on a click and <c>button</c> on a clipboard write — which is
+    /// the same "read it somewhere, therefore fine" reasoning that let
+    /// <c>modifierKeys</c> be honoured by one command and dropped by three.
+    /// </remarks>
+    private static readonly Dictionary<string, string[]> Parameters = new(StringComparer.Ordinal)
+    {
+        ["click"] = ["elementId", "x", "y", "button", "modifierKeys", "times"],
+        ["doubleClick"] = ["elementId", "x", "y", "button", "modifierKeys", "times"],
+        ["hover"] = ["elementId", "x", "y", "modifierKeys"],
+        ["scroll"] = ["elementId", "x", "y", "deltaX", "deltaY", "modifierKeys"],
+        ["clickAndDrag"] =
+        [
+            "startElementId", "startX", "startY",
+            "endElementId", "endX", "endY",
+            "modifierKeys",
+        ],
+        ["keys"] = ["actions"],
+        ["getClipboard"] = [],
+        ["setClipboard"] = ["content", "b64Content"],
+    };
+
+    /// <summary>The first parameter this command does not implement, or null.</summary>
+    /// <remarks>
+    /// First rather than all, matching how <c>/actions</c> reports a malformed
+    /// payload: a client fixes one thing at a time, and a list of every problem
+    /// is harder to act on than the first one.
+    /// </remarks>
+    private static string? Unknown(string command, JsonElement? argument)
+    {
+        if (argument is not { ValueKind: JsonValueKind.Object } supplied ||
+            !Parameters.TryGetValue(command, out string[]? understood))
+        {
+            return null;
+        }
+
+        return supplied.EnumerateObject()
+            .Where(property => !understood.Contains(property.Name, StringComparer.Ordinal))
+            .Select(property => property.Name)
+            .FirstOrDefault();
+    }
+
+    private static string Understood(string command) =>
+        Parameters.TryGetValue(command, out string[]? names) && names.Length > 0
+            ? string.Join(", ", names)
+            : "none";
 
     private static string WhatIsSupported =>
         "Supported: " + string.Join(", ", Supported) + ".";
@@ -189,20 +266,7 @@ public sealed class VendorCommandRunner
         PointerButton button = ButtonFrom(argument);
         int repeats = Whole(argument, "times", times);
 
-        string? modifiers = Text(argument, "modifierKeys");
-        HeldModifiers held = new();
-
-        // MODIFIERS ARE HELD ACROSS THE CLICKS AND LIFTED AFTER, which is the
-        // whole reason a caller states them here rather than sending /keys
-        // around the click. Held with the same toggle the keyboard already uses.
-        bool holding = modifiers is { Length: > 0 } && _keyboard is not null;
-
-        if (holding)
-        {
-            _keyboard!.Type(modifiers!, held);
-        }
-
-        try
+        return UnderModifiers(argument, () =>
         {
             for (int index = 0; index < repeats; index++)
             {
@@ -221,26 +285,56 @@ public sealed class VendorCommandRunner
                     break;
                 }
             }
+
+            return VendorOutcome.Done;
+        });
+    }
+
+    /// <summary>Runs a command with the caller's modifier keys held down.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Extracted because only <c>click</c> honoured <c>modifierKeys</c>.</b>
+    /// The audit's by-parameter lens found it: a key read by one command and
+    /// silently ignored by three others, inside this driver's own implementation.
+    /// Ctrl+scroll is zoom in most applications and Shift+drag is a constrained
+    /// drag — both were being dropped.
+    /// </para>
+    /// <para>
+    /// <b>Lifted even when the command fails.</b> A modifier left down applies to
+    /// everything the session does afterwards, and to the desktop after the
+    /// session ends.
+    /// </para>
+    /// <para>
+    /// <b>Gated on what was ASKED FOR, not on what the held set reports.</b> The
+    /// set is populated by the keyboard, so releasing only when it is non-empty
+    /// makes the cleanup depend on the collaborator having done its half — a
+    /// keyboard that pressed the keys without recording them would leak one with
+    /// nothing able to detect it.
+    /// </para>
+    /// </remarks>
+    private VendorOutcome UnderModifiers(JsonElement? argument, Func<VendorOutcome> act)
+    {
+        string? modifiers = Text(argument, "modifierKeys");
+        HeldModifiers held = new();
+
+        bool holding = modifiers is { Length: > 0 } && _keyboard is not null;
+
+        if (holding)
+        {
+            _keyboard!.Type(modifiers!, held);
+        }
+
+        try
+        {
+            return act();
         }
         finally
         {
-            // Lifted even on a refusal. A modifier left down by a failed command
-            // applies to everything the session does afterwards, and to the
-            // desktop after the session ends.
-            //
-            // GATED ON WHAT WE ASKED FOR, not on what the held set reports. The
-            // set is populated by the keyboard, so releasing only when it is
-            // non-empty makes the cleanup depend on the collaborator having done
-            // its half - and a keyboard that pressed the keys but did not record
-            // them would leak a held modifier with nothing able to detect it.
-            // Our own intent is the thing we can be sure of.
             if (holding)
             {
                 _keyboard!.ReleaseHeld(held);
             }
         }
-
-        return VendorOutcome.Done;
     }
 
     private VendorOutcome Hover(JsonElement? argument, DriverSession session)
@@ -257,9 +351,9 @@ public sealed class VendorCommandRunner
             return VendorOutcome.Refused(refusal);
         }
 
-        return _pointer.MoveTo(x, y)
+        return UnderModifiers(argument, () => _pointer.MoveTo(x, y)
             ? VendorOutcome.Done
-            : VendorOutcome.Refused("The pointer could not be moved to that point");
+            : VendorOutcome.Refused("The pointer could not be moved to that point"));
     }
 
     /// <summary>A mouse wheel turn, which is not a touch gesture.</summary>
@@ -300,9 +394,12 @@ public sealed class VendorCommandRunner
                 "\"deltaX\" or \"deltaY\" must be a non-zero whole number of wheel notches");
         }
 
-        return _pointer.Scroll(deltaX, deltaY)
+        // UNDER THE CALLER'S MODIFIERS, which matters more here than anywhere:
+        // Ctrl+scroll is zoom in most applications, so dropping the modifier
+        // turns a zoom request into a scroll and reports success.
+        return UnderModifiers(argument, () => _pointer.Scroll(deltaX, deltaY)
             ? VendorOutcome.Done
-            : VendorOutcome.Refused("The wheel input could not be dispatched");
+            : VendorOutcome.Refused("The wheel input could not be dispatched"));
     }
 
     /// <summary>Press at one point, move, release at another.</summary>
@@ -323,6 +420,17 @@ public sealed class VendorCommandRunner
         if (end is not null)
         {
             return VendorOutcome.Refused(end);
+        }
+
+        return UnderModifiers(argument, () => Drag(fromX, fromY, toX, toY));
+    }
+
+    /// <summary>Press, walk, release.</summary>
+    private VendorOutcome Drag(int fromX, int fromY, int toX, int toY)
+    {
+        if (_pointer is null)
+        {
+            return VendorOutcome.Refused(NoPointer);
         }
 
         if (!_pointer.MoveTo(fromX, fromY) || !_pointer.Press(PointerButton.Left))

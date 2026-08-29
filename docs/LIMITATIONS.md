@@ -4209,3 +4209,86 @@ is still unexplained, and the probe now reads the response stream (as
 reference.** A payload that looks fine forever against this driver can be
 rejected by WinAppDriver, so any probe that asks the reference a question must
 be able to print the reference's answer.
+
+---
+
+## 2026-08-29 — three full runs, and two attributions I got wrong
+
+Three 290-result runs on the same guest, same app version, no store reset:
+
+| commit | score |
+|---|---|
+| `758f9ec9` | 266/290 |
+| `6481cbb0` | **269/290** |
+| `ada8ab65` | 264/290 |
+
+**The spread is not progress or regression. It is a band of ten unstable tests.**
+
+### What is actually stable
+
+**18 tests fail in all three runs.** That is the backlog, and it is the only
+number worth quoting:
+
+```
+ClickElement                          MouseClick
+CreateSessionWithArguments_ModernApp  MouseDoubleClick
+FindNestedElement_ByRuntimeId         MouseDownMoveUp
+GetLocation                           NavigateBack_Browser
+GetWindowHandles_ModernApp            NavigateBack_SystemApp
+MiscellaneousSessionError_StaleSessionId  NavigateForward_Browser
+SwitchWindows                         TouchDoubleTap
+TouchFlick_Arbitrary                  TouchLongTap
+TouchSingleTap                        TouchSingleTapError_StaleElement
+```
+
+Five of those are environmental and the reference fails them too
+(`*_ModernApp`, `*_Browser`, `GetLocation`), so **roughly 13 are ours.**
+
+### Ten tests moved, and neither commit explains them
+
+```
+CreateSessionWithWorkingDirectoryAndArguments   run 3
+FindElements_ByName                             run 3
+NavigateBack_ModernApp                          runs 1,2
+Pen_LongClick                                   runs 2,3
+Pen_Scroll_Vertical                             run 2
+SendKeys_NonPrintableKeys                       runs 1,3
+SendKeys_Number                                 runs 1,3
+SendKeys_SymbolsEscapedCharacter                runs 1,3
+SendKeys_SymbolsKeys                            runs 1,3
+Touch_Scroll_Vertical                           runs 1,3
+```
+
+### Two claims I made from one before/after pair, both wrong
+
+**"The settle fix recovered four SendKeys tests."** They failed in run 1, passed
+in run 2, failed again in run 3. Run 3 differs from run 2 by *a pen mask bit*,
+which cannot touch `SendKeys`. The recovery was the family moving.
+
+**"The rotation mask caused Pen_LongClick and Pen_Scroll_Vertical to regress."**
+`Pen_LongClick` failed in runs 2 **and 3** — the fix did not recover it.
+`Pen_Scroll_Vertical` failed only in run 2.
+
+Both were single-observation attributions from an adjacent commit, which is the
+trap this repository already has written down as *one observation is not a
+measurement* — quoted earlier the same day, then walked into twice.
+
+**The rotation-mask change stays**, but on its own merits only: a mask bit
+asserts the field beside it is meaningful, and asserting a rotation of zero says
+something the caller did not. Commit `ada8ab6` claims a measured regression fix
+and that claim is **not supported** — this entry is the correction, since the
+commit cannot be rewritten.
+
+### What this makes the priority
+
+**Ten unstable tests is the finding**, not the score. The owner's standard:
+
+> "we dont have parity if we have flake, winappdriver doesnt have flake"
+
+And WinAppDriver scores 280 on this guest with nine environmental failures — a
+stable 280, not a band. Until the band is closed, **no single run of this suite
+can attribute anything to a commit**, which makes the instrument useless for
+exactly the question it exists to answer.
+
+Quote the 18 stable failures. Do not quote 264, 266 or 269 as a capability
+number without the band beside it.

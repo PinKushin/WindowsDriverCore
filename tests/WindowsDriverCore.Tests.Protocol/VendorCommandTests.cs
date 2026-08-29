@@ -381,6 +381,107 @@ public sealed class VendorCommandTests
         VendorCommandRunner.Supported.ShouldNotContain("windows: execPowerShell");
     }
 
+    /// <summary>Modifiers are honoured by every command, not just click.</summary>
+    /// <remarks>
+    /// <b>Found by the audit's by-parameter lens, inside this driver's own new
+    /// code.</b> <c>modifierKeys</c> was read by <c>click</c> and silently
+    /// dropped by the other three — and Ctrl+scroll is zoom in most
+    /// applications, so a zoom request was becoming a scroll and reporting
+    /// success. Exactly the shape of the <c>speed</c> defect that started the
+    /// audit, reintroduced while closing it.
+    /// </remarks>
+    [TestCase("windows: scroll", """{"x":1,"y":1,"deltaY":-1,"modifierKeys":""}""")]
+    [TestCase("windows: hover", """{"x":1,"y":1,"modifierKeys":""}""")]
+    [TestCase("windows: clickAndDrag",
+        """{"startX":1,"startY":1,"endX":9,"endY":9,"modifierKeys":""}""")]
+    public void EveryPointerCommand_HoldsTheStatedModifiers(string script, string argument)
+    {
+        Run(script, argument).Refusal.ShouldBeNull();
+
+        _keyboard.Received(1).Type("", Arg.Any<HeldModifiers>());
+        _keyboard.Received(1).ReleaseHeld(Arg.Any<HeldModifiers>());
+    }
+
+    /// <summary>A parameter this driver does not implement is refused by name.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The protocol audit generalised into a guard.</b> Every gap the audit
+    /// found had one shape — a key read into a local and dropped, or never read,
+    /// with the request answered 200 — and each was found by hand, one at a time,
+    /// months apart: <c>speed</c>, <c>width</c>, <c>height</c>, <c>twist</c>,
+    /// <c>modifierKeys</c>.
+    /// </para>
+    /// <para>
+    /// Refusing at the boundary converts that whole class from a silent wrong
+    /// answer into a loud one, and it needs no inventory of what a caller MIGHT
+    /// send — only what this driver implements, which is knowable exactly.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// <b>Every command, not one.</b> The first version of this test sent the
+    /// stray key to <c>click</c> alone — and a mutation that widened
+    /// <c>scroll</c>'s accepted list survived it, because the guard was only ever
+    /// exercised on one entry of a per-command table. A table with eight rows
+    /// needs the test to walk all eight.
+    /// </remarks>
+    [TestCase("windows: click", """{"x":1,"y":1""")]
+    [TestCase("windows: doubleClick", """{"x":1,"y":1""")]
+    [TestCase("windows: hover", """{"x":1,"y":1""")]
+    [TestCase("windows: scroll", """{"x":1,"y":1,"deltaY":-1""")]
+    [TestCase("windows: clickAndDrag", """{"startX":1,"startY":1,"endX":9,"endY":9""")]
+    [TestCase("windows: keys", """{"actions":[]""")]
+    [TestCase("windows: setClipboard", "{\"content\":\"ok\"")]
+    [TestCase("windows: getClipboard", """{""")]
+    public void AParameterThisDriverDoesNotImplement_IsRefusedByName(string script, string valid)
+    {
+        string separator = valid.EndsWith('{') ? string.Empty : ",";
+
+        string? refusal = Run(script, $$"""{{valid}}{{separator}}"durationMs":500}""").Refusal;
+
+        refusal.ShouldNotBeNull($"{script} must refuse a parameter it does not implement");
+        refusal.ShouldContain("durationMs");
+
+        // AND NOTHING WAS DISPATCHED. A guard that refused after acting would
+        // pass a message assertion and still have moved the mouse.
+        _mouse.DidNotReceive().Click(Arg.Any<PointerButton>());
+        _mouse.DidNotReceive().Scroll(Arg.Any<int>(), Arg.Any<int>());
+        _keyboard.DidNotReceive().Type(Arg.Any<string>(), Arg.Any<HeldModifiers>());
+        _clipboard.DidNotReceive().TryWrite(Arg.Any<string>());
+    }
+
+    /// <summary>A parameter belonging to a DIFFERENT command is still refused.</summary>
+    /// <remarks>
+    /// <b>The control that stops the guard being pooled.</b> A single shared list
+    /// of every key any command reads would accept <c>deltaY</c> on a click —
+    /// which is the same "we read it somewhere, so it is fine" reasoning that let
+    /// <c>modifierKeys</c> be honoured by one command and dropped by three.
+    /// </remarks>
+    [Test]
+    public void AParameterFromAnotherCommand_IsRefusedToo()
+    {
+        Run("windows: click", """{"x":1,"y":1,"deltaY":3}""").Refusal
+            .ShouldNotBeNull()
+            .ShouldContain("deltaY");
+    }
+
+    /// <summary>The parameters each command DOES implement are still accepted.</summary>
+    /// <remarks>
+    /// <b>The control for the guard itself.</b> A refusal that fired on
+    /// everything would pass both tests above and break every command — the
+    /// cheapest possible way to make this file look green while the driver
+    /// answers nothing.
+    /// </remarks>
+    [Test]
+    public void TheParametersEachCommandImplements_AreAccepted()
+    {
+        Run("windows: click",
+            """{"elementId":"","x":1,"y":1,"button":"left","modifierKeys":"","times":1}""")
+            .Refusal.ShouldBeNull();
+
+        Run("windows: setClipboard", """{"content":"ok"}""").Refusal.ShouldBeNull();
+        Run("windows: getClipboard", null).Refusal.ShouldNotBeNull("no clipboard content stubbed");
+    }
+
     private VendorOutcome Run(string script, string? argument)
     {
         if (argument is null)
