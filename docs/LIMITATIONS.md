@@ -4321,3 +4321,63 @@ exactly the question it exists to answer.
 
 Quote the 18 stable failures. Do not quote 264, 266 or 269 as a capability
 number without the band beside it.
+
+---
+
+## THE PARITY GAP IS NINE NAMED TESTS
+
+Measured 2026-08-29 by diffing our stable failures against the reference's own
+run on the same guest (`run-044b71c8-WinAppDriver-002205.trx`, 290 results).
+
+**WinAppDriver fails exactly 9**, and every one of them is also in our stable 18:
+
+```
+CreateSessionWithArguments_ModernApp   GetWindowHandles_ModernApp
+NavigateBack_Browser                   NavigateForward_Browser
+GetLocation                            SwitchWindows
+TouchFlick_Arbitrary                   TouchSingleTap
+TouchSingleTapError_StaleElement
+```
+
+**All nine are environmental**, and reading the messages rather than the names is
+what showed it. `TouchSingleTap` and `TouchFlick_Arbitrary` do not fail in the
+test — they fail in `ClassInitialize`, with *"Package was not found
+(0x80073CF1)"*, because `TouchClick` and `TouchFlick` both derive from
+**`EdgeBase`** and Edge is not installed on the offline guest. A class
+initialiser that throws fails every test in the class, which is why one missing
+package accounts for three rows.
+
+`SwitchWindows` is the same error. The touch tests were never a touch problem.
+
+### So the gap is these nine, and nothing else
+
+```
+ClickElement                       Expected:<8>  Actual:<7>
+MouseClick                         Expected:<8>  Actual:<0>
+MouseDoubleClick                   Assert.IsFalse failed
+MouseDownMoveUp                    window never moved from {X=290,Y=154}
+TouchDoubleTap                     Assert.IsFalse failed
+TouchLongTap                       An element could not be located
+FindNestedElement_ByRuntimeId      —
+MiscellaneousSessionError_StaleSessionId  —
+NavigateBack_SystemApp             —
+```
+
+| | |
+|---|---|
+| WinAppDriver 1.2.1 | 281/290 (9 environmental) |
+| this driver, stable | **272/290** (the same 9, plus these 9) |
+| **the gap** | **9 tests** |
+
+Runs score 264–269 rather than 272 because of the band; the band is a separate
+problem and does not change this count.
+
+**Four of the nine are one family.** `ClickElement`, `MouseClick`,
+`MouseDoubleClick` and `MouseDownMoveUp` are all "the click did not register or
+did not land", and `we-fail-by-being-faster` already has the measured cause:
+`MouseClick` takes the reference 3.9 s and takes us 0.067 s, and the suite has no
+synchronisation of its own — WinAppDriver passes by being slow enough that the
+application has caught up by the time the assertion runs.
+
+So the realistic decomposition is **roughly four investigations, not nine**:
+the click family, the two touch gestures, and three singletons.
