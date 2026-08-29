@@ -331,6 +331,122 @@ public sealed class W3CRequestShapeTests : IDisposable
         viaProperty.ShouldBe(viaAttribute);
     }
 
+    /// <summary>Timeouts are writable AND readable.</summary>
+    /// <remarks>
+    /// <para>
+    /// W3C defines <c>GET /session/{id}/timeouts</c>; this driver served only
+    /// the POST, so a Selenium 4 client asking what the timeouts are got the
+    /// unknown-command fallback. Found by the by-route audit pass, not by a
+    /// failure — the suite writes the implicit wait and never reads it back.
+    /// </para>
+    /// <para>
+    /// The JSON Wire control is the SETTER: the value the GET reports has to be
+    /// the one the suite's own <c>{type, ms}</c> POST stored, or this route has
+    /// learned to read a number nothing writes.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task Timeouts_ReportTheImplicitWaitThatJsonWireSet()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage stored = await Post(
+            $"/session/{session}/timeouts",
+            "{\"type\":\"implicit\",\"ms\":1234}");
+
+        ((int)stored.StatusCode).ShouldBe(200, "the JSON Wire setter is the control");
+
+        string reported = await GetValue($"/session/{session}/timeouts");
+
+        JsonElement timeouts = JsonDocument.Parse(reported).RootElement;
+
+        timeouts.GetProperty("implicit").GetInt32()
+            .ShouldBe(1234, "the GET must report what the POST stored");
+
+        // Page load and script are REFUSED on the way in, so there is no value
+        // to report and zero is what a client that never set one should see.
+        // Asserted rather than ignored: a driver that invents a number here is
+        // claiming state it does not hold.
+        timeouts.GetProperty("pageLoad").GetInt32().ShouldBe(0);
+        timeouts.GetProperty("script").GetInt32().ShouldBe(0);
+    }
+
+    /// <summary>The legacy JSON Wire spelling of the implicit wait.</summary>
+    /// <remarks>
+    /// <c>POST /timeouts/implicit_wait</c> predates the <c>{type, ms}</c> body
+    /// and is what an older client sends. Selenium 3.8 uses the newer form,
+    /// which is exactly why the compatibility suite could never have caught its
+    /// absence — the same blind spot that hid <c>/touch/flick</c>'s
+    /// <c>speed</c>.
+    /// </remarks>
+    [Test]
+    public async Task ImplicitWait_HasItsLegacySpelling()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage legacy = await Post(
+            $"/session/{session}/timeouts/implicit_wait",
+            "{\"ms\":777}");
+
+        ((int)legacy.StatusCode).ShouldBe(200, "the legacy spelling must be served");
+
+        JsonDocument.Parse(await GetValue($"/session/{session}/timeouts"))
+            .RootElement.GetProperty("implicit").GetInt32()
+            .ShouldBe(777, "the legacy route must actually store the wait");
+
+        // THE CONTROL, and it is the half that matters: the modern spelling is
+        // what the suite sends 290 times a run. A route that learns the legacy
+        // form and breaks the current one trades the entire score.
+        HttpResponseMessage modern = await Post(
+            $"/session/{session}/timeouts",
+            "{\"type\":\"implicit\",\"ms\":55}");
+
+        ((int)modern.StatusCode).ShouldBe(200);
+
+        JsonDocument.Parse(await GetValue($"/session/{session}/timeouts"))
+            .RootElement.GetProperty("implicit").GetInt32()
+            .ShouldBe(55);
+    }
+
+    /// <summary>Setting the orientation is answered, not fallen through.</summary>
+    /// <remarks>
+    /// <para>
+    /// Both dialects define <c>POST /session/{id}/orientation</c> and this
+    /// driver served only the GET.
+    /// </para>
+    /// <para>
+    /// <b>PORTRAIT is refused rather than accepted and ignored.</b> A desktop
+    /// has one orientation, so a 200 for a rotation that did not happen would
+    /// report success for doing nothing — the defect this driver exists to fix,
+    /// and the same rule that makes a page-load timeout answer 501. LANDSCAPE
+    /// succeeds because a client asking for the state it is already in has not
+    /// been refused anything.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task Orientation_AcceptsLandscapeAndRefusesPortrait()
+    {
+        string session = await NewSession();
+
+        HttpResponseMessage landscape = await Post(
+            $"/session/{session}/orientation",
+            "{\"orientation\":\"LANDSCAPE\"}");
+
+        ((int)landscape.StatusCode).ShouldBe(200, "the state it is already in");
+
+        HttpResponseMessage portrait = await Post(
+            $"/session/{session}/orientation",
+            "{\"orientation\":\"PORTRAIT\"}");
+
+        // Not 404 and not the unknown-command fallback: refused ON PURPOSE, by a
+        // route that read the payload and disagreed with it.
+        ((int)portrait.StatusCode)
+            .ShouldBe(400, "a desktop cannot be rotated, and saying so is not the same as not answering");
+
+        // The JSON Wire control: reading it still works and still says LANDSCAPE.
+        (await GetValue($"/session/{session}/orientation")).ShouldBe("LANDSCAPE");
+    }
+
     private async Task<string> NewSession()
     {
         _interactor.ClearReceivedCalls();

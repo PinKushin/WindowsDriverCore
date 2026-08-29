@@ -140,6 +140,9 @@ not the list of open items.
 | 2026-08-29 | dialect | `GET`/`POST /window/rect` not served — W3C replaced size+position and there is NO JWP fallback, so a Selenium 4 client could not read or set geometry at all | fixed |
 | 2026-08-29 | dialect | `POST /window/minimize` not served | **OPEN** — needs a Platform capability, `IWindowLocator` has no minimize |
 | 2026-08-29 | dialect | `POST /window/fullscreen` not served | **WILL NOT FIX as specified** — see below |
+| 2026-08-29 | route (pass 4) | `GET /session/{id}/timeouts` not served — W3C reads them back and this driver could only be written to | fixed, `W3CRequestShapeTests` |
+| 2026-08-29 | route (pass 4) | `POST /session/{id}/timeouts/implicit_wait` not served — the legacy JWP spelling, which Selenium 3.8 does not send | fixed, `W3CRequestShapeTests` |
+| 2026-08-29 | route (pass 4) | `POST /session/{id}/orientation` not served — both dialects define it and we served only the GET | fixed, refuses PORTRAIT rather than accepting it |
 | 2026-08-29 | route | `DELETE /actions` (Release Actions) not served at all — a W3C client releasing input state got the unknown-command fallback | fixed, `W3CRequestShapeTests` |
 | 2026-08-29 | route | `GET /window/handles` (W3C) not served — only `/window_handles` | fixed, aliased onto one handler |
 | 2026-08-29 | route | `GET /window` (W3C current handle) not served — only `/window_handle`; POST and DELETE on that path existed, so the gap was one verb | fixed, aliased |
@@ -184,11 +187,37 @@ it is asking for a keystroke, not a window-manager operation.
 | 2026-08-29 | parameter | every request record and every `TryGetProperty` in Routing | **3 findings** — count reset |
 | 2026-08-29 | route | every mapped endpoint against the W3C endpoint list | **3 findings** — count reset |
 | 2026-08-29 | dialect | every command where JWP and W3C diverge | **6 findings** — count reset |
+| 2026-08-29 | route (pass 4) | every mapped endpoint against the W3C endpoint list, re-run | **3 findings** — count reset |
 
-**Still zero of three.** All three lenses have now run once and every one found
-something — 3, 3 and 6. The count cannot start until a lens comes back empty,
-and on this evidence the next pass of any lens is more likely to find more than
-to be the first clean one.
+**Still zero of three.** Four passes, every one of them productive — 3, 3, 6 and
+3. The count cannot start until a lens comes back empty.
+
+### The instrument was wrong in pass 4, and it failed toward MORE work
+
+The by-route sweep is a grep for literal paths, and it reported **16 endpoints
+missing when only 3 were**. Nine of the thirteen false positives — `text`,
+`name`, `enabled`, `displayed`, `selected`, `location`, `location_in_view`,
+`size`, `rect` — are registered through a helper:
+
+```csharp
+MapRead(app, "text", …);      // ElementPropertyRoutes
+```
+
+The path exists only as a *parameter*, so no grep for `"/text"` can see it.
+`MapAction` and `MapDrag` hide routes the same way.
+
+**The direction of the error is the only reason this was survivable.** A grep
+that cannot see a registered route reports it as missing, so the failure mode is
+wasted time, not a missed gap — the audit stays sound and gets slower. The
+mirror-image instrument, one that walked the registered endpoints and compared
+them to the spec, would fail the other way and silently skip whatever it could
+not enumerate.
+
+Rule for later passes: **verify every "missing" by asking the running server,
+not the source text.** A 404 from the driver is the measurement; a grep miss is
+a hypothesis. And prefer instruments whose blind spot costs work rather than
+coverage — see the same principle in `CLAUDE.md`'s note that a test whose own
+mechanism can fail like the thing under test proves nothing either way.
 
 ---
 
