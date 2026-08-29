@@ -4043,3 +4043,63 @@ against the `AppName` element — a 54x16 text label. Whether that point is insi
 the ApplicationFrameWindow's draggable caption region on Windows 10 is the open
 question, and the host cannot answer it because Calculator there is a WinUI app
 with a different title bar entirely.
+
+
+## Flake measured at a FIXED commit: four tests, one upset
+
+Two full runs of **identical code** at `bfa5638`, same guest, back to back:
+
+```
+run-bfa5638-...-025654.trx   265/290
+run-bfa5638-...-030814.trx   269/290
+```
+
+Exactly four tests differ, and **all four move the same direction**:
+
+```
+GetElementDisplayedState        FAIL -> pass
+NavigateBack_ModernApp          FAIL -> pass
+Touch_Scroll_Vertical           FAIL -> pass
+TouchScrollOnElement_Vertical   FAIL -> pass
+```
+
+By this repository's own rule — a failure that always co-occurs is one defect —
+this is most likely **one upset costing four tests**, not four flaky tests.
+
+**A four-test spread at a fixed commit is larger than most single fixes here**,
+and it is the reason a bare score cannot be trusted to attribute anything. It
+also sets the parity gap in the terms that matter: the reference moves about one
+test per run.
+
+### The candidate, and it implicates our own tooling
+
+The 265 run followed a **filtered** run of the `TouchLongClick` fixture. That
+fixture creates alarms named `LongTapTest*` and deletes them only if the context
+menu opens — which for `TouchLongTap` it never does. So a filtered experiment
+leaves alarms behind, and the next full run starts dirty.
+
+The 269 run followed a full run. So did the next one, which also scored 269 with
+the same failures.
+
+**Two data points, so this is a HYPOTHESIS**: a full run preceded by a full run
+is stable; one preceded by a filtered run is not. It fits the long-standing
+"suite poisons its own environment" finding, with our own experiments as a new
+source of the poison.
+
+**What follows if it holds:** a filtered run must not be the last thing before a
+scoring run, or the runner must clean the alarm store between them. Note the
+irony that `-TestCaseFilter` was added to make experiments cheap and may be
+making the next measurement dearer.
+
+### An instrument defect found the same way
+
+A full run reported **no output at all** and exited 0. The runner had aborted
+with `ABORT: asked for <sha> but HEAD is <older sha>` because the bundle had not
+been refreshed — and every `Select-String` filter used to read these runs
+matches only `Total tests`, `Passed:`, `Failed:`, `results:` and `run complete`.
+**The abort line matches none of them**, so a run that never started looked
+identical to one still in progress.
+
+Same family as `dotnet test --filter` matching nothing and exiting 0. Any filter
+over a run's output must include the failure vocabulary — `ABORT`, `FAILED`,
+`error`, `refus` — or it is a filter that can only report success.
