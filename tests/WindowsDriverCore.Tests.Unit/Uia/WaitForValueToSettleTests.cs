@@ -149,4 +149,94 @@ public sealed class WaitForValueToSettleTests
 
         elapsed.Elapsed.ShouldBeGreaterThan(Budget / 2);
     }
+
+    /// <summary>
+    /// Two agreeing reads MID-STREAM are the poll outrunning the application,
+    /// not the application finishing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Caught by CI, which is slower than this desktop.</b>
+    /// <c>DeletingByBackspace_ReadsAsEmpty_ImmediatelyAfter</c> passed here and
+    /// failed on Windows Server three runs in five, leaving the FRONT of the
+    /// string behind — 3, 9 and 4 characters of "abcdefghij". Backspaces were
+    /// still being consumed when <c>SendKeys</c> returned and the read went out.
+    /// </para>
+    /// <para>
+    /// The mechanism is in this loop and not in the test. A stream of deletions
+    /// makes the value change on nearly every poll, so "changed" is satisfied
+    /// immediately — and then any two polls that happen to land between two
+    /// keystrokes read the same value and end the wait. The faster the poll is
+    /// relative to the application's message loop, the likelier that is, which
+    /// is why a slower machine fails MORE.
+    /// </para>
+    /// <para>
+    /// <b>The fix is not a bigger N.</b> Requiring three or five agreeing reads
+    /// makes the race rarer and leaves it a race — and this project treats an
+    /// intermittent failure as a defect in synchronisation, never as noise. The
+    /// loop instead drains the application's input queue once the value has
+    /// started moving, and only then accepts agreement.
+    /// </para>
+    /// <para>
+    /// The script below is the CI failure in miniature: <c>abcdefghij</c>
+    /// shrinking, with a duplicate read partway down. Before the drain the loop
+    /// stops at <c>abcdefg</c> and reports a settled value that still had three
+    /// keystrokes coming.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ADuplicateReadPartwayThroughADeletionStream_DoesNotEndTheWait()
+    {
+        Func<string?> deleting = Script(
+            "abcdefghij",
+            "abcdefghi",
+            "abcdefgh",
+            "abcdefg",
+            "abcdefg",   // <- the poll outran the app; not the end of the stream
+            "abcdef",
+            "abc",
+            "",
+            "");
+
+        string? settled = null;
+
+        // The drain is what tells the loop the stream is over. Scripted here as
+        // the thing it is - a call that returns only once the application has
+        // consumed the input - so this test exercises the ORDERING rather than
+        // Win32.
+        bool drained = false;
+        void Drain() => drained = true;
+
+        UiaElementInteractor.WaitForValueToSettle(
+            () =>
+            {
+                string? value = deleting();
+                settled = value;
+                return value;
+            },
+            Budget,
+            Drain);
+
+        drained.ShouldBeTrue("the loop must drain before believing two agreeing reads");
+
+        settled.ShouldBe(
+            string.Empty,
+            "the wait ended on the duplicate at 'abcdefg' with three keystrokes still queued");
+    }
+
+    /// <summary>A caller with no drain available still settles.</summary>
+    /// <remarks>
+    /// THE CONTROL. The drain is optional — <c>UiaElementInteractor</c> takes
+    /// its window locator as an optional dependency, so an interactor built
+    /// without one must still wait rather than throwing or returning at once.
+    /// A change that made the drain mandatory would break every caller that
+    /// does not have one, silently, by way of a null.
+    /// </remarks>
+    [Test]
+    public void WithNoDrainAvailable_TheLoopStillSettlesOnAgreement()
+    {
+        Func<string?> typing = Script("", "abc", "abc");
+
+        Should.NotThrow(() => UiaElementInteractor.WaitForValueToSettle(typing, Budget, drain: null));
+    }
 }
