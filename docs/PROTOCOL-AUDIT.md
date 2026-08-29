@@ -153,6 +153,8 @@ not the list of open items.
 | 2026-08-29 | parameter (pass 5) | **`key` input sources in `/actions` were SKIPPED and the request answered 200.** Every Selenium 4 keystroke goes through `ActionChains`, so that client could not type at all | fixed, `KeyActionRunner` + `ActionsKeySourceTests` |
 | 2026-08-29 | parameter (pass 5) | `/touch/down`, `/touch/move`, `/touch/up` never set `InputPending` — the only input path that did not, so a read after a hand-built gesture outran the application | fixed, `DispatchedInputDrainsBeforeAReadTests` |
 | 2026-08-29 | parameter (pass 5) | `requiredCapabilities` never read — the other half of the JSON Wire session body, so a client stating its app as required was told its capabilities were bad | fixed, `W3CRequestShapeTests` |
+| 2026-08-29 | parameter (pass 8) | **`width` and `height` were validated and discarded.** A client asking for a 40 px fingertip got the hardcoded 4 px box, in BOTH injectors, and was answered 200 | fixed, `SyntheticContact.Width/Height` + `ContactAreaAndTwistTests` |
+| 2026-08-29 | parameter (pass 8) | `twist` likewise — validated against 0..359 including rejecting a float, then dropped; `penMask` never carried the rotation bit | fixed, `PEN_MASK_ROTATION` |
 | 2026-08-29 | dialect (pass 6) | **`/window/{handle}/size`, `/position` and `/maximize` served only the literal `current`.** A client addressing a window by the handle the path exists to carry got unknown-command — six of WinAppDriver's own 59 documented endpoints | fixed, `AddressedWindow` + `W3CRequestShapeTests` |
 | 2026-08-29 | dialect (pass 6) | The handle-less `/window/size` and `/window/position`, also in WinAppDriver's documented list, not served | fixed, same handler |
 | 2026-08-29 | dialect (pass 6) | `POST /window/minimize` — carried OPEN since pass 3, now closed | fixed, `SW_SHOWMINNOACTIVE` so it does not steal the foreground |
@@ -205,9 +207,31 @@ it is asking for a keystroke, not a window-manager operation.
 | 2026-08-29 | route (pass 4) | every mapped endpoint against the W3C endpoint list, re-run | **3 findings** — count reset |
 | 2026-08-29 | parameter (pass 5) | every key the Routing layer reads, against each endpoint's defined body | **3 findings** — count reset |
 | 2026-08-29 | dialect (pass 6) | all 59 endpoints in WinAppDriver's `SupportedAPIs.md`, probed against a running server, plus every W3C-only spelling | **4 fixed, 2 recorded open** — count reset |
+| 2026-08-29 | route (pass 7) | every RESPONSE shape against the spec — the half the by-route lens had never swept | **1 finding, needing an owner decision** — count reset |
+| 2026-08-29 | parameter (pass 8) | every key the code reads, asked whether it is ever USED rather than merely parsed | **2 findings** — count reset |
 
-**Still zero of three.** Six passes, every one productive — 3, 3, 6, 3, 3 and 6.
-The count cannot start until a lens comes back empty.
+**Still zero of three.** Eight passes, every one productive — 3, 3, 6, 3, 3, 6,
+1 and 2. The count cannot start until a lens comes back empty.
+
+### Pass 8: the by-parameter lens asked a DIFFERENT question, and that is why it found more
+
+Pass 5 asked *is this key read*. Pass 8 asked **is what was read ever used** —
+and found three keys parsed into a constructor call that did not carry them.
+
+`width`, `height` and `twist` are validated by `ActionRoutes` against the
+compatibility suite's own error messages, with two tests pinning the width ones
+character for character. Then `PointerActionRunner` built a `SyntheticContact`
+without them, and both injectors wrote a fixed four-pixel box.
+
+**The validation is what hid it.** A route that checks a parameter carefully
+looks finished, from the outside and from a grep. This is the `/touch/flick
+speed` defect one level deeper, and it suggests the standing question for this
+lens is not "which keys are read" but **"which keys are read and then not
+mentioned again"**.
+
+Pass 7 is the first that came close: one finding, and it is a decision rather
+than a defect. Everything else in the response sweep checked out, and what it
+cleared is written down below so the next pass does not redo it.
 
 ### The completion rule, corrected — it was unsatisfiable as written
 
@@ -378,3 +402,65 @@ ruled out.**
 Automation counterpart — there is no document to switch into, no shadow root, no
 stylesheet. Refusing them is correct, and the unknown-command fallback already
 says so.
+
+### `GET /status` has no W3C shape, and this one is NOT a bug to patch
+
+Found by pass 7, the by-route lens applied to RESPONSE shapes rather than to
+whether a route exists — the half that had never been swept.
+
+The two dialects disagree at the root and the disagreement is irreducible:
+
+| | body |
+|---|---|
+| JSON Wire / WinAppDriver | `{"build": {...}, "os": {...}}`, no envelope |
+| W3C | `{"value": {"ready": true, "message": "..."}}` |
+
+**And the request cannot tell them apart.** Every other command in this driver
+knows its dialect because the session recorded it at `POST /session`. `/status`
+has no session, no body, and no distinguishing header — a Selenium 3 client and
+a Selenium 4 client send byte-identical requests.
+
+So the project rule decides it: *"the contract is JSON Wire Protocol, not W3C
+WebDriver — where they disagree, JWP wins."* The root stays `{build, os}`, which
+is also what `Recordings/winappdriver-responses.json` carries and what
+`StatusRouteTests` asserts key for key, including that `value` is absent.
+
+**The tempting half-fix is worse than leaving it.** Adding `ready` and `message`
+at the ROOT — additive, breaks no JWP client, passes review — serves nobody: a
+W3C client reads `value.ready` and will not look at the root, and no JSON Wire
+client wants the fields. It would close the finding in the ledger without closing
+it on the wire, which is the same defect as answering 200 for work not done.
+
+Recorded as **OPEN, needing an owner decision**, with the two real options:
+
+1. **Leave it.** Selenium 4's `RemoteWebDriver` does not call `/status` when
+   creating a session, so the cost is limited to clients that probe readiness
+   explicitly (some Appium flows).
+2. **Serve the W3C shape under a distinct base path.** The argument grammar
+   already supports one — `WindowsDriverCore.exe 4723/wd/hub` — so a W3C base
+   path is a compatible place to put a body that cannot coexist with the JWP one
+   at the same URL. This is the vendor-extension rule applied to a response
+   rather than to a command.
+
+**Not chosen unilaterally**, because option 2 changes what a base path MEANS —
+today it is a prefix and nothing else — and that is a contract decision rather
+than a defect fix.
+
+### Clean in pass 7: everything else in the response sweep
+
+Checked against the specification and found correct, recorded so the next pass
+does not redo it:
+
+- `ELEMENT` for JSON Wire and `element-6066-11e4-a52e-4f735466cecf` for W3C,
+  **and the plural is rekeyed too** — `ProtocolDialectFilter.Translate` handles
+  both `ElementReference` and `IEnumerable<ElementReference>`. A filter that
+  swapped only the top-level value would hand a W3C client JSON-Wire-keyed
+  elements out of `/elements`, and that is exactly the shape of bug this lens is
+  for.
+- `ElementRect` is `{x, y, width, height}`; `ElementSize` is height before width,
+  matching the recording; `ElementLocation` is `{x, y}`.
+- The W3C fault carries `error` as a NAME rather than a number, plus `message`
+  and the required `stacktrace` — deliberately empty, because this driver's stack
+  is about its internals rather than about the caller's test.
+- A void W3C response spells "nothing happened" as an explicit null `value`,
+  where JSON Wire omits the key.

@@ -162,12 +162,21 @@ public sealed class SyntheticPointer : ISyntheticPointer
             frame[index].touchFlags = TOUCH_FLAG_NONE;
             frame[index].touchMask = TOUCH_MASK_CONTACTAREA;
 
-            // A contact with no area is rejected by some targets, so the frame
-            // carries a small square around the point rather than a bare pixel.
-            frame[index].rcContact.Left = contact.X - 2;
-            frame[index].rcContact.Top = contact.Y - 2;
-            frame[index].rcContact.Right = contact.X + 2;
-            frame[index].rcContact.Bottom = contact.Y + 2;
+            // THE CALLER'S CONTACT AREA, centred on the point. This was a fixed
+            // four-pixel square whatever the payload said - W3C's width and
+            // height were validated by the route and then dropped, so a client
+            // asking for a 40 px fingertip got 4 and was answered 200.
+            //
+            // A contact with no area is rejected by some targets, so the record's
+            // default keeps the old square for every caller that names no size -
+            // which is every JSON Wire /touch/* gesture.
+            (int left, int right) = Span(contact.X, contact.Width);
+            (int top, int bottom) = Span(contact.Y, contact.Height);
+
+            frame[index].rcContact.Left = left;
+            frame[index].rcContact.Top = top;
+            frame[index].rcContact.Right = right;
+            frame[index].rcContact.Bottom = bottom;
         }
 
         if (Win32.InjectTouchInput((uint)frame.Length, frame))
@@ -205,12 +214,30 @@ public sealed class SyntheticPointer : ISyntheticPointer
 
         frame[0].penInfo.penFlags = PenFlagsFor(contact.Button);
 
-        frame[0].penInfo.penMask = PEN_MASK_PRESSURE | PEN_MASK_TILT_X | PEN_MASK_TILT_Y;
+        frame[0].penInfo.penMask =
+            PEN_MASK_PRESSURE | PEN_MASK_TILT_X | PEN_MASK_TILT_Y | PEN_MASK_ROTATION;
 
         // W3C carries pressure as 0..1; the pointer API wants 0..1024.
         frame[0].penInfo.pressure = (uint)Math.Clamp(contact.Pressure * 1024, 0, 1024);
         frame[0].penInfo.tiltX = contact.TiltX;
         frame[0].penInfo.tiltY = contact.TiltY;
+
+        // W3C's `twist` is the pen's rotation about its own axis, and both sides
+        // measure it in whole degrees 0..359 - so this is a rename rather than a
+        // conversion. The mask bit above is the half that was missing: without
+        // it the field is ignored however it is filled in.
+        //
+        // NOT VERIFIABLE BY TEST HERE, and neither is the mask. Whether Windows
+        // then delivers a rotated pen that an application distinguishes is a
+        // claim about a digitiser this machine does not have - the same limit
+        // PenButtonTests records for PEN_FLAG_BARREL. What IS tested is that the
+        // caller's twist survives the protocol layer and reaches the contact,
+        // which is where it was being dropped.
+        //
+        // Mutating the mask to prove sensitivity is not available either: it is
+        // the constant's only use, so removing it fails the build, and a build
+        // failure masquerades as an uncaught mutant.
+        frame[0].penInfo.rotation = (uint)Math.Clamp(contact.Twist, 0, 359);
 
         if (Win32.InjectSyntheticPointerInput(device, frame, (uint)frame.Length))
         {
@@ -356,7 +383,42 @@ public sealed class SyntheticPointer : ISyntheticPointer
     private const uint TOUCH_MASK_CONTACTAREA = 0x00000001;
     private const uint TOUCH_FEEDBACK_INDIRECT = 0x00000002;
 
+    /// <summary>Half a contact box, rounded so the whole size survives.</summary>
+    /// <param name="centre">Where the contact is, in screen pixels.</param>
+    /// <param name="size">How wide or tall the caller said the contact is.</param>
+    /// <returns>The two edges, centred on <paramref name="centre"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// Split rather than halved twice, so an ODD size keeps its full extent: 5
+    /// becomes -2 and +3 rather than -2 and +2, which would silently deliver a
+    /// 4 px contact for a 5 px request. Off-centre by half a pixel, which no
+    /// digitiser could express anyway.
+    /// </para>
+    /// <para>
+    /// Clamped at 1 because a zero or negative box is not a smaller contact, it
+    /// is a degenerate rectangle some targets reject outright. The route already
+    /// refuses a stated size below 1 with the suite's own message; this guards
+    /// the path that does not come through validation.
+    /// </para>
+    /// </remarks>
+    internal static (int Low, int High) Span(int centre, int size)
+    {
+        int extent = Math.Max(size, 1);
+        int before = extent / 2;
+
+        return (centre - before, centre + (extent - before));
+    }
+
     private const uint PEN_MASK_PRESSURE = 0x00000001;
+
+    /// <summary>Rotation about the pen's own axis. W3C calls it <c>twist</c>.</summary>
+    /// <remarks>
+    /// 0x2, which sits between pressure and tiltX rather than after them — the
+    /// bits are not in the order the struct's fields are, and guessing the next
+    /// free value would have masked the wrong field.
+    /// </remarks>
+    private const uint PEN_MASK_ROTATION = 0x00000002;
+
     private const uint PEN_MASK_TILT_X = 0x00000004;
     private const uint PEN_MASK_TILT_Y = 0x00000008;
     private const uint POINTER_FEEDBACK_INDIRECT = 0x00000002;

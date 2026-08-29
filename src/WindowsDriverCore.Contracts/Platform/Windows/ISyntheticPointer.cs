@@ -48,6 +48,15 @@ public enum SyntheticPointerKind
 /// <param name="TiltX">Pen tilt left/right, -90 to 90. Ignored for touch.</param>
 /// <param name="TiltY">Pen tilt up/down, -90 to 90. Ignored for touch.</param>
 /// <param name="Button">Which part of the pen is in use. Ignored for touch.</param>
+/// <param name="Width">
+/// The contact box's width in pixels. W3C states it per pointerDown; the JSON
+/// Wire touch routes name none and take the default.
+/// </param>
+/// <param name="Height">The contact box's height in pixels.</param>
+/// <param name="Twist">
+/// A pen's rotation about its own axis, 0 to 359 degrees. Meaningless for touch
+/// - a finger has no orientation to report - and ignored there.
+/// </param>
 public readonly record struct SyntheticContact(
     SyntheticPointerKind Kind,
     int X,
@@ -56,7 +65,26 @@ public readonly record struct SyntheticContact(
     double Pressure = 0.5,
     int TiltX = 0,
     int TiltY = 0,
-    SyntheticContactButton Button = SyntheticContactButton.Tip);
+    SyntheticContactButton Button = SyntheticContactButton.Tip,
+    int Width = SyntheticContact.DefaultContactSize,
+    int Height = SyntheticContact.DefaultContactSize,
+    int Twist = 0)
+{
+    /// <summary>The contact box a caller who says nothing gets, in pixels.</summary>
+    /// <remarks>
+    /// <para>
+    /// Four pixels, which is what this driver injected unconditionally before
+    /// <c>width</c> and <c>height</c> were honoured — kept as the default so
+    /// every JSON Wire <c>/touch/*</c> gesture, which names no size, injects
+    /// exactly what it did before.
+    /// </para>
+    /// <para>
+    /// A default rather than zero: a zero-area contact is not a smaller finger,
+    /// it is a degenerate rectangle, and Windows is entitled to ignore it.
+    /// </para>
+    /// </remarks>
+    public const int DefaultContactSize = 4;
+}
 
 /// <summary>Which part of a pen is making the contact.</summary>
 /// <remarks>
