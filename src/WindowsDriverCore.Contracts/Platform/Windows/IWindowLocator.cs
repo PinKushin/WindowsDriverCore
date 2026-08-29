@@ -14,6 +14,32 @@ public interface IWindowLocator
     /// <summary>The desktop window, used by a <c>Root</c> session.</summary>
     nint DesktopWindow { get; }
 
+    /// <summary>What currently holds the foreground, for a diagnostic.</summary>
+    /// <returns>
+    /// A short description — the window's title and owning process — or a note
+    /// that nothing holds it.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Exists because a failed raise was unfalsifiable without it.</b> The
+    /// transcript said <c>NOT RAISED, went to whatever had focus</c> and stopped
+    /// there, so establishing that keystrokes were landing in the wrong
+    /// application took cross-referencing TRX timings against request logs across
+    /// four separate runs. One line naming the culprit would have made it
+    /// obvious.
+    /// </para>
+    /// <para>
+    /// <b>A description rather than a handle</b>, because the consumer is a
+    /// human reading a transcript. A bare <c>0x1A03C6</c> means nothing an hour
+    /// later; "Action center (ShellExperienceHost)" is the whole answer.
+    /// </para>
+    /// <para>
+    /// Called only when a raise has already FAILED, so its cost is paid on a path
+    /// that is about to be slow anyway.
+    /// </para>
+    /// </remarks>
+    string DescribeForeground();
+
     /// <summary>Whether a handle refers to a window that currently exists.</summary>
     /// <param name="handle">The window handle.</param>
     /// <returns>True when the window exists.</returns>

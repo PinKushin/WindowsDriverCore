@@ -255,7 +255,13 @@ public interface ITerminationLog
     /// event carries only whether the raise worked. That constraint is the reason
     /// the parameter list cannot grow to include what was typed.
     /// </remarks>
-    void KeysDispatched(bool raised, double elapsedMilliseconds);
+    /// <param name="foreground">
+    /// What held the foreground when the raise FAILED, or empty when it
+    /// succeeded. A window title and process, not a handle - the consumer is a
+    /// person reading a transcript, and "0x1A03C6" answers nothing an hour
+    /// later.
+    /// </param>
+    void KeysDispatched(bool raised, string foreground, double elapsedMilliseconds);
 
     /// <summary>Records the wait for typed input to be consumed.</summary>
     /// <param name="waited">

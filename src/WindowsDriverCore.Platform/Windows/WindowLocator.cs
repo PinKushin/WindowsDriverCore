@@ -1,4 +1,7 @@
+using System.Diagnostics;
+using System.Globalization;
 namespace WindowsDriverCore.Platform.Windows;
+
 
 /// <summary>
 /// Answers questions about top-level windows using Win32.
@@ -291,6 +294,25 @@ public sealed class WindowLocator : IWindowLocator
             return false;
         }
 
+        // A DESKTOP SESSION HAS NO WINDOW TO RAISE, and asking anyway is not
+        // free. The desktop can never BE the foreground window, so every call
+        // below would fail - while still having run ShowWindow, BringWindowToTop
+        // and SetForegroundWindow against it first.
+        //
+        // Measured 2026-08-29: a Root session sending Escape to dismiss the
+        // Action Center logs "NOT RAISED, went to whatever was in front" on
+        // every single run, passing and failing alike. It was never a defect,
+        // and it was polluting the one metric that does predict this failure.
+        //
+        // True rather than false, because the caller's real question is "can I
+        // act on this session's target now" - and for a desktop session the
+        // answer is always yes: its target IS whatever is in front.
+
+        if (handle == Win32.GetDesktopWindow())
+        {
+            return true;
+        }
+
         nint foreground = Win32.GetForegroundWindow();
         if (foreground == handle)
         {
@@ -319,9 +341,76 @@ public sealed class WindowLocator : IWindowLocator
             }
         }
 
+        // POLLED, NOT CHECKED ONCE - and that was a real defect rather than a
+        // tidy-up.
+        //
+        // SetForegroundWindow does not complete synchronously: the shell
+        // processes the activation, and GetForegroundWindow read on the very
+        // next line can still name the old window. So a raise that WOULD have
+        // succeeded a few milliseconds later was reported as failed, and the
+        // caller typed into whatever was still in front.
+        //
+        // SpinUntil returns the instant the condition holds, so the ordinary
+        // case costs approximately nothing; the budget bounds only the failure.
+        // Same primitive and same reasoning as WaitUntilGone above.
+        //
         // Reports what actually happened rather than what was attempted. The
         // shell can still refuse, and a caller that types into a window it only
         // ASKED to foreground would type into somebody else's.
-        return Win32.GetForegroundWindow() == handle;
+        return SpinWait.SpinUntil(
+            () => Win32.GetForegroundWindow() == handle, ForegroundTimeoutMs);
+    }
+
+    /// <summary>How long to wait for an activation to actually land.</summary>
+    /// <remarks>
+    /// <para>
+    /// Bounds a FAILURE, not a success. An activation that is going to happen
+    /// happens in a few milliseconds; one that has not happened in a quarter of
+    /// a second has been refused by the shell and will not arrive later.
+    /// </para>
+    /// <para>
+    /// Deliberately short. This is spent only on raises that today return false
+    /// in about a millisecond and then type into the wrong window - so the worst
+    /// case is a few seconds added to a run that is already producing wrong
+    /// answers, and the best case is that those raises now succeed.
+    /// </para>
+    /// </remarks>
+    private const int ForegroundTimeoutMs = 250;
+
+    /// <inheritdoc />
+    public string DescribeForeground()
+    {
+        nint foreground = Win32.GetForegroundWindow();
+
+        if (foreground == 0)
+        {
+            // Real, and worth saying rather than reporting an empty title:
+            // during a window transition nothing holds the foreground at all,
+            // which is a different diagnosis from "the wrong thing holds it".
+            return "nothing";
+        }
+
+        string title = GetTitle(foreground);
+        int process = GetOwningProcessId(foreground);
+
+        string name;
+        try
+        {
+            name = Process.GetProcessById(process).ProcessName;
+        }
+        catch (ArgumentException)
+        {
+            // The process went away between the two calls. Ordinary during a
+            // teardown, and the handle is still worth reporting.
+            name = "gone";
+        }
+        catch (InvalidOperationException)
+        {
+            name = "gone";
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"'{title}' ({name}, pid {process}, hwnd 0x{foreground:X})");
     }
 }
