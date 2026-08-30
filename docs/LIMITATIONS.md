@@ -5198,3 +5198,62 @@ class touching the desktop.
 **Not attempted here** because each bisection step is a guest run, and three
 predictions have already been spent on this test. The next step should be the
 one that halves the search, not the one that sounds most likely.
+
+## The real lead: one Calculator process, EIGHT window handles
+
+**The owner's correction, 2026-08-30, and it reframed the whole investigation:**
+
+> "yes literally every app does that in the winappdriver test suite, its
+> literally the normal way people run UI tests, you dont restart the program for
+> every test."
+
+The previous entry recorded "every Calculator class shares one session" as a
+discovery. It is not — it is how UI suites are written, and WinAppDriver copes
+with it. **The shared long-lived session is the BASELINE CONDITION, not the
+anomaly.** The right question is what degrades over the life of a session for us
+and not for the reference.
+
+### What the transcript shows
+
+The shared session was created at line 1770 and used until line 5678. In that
+window, Calculator was activated repeatedly — and every activation returned the
+**same process with a DIFFERENT window handle**:
+
+```
+line 1770  pid 3912  window 0x620676   <- the shared session's window
+line 4956  pid 3912  window 0x540844
+line 4985  pid 3912  window 0x66080C
+line 4999  pid 3912  window 0x3A0558
+line 5085  pid 3912  window 0x68046A
+line 5116  pid 3912  window 0x4505F0
+line 5126  pid 3912  window 0x5F0768
+line 5249  pid 3912  window 0x6503F8   <- 0.3 s before the failing tap at 5269
+```
+
+**Calculator is single-instance and shows one window.** A second activation
+should hand back the frame that already exists. Ours produces a new
+`ApplicationFrameWindow` handle each time, and the long-lived session keeps
+pointing at the first one — four minutes and seven activations stale by the time
+`TouchDoubleTap` runs.
+
+### Why this fits where the other six theories did not
+
+- It only bites over a **long** session, which is why 2-class filters pass
+  (2 of 2, 12 of 12, 5 of 5) and full runs fail.
+- The raise **succeeds**, because the old frame still EXISTS — it is simply not
+  the one hosting the UI. That is exactly why the `NOT RAISED` diagnostic came
+  back clean and refuted the z-order theory.
+- It is a divergence in **our** behaviour rather than a property of the suite,
+  which is the only category the owner's rule allows for flake.
+
+### What to measure next, in order
+
+1. **Are those handles alive simultaneously?** If several
+   `ApplicationFrameWindow`s exist for one process, our launcher is picking a new
+   or empty frame rather than the app's real one — see the earlier entries on the
+   empty frame and on a window handle not being permanent.
+2. **What does WinAppDriver return** for a second session on an already-running
+   single-instance app: the same handle, or a new one? That is the divergence,
+   stated as a measurement.
+
+Only then a fix. Three predictions have already been spent on this test.
