@@ -260,6 +260,15 @@ internal static partial class Win32
         public Rect CaretRect;
     }
 
+    /// <summary>The thread is inside a modal menu loop.</summary>
+    /// <remarks>
+    /// <b>A menu holds input, so nothing that bypasses input can dismiss one.</b>
+    /// This is the flag that distinguishes "a menu is up" from "a window happens
+    /// to be in front", and it is set only for the Win32 modal loop — an
+    /// app-drawn popup runs no such loop and does not appear here.
+    /// </remarks>
+    internal const uint GUI_INMENUMODE = 0x00000004;
+
     /// <summary>Do not hang if the target thread stops responding.</summary>
     internal const uint SMTO_ABORTIFHUNG = 0x0002;
 

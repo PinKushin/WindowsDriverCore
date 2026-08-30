@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 namespace WindowsDriverCore.Platform.Windows;
 
 
@@ -412,5 +413,25 @@ public sealed class WindowLocator : IWindowLocator
         return string.Create(
             CultureInfo.InvariantCulture,
             $"'{title}' ({name}, pid {process}, hwnd 0x{foreground:X})");
+    }
+
+    /// <inheritdoc />
+    public bool IsMenuModeActive()
+    {
+        Win32.GuiThreadInfo info = default;
+        info.Size = Marshal.SizeOf<Win32.GuiThreadInfo>();
+
+        // Thread 0 is the FOREGROUND thread, which is the one that can own a
+        // menu. Asking the session window's thread instead would miss the case
+        // that matters: a packaged application's frame belongs to
+        // ApplicationFrameHost, a different thread from the one running the menu.
+        if (!Win32.GetGUIThreadInfo(0, ref info))
+        {
+            // No GUI state on the foreground thread — during a transition, or
+            // when nothing holds the foreground. Not a menu.
+            return false;
+        }
+
+        return (info.Flags & Win32.GUI_INMENUMODE) != 0;
     }
 }

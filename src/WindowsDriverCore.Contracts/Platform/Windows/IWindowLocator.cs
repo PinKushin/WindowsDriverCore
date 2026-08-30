@@ -40,6 +40,37 @@ public interface IWindowLocator
     /// </remarks>
     string DescribeForeground();
 
+    /// <summary>Whether a modal menu loop currently holds input.</summary>
+    /// <returns><c>true</c> while the foreground thread is in menu mode.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A menu is a modal input capture, and only real mouse input ends it.</b>
+    /// Invoking a pattern reaches the provider directly and sends no input at
+    /// all, so a menu it should have dismissed simply stays up — and everything
+    /// aimed at the window underneath then lands on the menu instead.
+    /// </para>
+    /// <para>
+    /// <b>Measured on the guest, 2026-08-30, and it costs two compatibility
+    /// tests.</b> <c>MouseClick</c> right-clicks Calculator's title bar to raise
+    /// the system menu and dismisses it with <c>clearButton.Click()</c> — the
+    /// suite's own comment is <c>// Dismiss the context menu</c>. Served through
+    /// the click ladder that becomes an <c>Invoke</c>, the menu survives, and the
+    /// two tests that follow both act on the title bar underneath it:
+    /// </para>
+    /// <code>
+    /// dismissed by             menu open   then maximized
+    /// element click (Invoke)   YES         no
+    /// moveto + click (REAL)    no          YES
+    /// </code>
+    /// <para>
+    /// This reports the <b>Win32 modal menu loop</b> specifically — the state
+    /// <c>GUI_INMENUMODE</c> names. An app-drawn popup (a WPF
+    /// <c>ContextMenu</c>, a WinUI flyout) runs no such loop and is not seen
+    /// here; those dismiss on their own light-dismiss rules.
+    /// </para>
+    /// </remarks>
+    bool IsMenuModeActive();
+
     /// <summary>Whether a handle refers to a window that currently exists.</summary>
     /// <param name="handle">The window handle.</param>
     /// <returns>True when the window exists.</returns>
