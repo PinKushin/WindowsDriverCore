@@ -4953,3 +4953,55 @@ here. Two flaky tests becoming reliable should show, but a three-run window
 cannot attribute a two-test move on its own — the drift number is the evidence,
 because it is a **magnitude** rather than a pass count, and it moved by an order
 of magnitude.
+
+## The flake audit: 4 stable failures, 6 flappers
+
+**Eight full runs across the day's three commits** (`b480f52` ×4, `aa13c60` ×3,
+`cb225cc` ×1), failing names tallied and the nine environmental removed:
+
+| test | failures | reading |
+|---|---|---|
+| `NavigateBack_SystemApp` | **8 of 8** | stable |
+| `TouchLongTap` | **8 of 8** | stable |
+| `ClickElement` | **8 of 8** | stable — but three *different* failures, see below |
+| `TouchDoubleTap` | **8 of 8** | stable — and passes 2/2 when its class runs ALONE |
+| `Touch_Scroll_Vertical` | 4 of 8 | flapper — cause found and fixed |
+| `Pen_Scroll_Vertical` | 3 of 8 | flapper — same cause |
+| `NavigateBack_ModernApp` | 3 of 8 | flapper |
+| `FindElements_ByName` | 1 of 8 | flapper |
+| `Pen_LongClick` | 1 of 8 | flapper |
+| `MouseDoubleClick` | 1 of 8 | flapper — was 0 of 7 until `cb225cc` |
+
+`MiscellaneousSessionError_StaleSessionId` shows 4 of 8 and is **not** a flapper:
+it failed in all four runs before its fix and passed in all four after.
+
+**So the backlog is 10 named tests: 4 stable and 6 intermittent** — more than the
+7 recorded earlier today, because two tests each flapped once inside a window the
+earlier three-run count could not see. **Flake is failure**; the wider the window,
+the more of it there is to find.
+
+### A mistake worth keeping: the first tally aggregated 77 runs
+
+The first version of this table swept **every** TRX on the guest — 77 full runs
+going back weeks, across commits where large parts of the driver were broken. It
+reported `TouchDoubleTap 77/77` and `MouseClick 64/77`, which reads as a stable
+failure and a bad flapper. `MouseClick` has been fixed for a day.
+
+A frequency table is only meaningful over runs of the **same code**. Aggregating
+across commits measures the project's history, not its present, and it does it
+while looking exactly like a flake rate.
+
+### `ClickElement` is three defects wearing one name
+
+Read from the stack line of every run rather than from one:
+
+```
+line 47   Assert.AreEqual failed. Expected:<8>.  Actual:<7>     (5 runs)
+line 46   stale element reference on hourSelector.FindElementByName("8")  (1 run)
+line 52   Assert.AreEqual failed. Expected:<30>. Actual:<Minute>          (1 run)
+```
+
+`Actual:<Minute>` is the minute selector reporting its **header** rather than a
+value. Line 47 passing in one run also means the hour selection sometimes works,
+so "the click never selects" — asserted here earlier from a single probe series —
+was too strong.
