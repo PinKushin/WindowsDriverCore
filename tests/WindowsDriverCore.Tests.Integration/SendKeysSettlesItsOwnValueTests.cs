@@ -88,6 +88,31 @@ public sealed class SendKeysSettlesItsOwnValueTests
         UiSettle.UntilBoundsAreStable(_inspector, _window, EditBox());
     }
 
+    /// <summary>Leaves the shared subject as it was found: empty.</summary>
+    /// <remarks>
+    /// <b>The subject REFUSES to close while its edit box has text.</b> That is
+    /// deliberate — <c>TestApp</c> raises a discard prompt on <c>WM_CLOSE</c>, so
+    /// the suite has something real to answer. But this fixture shares that
+    /// subject, and a fixture that dirties a shared application and walks away
+    /// makes the teardown pay for it: the close is refused, the terminator falls
+    /// through to <c>CloseMainWindow</c> and then <c>Kill</c>, and for those
+    /// seconds a modal dialog owns the foreground on a desktop several suites
+    /// share.
+    /// </remarks>
+    [OneTimeTearDown]
+    public void LeaveTheSubjectClean()
+    {
+        if (_window == 0)
+        {
+            return;
+        }
+
+        _interactor.Clear(
+            _window,
+            UiSettle.UntilSomethingMatches(
+                _finder, _window, LocatorKind.ControlType, "Edit")[0]);
+    }
+
     private string EditBox() =>
         UiSettle.UntilSomethingMatches(
             _finder, _window, LocatorKind.ControlType, "Edit")[0];
