@@ -5005,3 +5005,37 @@ line 52   Assert.AreEqual failed. Expected:<30>. Actual:<Minute>          (1 run
 value. Line 47 passing in one run also means the hour selection sometimes works,
 so "the click never selects" — asserted here earlier from a single probe series —
 was too strong.
+
+## The scroll fix, confirmed on the suite: 276, 276, 276
+
+**Three full runs at `2c2fb51`, all identical.** The previous eight runs across
+three commits ranged 273–277; this window has **zero variance**, which is the
+first time that has happened in this project.
+
+| test | failures at `2c2fb51` (3 runs) | before (8 runs) |
+|---|---|---|
+| `NavigateBack_SystemApp` | 3 of 3 | 8 of 8 |
+| `NavigateBack_ModernApp` | 3 of 3 | 3 of 8 |
+| `TouchDoubleTap` | 3 of 3 | 8 of 8 |
+| `ClickElement` | 3 of 3 | 8 of 8 |
+| `TouchLongTap` | 2 of 3 | 8 of 8 |
+| `MouseDoubleClick` | 1 of 3 | 1 of 8 |
+| **`Touch_Scroll_Vertical`** | **0 of 3** | 4 of 8 |
+| **`Pen_Scroll_Vertical`** | **0 of 3** | 3 of 8 |
+| `FindElements_ByName` | 0 of 3 | 1 of 8 |
+| `Pen_LongClick` | 0 of 3 | 1 of 8 |
+
+**Both vertical scrolls passed every run**, which is what the drift measurement
+predicted: an identical gesture that used to move a `LoopingSelector` 5–15 items
+now moves exactly 5.
+
+**Not claimed:** that the other movements are attributable. `NavigateBack_ModernApp`
+reads worse (3 of 3 against 3 of 8) and `TouchLongTap` better (2 of 3 against
+8 of 8) — three runs cannot separate either from the band, and the honest
+statement is that the scroll pair moved from flaky to clean while the rest of the
+list is unchanged in character.
+
+**Why the scroll claim IS safe to make on three runs:** it does not rest on them.
+The drift measurement is a magnitude and it moved by an order of magnitude, on
+ten repetitions of the gesture alone. The suite runs are a confirmation, not the
+evidence.
