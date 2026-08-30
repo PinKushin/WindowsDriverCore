@@ -4764,3 +4764,72 @@ Hyper-V socket target process has ended"* — a message that reads like a guest
 crash. The guest kept running orphaned and wrote its TRX normally, which is why
 `277` exists at all. The runner now prints every failing name itself, so nothing
 needs to query mid-run. See DECISIONS §10.
+
+## Calculator starts MAXIMIZED — confirmed, and it is not the cause
+
+**The owner's hypothesis, 2026-08-30:**
+
+> "if the maximise tests are failing it might be because the calculator isnt
+> being restored to the smaller window between tests, its opening as maximized"
+
+**The first half is measured true.** `tools/vm/probe-does-calculator-start-maximized.ps1`:
+
+```
+PART 1 - does a new session inherit the maximized state?
+  first launch of the run        : MAXIMIZED
+  after deliberately maximizing  : MAXIMIZED
+  a NEW session then sees        : MAXIMIZED
+```
+
+Calculator is a packaged single-instance app that remembers its window state, so
+once anything maximizes it, every later session starts maximized. **This is why
+two probes in this repository found a maximized window and misread their own
+results** — one computed its verdict as an absolute rather than as a change and
+printed the exact opposite of the raw values beside it.
+
+**The second half is measured false, and the suite's guard is why.** Both
+maximize tests begin with
+
+```csharp
+if (!maximizeButton.Text.Contains("Maximize")) { maximizeButton.Click(); }
+Assert.IsTrue(maximizeButton.Text.Contains("Maximize"));
+```
+
+and our click on the Restore button is reliable:
+
+```
+PART 2 - ten attempts to restore by clicking the button, as the suite does
+  restored 10 of 10
+  times: 133, 139, 125, 124, 140, 140, 125, 140, 148, 125 ms
+```
+
+**Decisive: the failing LINE never moves.** Across seven full runs at two
+commits, `TouchDoubleTap` fails at **line 61 every time** — the first
+`Assert.IsFalse`, which is the double tap itself. It has never once failed at
+line 55, the guard's assert. If a maximized start were defeating the restore,
+line 55 is where it would show, and it does not.
+
+| test | failing line | runs |
+|---|---|---|
+| `TouchDoubleTap` | 61 | 7 of 7 |
+| `TouchLongTap` | 54 | 7 of 7 |
+| `NavigateBack_SystemApp` | 104 | 7 of 7 |
+| `ClickElement` | 47 (×5), 46 (×1), 52 (×1) | see below |
+
+**`ClickElement` is three different failures wearing one name**, which is worth
+separating before any fix:
+
+```
+line 47   Assert.AreEqual failed. Expected:<8>.  Actual:<7>
+line 46   stale element reference on hourSelector.FindElementByName("8")
+line 52   Assert.AreEqual failed. Expected:<30>. Actual:<Minute>
+```
+
+`Actual:<Minute>` is the minute selector reporting its HEADER rather than a
+value, which is a different defect from selecting the wrong number.
+
+**What the hypothesis did earn:** it is the reason the restore path is now
+measured rather than assumed, and it explains the two probes that misread
+themselves. A confirmed fact about the environment that turns out not to be the
+cause is still worth writing down — the next person to find Calculator maximized
+should not have to re-derive it.

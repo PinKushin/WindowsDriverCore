@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using WindowsDriverCore.Diagnostics;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
@@ -97,8 +99,11 @@ public static class TouchRoutes
                 HttpContext context,
                 PointerActionRunner? runner,
                 IElementRegistry registry,
-                IWindowLocator windows) =>
+                IWindowLocator windows,
+                IPointerLog log) =>
         {
+            long began = Stopwatch.GetTimestamp();
+
             DriverSession session = context.GetSession();
 
             if (runner is null)
@@ -108,6 +113,10 @@ public static class TouchRoutes
 
             (int x, int y, PointerRefusal? failure) =
                 await ResolveElement(context, runner).ConfigureAwait(false);
+
+            // See MapElementGesture for why this line exists. TouchDoubleTap is
+            // the test that needs it: 200 in 61 ms, and no maximize.
+            log.PointerTargeted("touch doubleclick", x, y, -1, -1, Elapsed(began));
 
             if (failure is null)
             {
@@ -145,8 +154,11 @@ public static class TouchRoutes
                 HttpContext context,
                 PointerActionRunner? runner,
                 IElementRegistry registry,
-                IWindowLocator windows) =>
+                IWindowLocator windows,
+                IPointerLog log) =>
         {
+            long began = Stopwatch.GetTimestamp();
+
             DriverSession session = context.GetSession();
 
             if (runner is null)
@@ -156,6 +168,20 @@ public static class TouchRoutes
 
             (int x, int y, PointerRefusal? failure) =
                 await ResolveElement(context, runner).ConfigureAwait(false);
+
+            // WHERE THE GESTURE AIMED, WRITTEN DOWN BEFORE IT IS DISPATCHED.
+            //
+            // IPointerLog exists for exactly this case and was wired into the
+            // mouse routes only. Its own contract says so: "two 200s and no
+            // effect is the case this exists for". TouchDoubleTap is that
+            // symptom precisely - the route answers 200 in 61 ms and the window
+            // does not maximize - and the transcript could say the gesture was
+            // dispatched and nothing about where it went.
+            //
+            // Measured 2026-08-30: the same route DOES maximize the window when
+            // driven directly, twice, with a single tap as the control. So the
+            // difference is context, and context is what a coordinate shows.
+            log.PointerTargeted($"touch {suffix}", x, y, -1, -1, Elapsed(began));
 
             failure ??= runner.Tap(x, y, hold);
 
@@ -270,6 +296,9 @@ public static class TouchRoutes
                 : Fault(failure, session, registry, windows);
         }).RequiresSession();
     }
+
+    private static double Elapsed(long began) =>
+        Stopwatch.GetElapsedTime(began).TotalMilliseconds;
 
     private static async Task<(int X, int Y, PointerRefusal? Failure)> ResolveElement(
         HttpContext context, PointerActionRunner runner)

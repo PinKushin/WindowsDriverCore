@@ -55,7 +55,15 @@ function Wire([string] $method, [string] $path, [string] $body) {
 
 function Value([string] $json) { if ($json) { ($json | ConvertFrom-Json).value } else { $null } }
 
-function Measure([string] $label, [string] $exe) {
+# NOT NAMED `Measure`. PowerShell resolves ALIASES BEFORE FUNCTIONS, and
+# `Measure` is a built-in alias for Measure-Object - so a function by that name
+# is never called and the arguments land on Measure-Object instead:
+#
+#   Measure-Object : A positional parameter cannot be found that accepts
+#   argument 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe'
+#
+# It cost two probe runs. Alias > Function > Cmdlet > Application.
+function MeasureDriver([string] $label, [string] $exe) {
     Get-Process WindowsDriverCore, WinAppDriver -ErrorAction SilentlyContinue | Stop-Process -Force
     Get-Process explorer -ErrorAction SilentlyContinue | Out-Null
     Start-Sleep -Milliseconds 600
@@ -126,5 +134,5 @@ function Measure([string] $label, [string] $exe) {
     }
 }
 
-Measure 'THE REFERENCE (WinAppDriver)' $reference
-Measure 'THIS DRIVER' $ours
+MeasureDriver 'THE REFERENCE (WinAppDriver)' $reference
+MeasureDriver 'THIS DRIVER' $ours

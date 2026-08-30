@@ -82,7 +82,15 @@ function DismissAnyMenu([string] $session) {
     Start-Sleep -Milliseconds 600
 }
 
-function Measure([string] $label, [string] $exe, [bool] $withActions) {
+# NOT NAMED `Measure`. PowerShell resolves ALIASES BEFORE FUNCTIONS, and
+# `Measure` is a built-in alias for Measure-Object - so a function by that name
+# is never called and the arguments land on Measure-Object instead:
+#
+#   Measure-Object : A positional parameter cannot be found that accepts
+#   argument 'C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe'
+#
+# It cost two probe runs. Alias > Function > Cmdlet > Application.
+function MeasureDriver([string] $label, [string] $exe, [bool] $withActions) {
     Get-Process WindowsDriverCore, WinAppDriver -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Milliseconds 600
 
@@ -182,5 +190,5 @@ function Measure([string] $label, [string] $exe, [bool] $withActions) {
     }
 }
 
-Measure 'THE REFERENCE (WinAppDriver)' $reference $false
-Measure 'THIS DRIVER' $ours $true
+MeasureDriver 'THE REFERENCE (WinAppDriver)' $reference $false
+MeasureDriver 'THIS DRIVER' $ours $true
