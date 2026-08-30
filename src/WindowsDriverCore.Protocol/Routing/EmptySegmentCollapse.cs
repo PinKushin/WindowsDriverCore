@@ -67,6 +67,11 @@ public sealed class EmptySegmentCollapse
 
         // The overwhelmingly common case, and it allocates nothing: no doubled
         // separator means nothing to collapse.
+        // THE GUARD IS BEHAVIOUR, not only an allocation saved. Without it a
+        // path with a single trailing separator is rewritten without one, since
+        // splitting drops the empty tail segment. Verified by mutation: removing
+        // this turns /session/abc/ into /session/abc and
+        // ASingleTrailingSeparator_IsNotTouched goes red.
         if (path is not null && path.Contains("//", StringComparison.Ordinal))
         {
             context.Request.Path = new PathString(Collapse(path));
@@ -77,15 +82,25 @@ public sealed class EmptySegmentCollapse
 
     /// <summary>Removes empty segments, keeping the leading separator.</summary>
     /// <remarks>
-    /// A trailing separator is dropped with them, so <c>/session/abc/</c> and
-    /// <c>/session/abc</c> select the same route — which is what dropping empty
-    /// segments means, applied consistently. The root path stays <c>/</c>
-    /// rather than becoming empty.
+    /// <para>
+    /// A trailing separator is dropped with them, so a path that reaches this at
+    /// all comes out without one. Paths that carry a single trailing separator
+    /// and no doubled one never reach it — see the guard in
+    /// <c>InvokeAsync</c> — and ASP.NET Core's matcher ignores one anyway.
+    /// </para>
+    /// <para>
+    /// <b>A path of nothing but separators comes out as the root, and it needs
+    /// no special case.</b> An earlier version of this carried one, with a
+    /// comment claiming the plain form returned an empty string. It does not:
+    /// joining zero segments gives <c>""</c> and the leading separator is
+    /// prepended unconditionally, so <c>//</c> already becomes <c>/</c>.
+    /// Removing the branch changed no test, which is what dead code looks like.
+    /// </para>
     /// </remarks>
     private static string Collapse(string path)
     {
         string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-        return segments.Length == 0 ? "/" : "/" + string.Join('/', segments);
+        return "/" + string.Join('/', segments);
     }
 }

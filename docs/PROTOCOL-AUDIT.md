@@ -637,3 +637,59 @@ Pass 10 added a test and changed no shipping code. Recorded as clean on that
 basis, and the reasoning is stated rather than assumed: the reset exists because
 *a fix can introduce a gap*, and a test cannot change what the server serves.
 A production change would reset it.
+
+## Pass 11 — the count resets, and the new surface is the subject
+
+**2026-08-30. The count goes back to 0 of 3, and not because a lens found
+something.** Pass 10 was recorded clean on the explicit basis that it added a
+test and changed no shipping code. Four production changes have landed since:
+
+- `EmptySegmentCollapse`, which rewrites the path of **every** request carrying a
+  doubled separator
+- `GET /session/{sessionId}`, a route that did not exist
+- `NavigationRoutes` recording its dispatched gesture
+- the menu rung in the click ladder
+
+The reset rule exists because *a fix can introduce a gap*, and the first of these
+touches every request in the server. Auditing the new surface is the pass.
+
+### Two findings, both in the collapse, both found by MUTATION
+
+The tests were written after the implementation, so they had never been red and
+proved nothing on their own. Mutating the code found two things:
+
+**A dead branch, with a comment defending it.** The rewrite carried
+`segments.Length == 0 ? "/" : "/" + string.Join(...)`, and the doc comment said
+the plain form "returns the empty string — which is not a path". It does not:
+joining zero segments gives `""` and the leading separator is prepended
+unconditionally, so `//` already became `/`. Removing the branch changed no test.
+The branch is gone and the comment is corrected — a comment asserting a
+falsehood about the code beside it is worse than no comment, because it is read
+as established.
+
+**A guard that was documented as an optimisation and is actually behaviour.**
+`path.Contains("//")` reads like an allocation saved on the common path. Remove
+it and `/session/abc/` is rewritten to `/session/abc`, because splitting drops
+the empty tail segment — `ASingleTrailingSeparator_IsNotTouched` goes red. It is
+now documented as behaviour, with the mutation named.
+
+### Open: the collapse runs AFTER the base-path gate, and nothing measures that
+
+The pipeline is transcript → `BasePathGate` → `UsePathBase` → collapse →
+routing. A client sending `/wd/hub//status` is fine: the gate accepts it,
+`UsePathBase` strips, and the collapse fixes what is left.
+
+**A client sending `//wd/hub/status` is 404**, because the gate's `StartsWith`
+runs before any normalisation. Whether the reference agrees is **not measured**.
+The argument for collapsing earlier is that the reference appears to drop empty
+segments while parsing the URL into segments, which happens before any routing
+decision including the base path — but that is inference from one observed
+behaviour, not a measurement, and moving the middleware would change what the
+gate rejects.
+
+**The experiment that would settle it:** start WinAppDriver with
+`127.0.0.1 4728/wd/hub` and send `//wd/hub/status` and `/wd/hub//status` over a
+raw socket, the way `tools/vm/probe-what-does-an-empty-session-segment-do.ps1`
+already does for `/session//title` — a client library will normalise the path
+before sending and the probe would measure itself. Recorded rather than guessed;
+it is an obscure shape and no test in the suite produces it.
