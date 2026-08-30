@@ -240,7 +240,17 @@ public sealed class SessionTracksTheAppNotTheBrokerTests
         }
         finally
         {
-            AppLifetime.KillAll(TestApp.ProcessName);
+                // BY ID, NEVER BY NAME. KillAll matches every process of that
+            // name, so it destroys the instance other fixtures are sharing
+            // and a developer's own copy alongside it. Measured 2026-08-30:
+            // five fixtures share the subject and three killed it by name,
+            // and the fixtures that run alphabetically after them all failed.
+            // This suite already states the rule elsewhere; these three did
+            // not follow it.
+            if (launched.Application is not null)
+            {
+                AppLifetime.KillProcess(launched.Application.ProcessId);
+            }
         }
     }
 
