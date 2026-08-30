@@ -4658,3 +4658,61 @@ as stable.
 
 **Quote the range, not a number.** 273–275 at `b480f52`, against the reference's
 281 with a ceiling of 281.
+
+## The horizontal scroll tests are VACUOUS on this app version
+
+**Measured 2026-08-30, and it deletes a clue this repository has been reasoning
+from.** The recorded asymmetry — *"both VERTICAL scroll tests fail while both
+horizontals pass"* — has been treated as evidence about the driver. It is not.
+The horizontal tests do not run.
+
+`Tests/WebDriverAPI/ActionsTouch.cs` and `ActionsPen.cs` both open with:
+
+```csharp
+if (AlarmTabClassName == "ListViewItem")
+{
+    // The latest Alarms & Clock application no longer has horizontal scroll UI elements
+}
+else
+{
+    ... the entire test ...
+}
+```
+
+An empty `if` branch. On this guest the condition is TRUE, so the whole test body
+is skipped and the method passes having asserted nothing.
+
+**The durations are the tell, and they are unambiguous:**
+
+| test | outcome | duration |
+|---|---|---|
+| `TouchScrollOnElement_Horizontal` | Passed | **0.013 s** |
+| `Touch_Scroll_Horizontal` | Passed | **0.024 s** |
+| `Pen_Scroll_Horizontal` | Passed | **0.026 s** |
+| `TouchScrollOnElement_Vertical` | Passed | 3.88 s |
+| `Touch_Scroll_Vertical` | Failed | 4.40 s |
+| `Pen_Scroll_Vertical` | Failed | 4.55 s |
+
+A 13-millisecond test did not perform a 500 ms gesture followed by a 1 s sleep.
+
+**Confirmed independently from the request transcript**, which never searches for
+`HomePagePivot` — the first element the real branch looks for — 0 occurrences in
+a full run, while `AlarmButton` is searched 363 times. `AlarmButton` is
+`AlarmTabAutomationId` in the same branch that sets
+`AlarmTabClassName = "ListViewItem"`.
+
+**What this changes.** Nothing about the score: they pass for the reference too,
+so the ceiling is unaffected. What it removes is the *diagnostic*. "Horizontal
+works, vertical does not, so the defect is axis-specific" was the shape of the
+hypothesis, and there is no horizontal result to compare against. The vertical
+failures have to be explained on their own evidence.
+
+**It is the standards document's first failure mode, in the suite rather than in
+our own tests: a test that cannot fail is insensitive to the manipulation.** The
+reason to notice it here is that we were using its passes as a control — and a
+control that cannot respond to the variable is not a control.
+
+**Also visible in the same transcript, and consistent with the recorded app
+drift:** both `AlarmSaveButton` (16 searches) and `PrimaryButton` (340) appear,
+which is the rename this project measured on 2026-08-10 being handled by the
+suite's own fallbacks.
