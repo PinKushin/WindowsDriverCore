@@ -4716,3 +4716,51 @@ control that cannot respond to the variable is not a control.
 drift:** both `AlarmSaveButton` (16 searches) and `PrimaryButton` (340) appear,
 which is the rename this project measured on 2026-08-10 being handled by the
 suite's own fallbacks.
+
+## Ground truth 2026-08-30 (late): 275–277/290, backlog 7
+
+**Three runs at `aa13c60`**, same conditions as every figure above (guest
+`Win10-Baseline`, Windows 10 19045, Alarms & Clock `10.1906.2182.0`, Calculator
+`10.1906.55.0`, offline, static 4 GB, cold, no store reset, no warm step):
+
+```
+276   275   277          against 273  274  275  275 at b480f52
+```
+
+**277 is the highest score this project has recorded.** Reference 281, ceiling
+281.
+
+**`MiscellaneousSessionError_StaleSessionId` is fixed, and the attribution is
+clean**: it failed in 4 of 4 runs at `b480f52` and passes in 3 of 3 at
+`aa13c60`. The fix is the empty-segment collapse plus `GET /session/{sessionId}`
+— Selenium clears its session id on `Quit()` and sends `GET /session//title`,
+which the reference answers by dropping the empty segment and looking up a
+session named `title`.
+
+**The backlog is 7 named tests**, down from 9:
+
+| stable (3 of 3) | |
+|---|---|
+| `ClickElement` | the LoopingSelector — probe written, unrun |
+| `NavigateBack_SystemApp` | probe written, unrun |
+| `TouchDoubleTap` | probe written, unrun |
+| `TouchLongTap` | probe written, unrun |
+
+| intermittent | runs failed |
+|---|---|
+| `NavigateBack_ModernApp` | 1 of 3 |
+| `Pen_Scroll_Vertical` | 1 of 3 |
+| `Touch_Scroll_Vertical` | 1 of 3 |
+
+**`FindElements_ByName` stopped flapping** (1 of 4 before, 0 of 3 now) and the
+two vertical scrolls dropped from 3-of-4 and 2-of-4 to 1-of-3 each. Three runs
+cannot distinguish that from noise, and none of it is attributed to a commit —
+see the ten-test-band entry. What is attributed is the one test that went from
+4-of-4 failing to 3-of-3 passing.
+
+**One run of the three was lost and then recovered.** Reading a TRX off the guest
+while the runner held its own PSDirect session killed the runner with *"The
+Hyper-V socket target process has ended"* — a message that reads like a guest
+crash. The guest kept running orphaned and wrote its TRX normally, which is why
+`277` exists at all. The runner now prints every failing name itself, so nothing
+needs to query mid-run. See DECISIONS §10.

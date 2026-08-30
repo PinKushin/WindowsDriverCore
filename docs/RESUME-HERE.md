@@ -7,24 +7,25 @@ the detail behind any line of it.
 
 ## 0. Where it stands, 2026-08-30
 
-**Last measured: 273–275/290, backlog 9 named tests** (`b480f52`, four runs
-under identical conditions: 275, 275, 273, 274). Reference 281, ceiling 281.
+**Last measured: 275–277/290, backlog 7 named tests** (`aa13c60`, three runs
+under identical conditions: 276, 275, 277). Reference 281, ceiling 281.
+**277 is the highest this project has recorded.**
 
-**Quote the range.** Five tests fail in every run and four flap, and the
+**Quote the range.** Four tests fail in every run and three flap, and the
 flappers count:
 
-| stable (4 of 4) | intermittent | runs failed |
+| stable (3 of 3) | intermittent | runs failed |
 |---|---|---|
-| `ClickElement` | `Touch_Scroll_Vertical` | 3 of 4 |
-| `MiscellaneousSessionError_StaleSessionId` | `Pen_Scroll_Vertical` | 2 of 4 |
-| `NavigateBack_SystemApp` | `FindElements_ByName` | 1 of 4 |
-| `TouchDoubleTap` | `NavigateBack_ModernApp` | 1 of 4 |
+| `ClickElement` | `NavigateBack_ModernApp` | 1 of 3 |
+| `NavigateBack_SystemApp` | `Pen_Scroll_Vertical` | 1 of 3 |
+| `TouchDoubleTap` | `Touch_Scroll_Vertical` | 1 of 3 |
 | `TouchLongTap` | | |
 
-**Three commits after `b480f52` are unmeasured** and a run was in flight when
-this was written: the empty-segment collapse plus `GET /session/{sessionId}`
-(aimed at `MiscellaneousSessionError_StaleSessionId`), navigation recording its
-own dispatched gesture, and the menu rung falling through rather than refusing.
+**`MiscellaneousSessionError_StaleSessionId` is fixed and the attribution is
+clean** — 4 of 4 failing at `b480f52`, 3 of 3 passing at `aa13c60`. Selenium
+clears its session id on `Quit()` and sends `GET /session//title`; the reference
+answers by dropping the empty segment and looking up a session named `title`, so
+we now collapse empty segments and serve `GET /session/{sessionId}`.
 
 **`MouseDoubleClick` and `MouseDownMoveUp` were ONE defect and are fixed.** The
 system menu `MouseClick` opens survives an `InvokePattern` click, because an

@@ -5,8 +5,8 @@ Guidance for Claude Code working in this repository.
 ## Read this first
 
 **`docs/RESUME-HERE.md` is the entry point after any break.** As of 2026-08-30
-the last full guest measurement is **273–275/290 at `b480f52`** across four runs,
-and the backlog is **9 named tests** — 5 that fail every run and 4 that flap.
+the last full guest measurement is **275–277/290 at `aa13c60`** across three runs,
+and the backlog is **7 named tests** — 4 that fail every run and 3 that flap.
 Read it before writing code or quoting a number, and quote the range.
 
 
@@ -83,7 +83,7 @@ input including `/actions`, `/keys`, implicit wait, XPath.
 This paragraph is a rough sketch, not the source of truth — it stopped being
 updated as routes landed and drifted stale for a while, most recently
 2026-08-11. **`docs/LIMITATIONS.md` is the live, maintained list**; the
-273–275/290 range above is the actual measure of what works. Screenshots are the
+275–277/290 range above is the actual measure of what works. Screenshots are the
 one route confirmed still unimplemented as of that score.
 
 ## Claims
@@ -107,8 +107,8 @@ no warm step**:
 | WinAppDriver 1.2.1 | **280/290** |
 | environmental failures | 9 (3 ModernApp, 5 browser/EdgeBase, 1 `GetLocation`) |
 | **reachable ceiling** | **281** |
-| **this driver** | **273–275/290** (`b480f52`, 2026-08-30, four runs) |
-| **the gap** | **9 named tests** — 5 stable, 4 intermittent |
+| **this driver** | **275–277/290** (`aa13c60`, 2026-08-30, three runs) |
+| **the gap** | **7 named tests** — 4 stable, 3 intermittent |
 
 **Every earlier figure in this file was wrong, including ones measured
 repeatedly.** Two pieces of scaffolding introduced on 2026-08-10 in a single
@@ -273,18 +273,18 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 - **280/290 for WinAppDriver 1.2.1 on the rebuilt guest**, cold, no reset, no
   warm — Windows 10 19045, Alarms & Clock `10.1906.2182.0`, offline, static 4 GB.
   Nine of the ten failures are environmental, so the reachable ceiling is **281**.
-  **This driver scores 273–275/290 under the same conditions (`b480f52`,
-  2026-08-30, four runs) — a gap of 9 NAMED tests rather than a subtraction:
+  **This driver scores 275–277/290 under the same conditions (`aa13c60`,
+  2026-08-30, three runs) — a gap of 7 NAMED tests rather than a subtraction:
   nine of our failures are the reference's too, so the failing list is not the
   backlog. See `docs/LIMITATIONS.md`.**
 
-  **A RANGE, because four runs gave 275, 275, 273, 274.** Five tests fail in
-  every run — `ClickElement`, `MiscellaneousSessionError_StaleSessionId`,
-  `NavigateBack_SystemApp`, `TouchDoubleTap`, `TouchLongTap` — and four flap:
-  `Touch_Scroll_Vertical` (3 of 4), `Pen_Scroll_Vertical` (2 of 4),
-  `FindElements_ByName` and `NavigateBack_ModernApp` (1 of 4 each). **The
-  flappers count.** A first write-up quoted "6" off a single run, which promoted
-  three of them to passes and demoted one to a stable failure.
+  **A RANGE, because three runs gave 276, 275, 277** (and four at `b480f52`
+  gave 273–275). Four tests fail in every run — `ClickElement`,
+  `NavigateBack_SystemApp`, `TouchDoubleTap`, `TouchLongTap` — and three flap
+  one run in three: `NavigateBack_ModernApp`, `Pen_Scroll_Vertical`,
+  `Touch_Scroll_Vertical`. **The flappers count.** A first write-up quoted "6"
+  off a single run, which promoted three of them to passes and demoted one to a
+  stable failure.
 
   Every earlier figure for either driver was taken through scaffolding
   that moved the result. The test-suite refactor commits after `d52882e`
