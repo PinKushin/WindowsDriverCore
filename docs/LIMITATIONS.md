@@ -4616,3 +4616,45 @@ runtime-id fix at `c854cd7`; it was merged unmeasured.
 `CreateSessionWithWorkingDirectoryAndArguments`, `Pen_Scroll_Vertical` and
 `Pen_LongClick`. One run does not make that a fix, and the repeat runs are what
 will say whether the band closed or merely landed well this time.
+
+### Corrected by three more runs: the backlog is 9, not 6
+
+**The section above was written from ONE run and understated the backlog**, in
+the specific way a single observation always can: it read every failure in that
+run as stable. Four runs at `b480f52` under identical conditions:
+
+```
+275   275   273   274
+```
+
+Diffing the failing NAMES rather than subtracting the counts separates them:
+
+| always failing (4 of 4) | |
+|---|---|
+| nine environmental | the reference's too — no Edge, no modern-app packages, no location provider |
+| `ClickElement` | the LoopingSelector animation |
+| `MiscellaneousSessionError_StaleSessionId` | fixed at `aa13c60`, unmeasured |
+| `NavigateBack_SystemApp` | |
+| `TouchDoubleTap` | |
+| `TouchLongTap` | |
+
+| intermittent | runs failed |
+|---|---|
+| `Touch_Scroll_Vertical` | 3 of 4 |
+| `Pen_Scroll_Vertical` | 2 of 4 |
+| `FindElements_ByName` | 1 of 4 |
+| `NavigateBack_ModernApp` | 1 of 4 |
+
+**So: 5 stable and 4 intermittent, and the intermittent ones count.** An
+intermittent failure is a failure — the variance is the evidence, not the excuse.
+Quoting "6" from the single run silently promoted three flappers to passes and
+demoted one to a stable failure.
+
+**The vertical scroll pair are still the open asymmetry** recorded earlier: both
+verticals flap while both horizontals pass, and the same overrun theory for this
+family was already refuted by measurement. `Touch_Scroll_Vertical` happened to
+fail in the run that was written up, which is exactly how a flapper gets recorded
+as stable.
+
+**Quote the range, not a number.** 273–275 at `b480f52`, against the reference's
+281 with a ceiling of 281.

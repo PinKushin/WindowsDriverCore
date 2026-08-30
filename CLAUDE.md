@@ -4,10 +4,10 @@ Guidance for Claude Code working in this repository.
 
 ## Read this first
 
-**Paused 2026-08-23 — `docs/RESUME-HERE.md` is the entry point after any break.**
-Six commits are unmeasured, the last full guest score is 265/290, and the
-backlog is 16 named tests with what is known about each. Read it before writing
-code or quoting a number.
+**`docs/RESUME-HERE.md` is the entry point after any break.** As of 2026-08-30
+the last full guest measurement is **273–275/290 at `b480f52`** across four runs,
+and the backlog is **9 named tests** — 5 that fail every run and 4 that flap.
+Read it before writing code or quoting a number, and quote the range.
 
 
 **`docs/PROJECT-KNOWLEDGE.md`** is the single consolidated briefing — protocol
@@ -83,7 +83,7 @@ input including `/actions`, `/keys`, implicit wait, XPath.
 This paragraph is a rough sketch, not the source of truth — it stopped being
 updated as routes landed and drifted stale for a while, most recently
 2026-08-11. **`docs/LIMITATIONS.md` is the live, maintained list**; the
-265/290 score above is the actual measure of what works. Screenshots are the
+273–275/290 range above is the actual measure of what works. Screenshots are the
 one route confirmed still unimplemented as of that score.
 
 ## Claims
@@ -107,8 +107,8 @@ no warm step**:
 | WinAppDriver 1.2.1 | **280/290** |
 | environmental failures | 9 (3 ModernApp, 5 browser/EdgeBase, 1 `GetLocation`) |
 | **reachable ceiling** | **281** |
-| **this driver** | **265/290** (`6a3aa53`, 2026-08-22 late) |
-| **the gap** | **16 tests** |
+| **this driver** | **273–275/290** (`b480f52`, 2026-08-30, four runs) |
+| **the gap** | **9 named tests** — 5 stable, 4 intermittent |
 
 **Every earlier figure in this file was wrong, including ones measured
 repeatedly.** Two pieces of scaffolding introduced on 2026-08-10 in a single
@@ -273,10 +273,20 @@ Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | S
 - **280/290 for WinAppDriver 1.2.1 on the rebuilt guest**, cold, no reset, no
   warm — Windows 10 19045, Alarms & Clock `10.1906.2182.0`, offline, static 4 GB.
   Nine of the ten failures are environmental, so the reachable ceiling is **281**.
-  **This driver scores 265/290 under the same conditions (`6a3aa53`) — a gap of
-  16, and that gap is 16 NAMED tests rather than a subtraction: nine of our
-  failures are the reference's too, so the failing list is not the backlog. See
-  `docs/LIMITATIONS.md`.** Every earlier figure for either driver was taken through scaffolding
+  **This driver scores 273–275/290 under the same conditions (`b480f52`,
+  2026-08-30, four runs) — a gap of 9 NAMED tests rather than a subtraction:
+  nine of our failures are the reference's too, so the failing list is not the
+  backlog. See `docs/LIMITATIONS.md`.**
+
+  **A RANGE, because four runs gave 275, 275, 273, 274.** Five tests fail in
+  every run — `ClickElement`, `MiscellaneousSessionError_StaleSessionId`,
+  `NavigateBack_SystemApp`, `TouchDoubleTap`, `TouchLongTap` — and four flap:
+  `Touch_Scroll_Vertical` (3 of 4), `Pen_Scroll_Vertical` (2 of 4),
+  `FindElements_ByName` and `NavigateBack_ModernApp` (1 of 4 each). **The
+  flappers count.** A first write-up quoted "6" off a single run, which promoted
+  three of them to passes and demoted one to a stable failure.
+
+  Every earlier figure for either driver was taken through scaffolding
   that moved the result. The test-suite refactor commits after `d52882e`
   (protocol fixture consolidation) do not change product behaviour and were
   not re-measured against the guest for that reason.

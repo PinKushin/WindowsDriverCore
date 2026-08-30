@@ -1,14 +1,51 @@
-# Resume here — updated 2026-08-29
+# Resume here — updated 2026-08-30
 
 The single entry point after a break. Read this, then `docs/LIMITATIONS.md` for
 the detail behind any line of it.
 
 ---
 
-## 0. What changed on 2026-08-29, and what it means
+## 0. Where it stands, 2026-08-30
 
-**Last measured: 268/290, backlog 13** (`b207b92`). Several commits since are
-unmeasured; a run was in flight when this was written.
+**Last measured: 273–275/290, backlog 9 named tests** (`b480f52`, four runs
+under identical conditions: 275, 275, 273, 274). Reference 281, ceiling 281.
+
+**Quote the range.** Five tests fail in every run and four flap, and the
+flappers count:
+
+| stable (4 of 4) | intermittent | runs failed |
+|---|---|---|
+| `ClickElement` | `Touch_Scroll_Vertical` | 3 of 4 |
+| `MiscellaneousSessionError_StaleSessionId` | `Pen_Scroll_Vertical` | 2 of 4 |
+| `NavigateBack_SystemApp` | `FindElements_ByName` | 1 of 4 |
+| `TouchDoubleTap` | `NavigateBack_ModernApp` | 1 of 4 |
+| `TouchLongTap` | | |
+
+**Three commits after `b480f52` are unmeasured** and a run was in flight when
+this was written: the empty-segment collapse plus `GET /session/{sessionId}`
+(aimed at `MiscellaneousSessionError_StaleSessionId`), navigation recording its
+own dispatched gesture, and the menu rung falling through rather than refusing.
+
+**`MouseDoubleClick` and `MouseDownMoveUp` were ONE defect and are fixed.** The
+system menu `MouseClick` opens survives an `InvokePattern` click, because an
+Invoke sends no input and only real input ends a modal menu loop. They had been
+counted as separate items for weeks — `MouseDownMoveUp` fails on line 137 rather
+than 136, so the window really did move, which is what a menu item being
+*activated* between the down point and the up point looks like. See
+DECISIONS §9.
+
+**Two probes are written and not yet run**, both aimed at the stable five:
+`tools/vm/probe-how-does-back-finish.ps1` samples Explorer's title on a schedule
+after `/back` to tell a race apart from a gesture that never landed, and
+`tools/vm/probe-what-gap-makes-a-double-tap.ps1` sweeps the separation between
+two injected taps, since `/touch/doubleclick` currently sends them back to back.
+
+---
+
+## 0b. What changed on 2026-08-29, and what it means
+
+**Measured then: 268/290, backlog 13** (`b207b92`) — superseded by the figures
+above.
 
 **Three protocol gaps found by audit, none of which the suite can see.**
 `/touch/flick` ignored the spec's `speed`; `element/{id}/value` read only the
