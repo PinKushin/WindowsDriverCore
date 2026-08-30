@@ -114,6 +114,28 @@ public static class TouchRoutes
             (int x, int y, PointerRefusal? failure) =
                 await ResolveElement(context, runner).ConfigureAwait(false);
 
+            // RAISED BEFORE THE CONTACT, exactly as the mouse routes do.
+            //
+            // Injected touch goes to whatever is DRAWN at the point, so a window
+            // sitting over the session's window receives the gesture instead.
+            // The mouse routes have raised since MouseClick was fixed; these
+            // never did — BringToForeground call sites were MouseRoutes 2,
+            // KeyboardRoutes 1, NavigationRoutes 1, ScreenshotRoutes 2,
+            // TouchRoutes 0.
+            //
+            // MEASURED 2026-08-30: a full run leaves File Explorer windows open
+            // (9 launches, 2 processes, 1 terminated — that leak is per WINDOW
+            // while cleanup is per process), and they sit over Calculator. It
+            // explains TouchDoubleTap's whole shape: 2 of 2 passing when its
+            // class runs ALONE, failing in every full run, while its mouse twin
+            // passes because /moveto raises first.
+            //
+            // The result is deliberately unchecked, for the reason the mouse
+            // routes give: refusing to act because a window would not come
+            // forward is a NEW refusal, and refusing to click cost this project
+            // twelve suite tests the last time it was tried.
+            windows.BringToForeground(session.WindowHandle);
+
             // See MapElementGesture for why this line exists. TouchDoubleTap is
             // the test that needs it: 200 in 61 ms, and no maximize.
             log.PointerTargeted("touch doubleclick", x, y, -1, -1, Elapsed(began));
@@ -168,6 +190,28 @@ public static class TouchRoutes
 
             (int x, int y, PointerRefusal? failure) =
                 await ResolveElement(context, runner).ConfigureAwait(false);
+
+            // RAISED BEFORE THE CONTACT, exactly as the mouse routes do.
+            //
+            // Injected touch goes to whatever is DRAWN at the point, so a window
+            // sitting over the session's window receives the gesture instead.
+            // The mouse routes have raised since MouseClick was fixed; these
+            // never did — BringToForeground call sites were MouseRoutes 2,
+            // KeyboardRoutes 1, NavigationRoutes 1, ScreenshotRoutes 2,
+            // TouchRoutes 0.
+            //
+            // MEASURED 2026-08-30: a full run leaves File Explorer windows open
+            // (9 launches, 2 processes, 1 terminated — that leak is per WINDOW
+            // while cleanup is per process), and they sit over Calculator. It
+            // explains TouchDoubleTap's whole shape: 2 of 2 passing when its
+            // class runs ALONE, failing in every full run, while its mouse twin
+            // passes because /moveto raises first.
+            //
+            // The result is deliberately unchecked, for the reason the mouse
+            // routes give: refusing to act because a window would not come
+            // forward is a NEW refusal, and refusing to click cost this project
+            // twelve suite tests the last time it was tried.
+            windows.BringToForeground(session.WindowHandle);
 
             // WHERE THE GESTURE AIMED, WRITTEN DOWN BEFORE IT IS DISPATCHED.
             //
@@ -251,6 +295,11 @@ public static class TouchRoutes
             {
                 return Results.Text(NoInjector, statusCode: 501);
             }
+
+            // Raised for the same reason as the taps: a scroll or a flick is a
+            // contact delivered to whatever is drawn at the point, and a window
+            // left over from an earlier test sits over the session's own.
+            windows.BringToForeground(session.WindowHandle);
 
             TouchRequest? request = await Read(context).ConfigureAwait(false);
 

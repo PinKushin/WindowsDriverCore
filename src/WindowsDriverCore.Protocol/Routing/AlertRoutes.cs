@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Diagnostics;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -60,7 +62,8 @@ public static class AlertRoutes
         return app;
     }
 
-    private static IResult ReadText(HttpContext context, IAlertInspector? alerts)
+    private static IResult ReadText(
+        HttpContext context, IAlertInspector? alerts, IWindowLocator windows, ITerminationLog? log)
     {
         DriverSession session = context.GetSession();
 
@@ -68,6 +71,12 @@ public static class AlertRoutes
         {
             return NoInspector();
         }
+
+        // THE CLICK THAT RAISES A DIALOG IS DISPATCHED INPUT, and asking whether
+        // one is there before the application has processed that click answers
+        // "no alert" for an alert that is on its way. See PendingInput: the
+        // reference wins the same race by being slow.
+        PendingInput.Drain(session, windows, log);
 
         ElementRead<string> text = alerts.Text(session.WindowHandle);
 

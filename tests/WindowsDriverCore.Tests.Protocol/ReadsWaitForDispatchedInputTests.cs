@@ -159,6 +159,21 @@ public sealed class ReadsWaitForDispatchedInputTests : IDisposable
         _windows.Received(1).WaitForInputProcessed(TheWindow);
     }
 
+    /// <summary>An alert read waits for the click that raises the dialog.</summary>
+    /// <remarks>
+    /// Asking whether an alert is present before the application has processed
+    /// the click that raises it answers "no alert" for one that is on its way.
+    /// </remarks>
+    [Test]
+    public async Task AnAlertTextRead_WaitsForInputAlreadyDispatched()
+    {
+        string id = SessionWithInputInFlight();
+
+        await _client.GetAsync(new Uri($"/session/{id}/alert_text", UriKind.Relative));
+
+        _windows.Received(1).WaitForInputProcessed(TheWindow);
+    }
+
     /// <summary>With nothing dispatched, nothing waits.</summary>
     /// <remarks>
     /// <b>THE CONTROL, and the reason this is safe to widen.</b> The drain must

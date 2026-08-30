@@ -155,6 +155,36 @@ public sealed class TouchTranscriptTests : IDisposable
             Arg.Any<double>());
     }
 
+    /// <summary>A touch gesture raises the window before it taps.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The mouse routes have done this since <c>MouseClick</c> was fixed; the
+    /// touch routes never did.</b> Counting <c>BringToForeground</c> call sites
+    /// across the routing layer: MouseRoutes 2, KeyboardRoutes 1,
+    /// NavigationRoutes 1, ScreenshotRoutes 2 — and TouchRoutes 0.
+    /// </para>
+    /// <para>
+    /// <b>Why it matters, measured 2026-08-30.</b> A full run leaves File
+    /// Explorer windows open — 9 launches, 2 processes, 1 terminated — because
+    /// that leak is per WINDOW and cleanup is per process. Those windows sit over
+    /// Calculator. Injected touch goes to whatever is drawn at the point, so the
+    /// tap lands on somebody else's window.
+    /// </para>
+    /// <para>
+    /// It explains the whole shape of <c>TouchDoubleTap</c>: it passes 2 of 2
+    /// when its class runs ALONE, where nothing is covering Calculator, and
+    /// fails in every full run. Its mouse twin passes because <c>/moveto</c>
+    /// raises first.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task ATouchGesture_RaisesTheWindowFirst()
+    {
+        await Gesture("touch/doubleclick");
+
+        _windows.Received().BringToForeground(Arg.Any<nint>());
+    }
+
     /// <summary>The long press names its point too, under its own name.</summary>
     /// <remarks>
     /// <b>The control for the command string.</b> Logging every gesture as
