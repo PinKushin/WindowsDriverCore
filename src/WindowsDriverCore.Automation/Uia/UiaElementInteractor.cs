@@ -485,13 +485,28 @@ public sealed class UiaElementInteractor : IElementInteractor
         // Narrow on purpose: this is the Win32 modal menu loop, not every popup.
         // A WPF ContextMenu or a WinUI flyout runs no such loop, holds no capture
         // and dismisses on its own rules, so it neither needs this nor trips it.
+        // AN ADDITION, NEVER A SUBTRACTION. Real mouse input refuses for reasons
+        // that have nothing to do with the menu — no pointer configured, a zero
+        // rectangle, or the guard finding another window drawn at the point. A
+        // rung that returned that refusal would mean a menu open ANYWHERE on the
+        // desktop disables the pattern ladder.
+        //
+        // The case that makes this concrete is in the suite: its own
+        // DeletePreviouslyCreatedAlarmEntry right-clicks an alarm and then
+        // clicks Delete INSIDE the popup it raised. That popup owns its window
+        // handle, so OwnsThePointAt against the session's window says no — and
+        // refusing there would break the helper nine add-alarm tests run through.
+        //
+        // So the mouse is TRIED, and a refusal falls through to the ladder that
+        // would have run anyway. The worst case is exactly the old behaviour.
         if (_windows?.IsMenuModeActive() == true)
         {
             ElementAction dismissed = ClickWithTheMouse(element);
 
-            return dismissed.Outcome == ElementActionOutcome.Performed
-                ? ElementAction.Performed($"menuMode/{dismissed.Path}")
-                : dismissed;
+            if (dismissed.Outcome == ElementActionOutcome.Performed)
+            {
+                return ElementAction.Performed($"menuMode/{dismissed.Path}");
+            }
         }
 
         ScrollIntoView(element);

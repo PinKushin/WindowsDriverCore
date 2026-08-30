@@ -190,6 +190,49 @@ public sealed class MenuModeTests
             .ShouldBeFalse("a click must dismiss an open menu, as a real one does");
     }
 
+    /// <summary>When the mouse cannot deliver, the ladder still runs.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The rung must be an addition, never a subtraction.</b> Real mouse
+    /// input can refuse for reasons that have nothing to do with the menu — no
+    /// pointer configured, a zero rectangle, or the guard finding that another
+    /// window owns the point. Returning that refusal would mean a menu being
+    /// open anywhere on the desktop disables the pattern ladder entirely.
+    /// </para>
+    /// <para>
+    /// <b>The case this is really about.</b> The suite's own
+    /// <c>DeletePreviouslyCreatedAlarmEntry</c> right-clicks an alarm and then
+    /// clicks <c>Delete</c> INSIDE the popup it raised. That popup carries its
+    /// own window handle, so <c>OwnsThePointAt</c> against the session's window
+    /// says no — and a rung that refused there would break the helper that nine
+    /// add-alarm tests depend on.
+    /// </para>
+    /// <para>
+    /// The interactor here is built without a pointer, which makes the mouse
+    /// rung unreachable by construction. That is the cheapest honest way to
+    /// reach the refusal path: no desktop state has to be arranged for it, and
+    /// it cannot pass by accident.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void WhenTheMouseCannotDeliver_TheLadderStillRuns()
+    {
+        string button = Id("invokeOnly");
+
+        CUIAutomationClass automation = new();
+        UiaElementResolver resolver = new(automation);
+        UiaElementInteractor withoutAPointer = new(automation, resolver, null, _windows);
+
+        OpenTheSystemMenu();
+
+        ElementAction clicked = withoutAPointer.Click(_window, button);
+
+        clicked.Outcome.ShouldBe(
+            ElementActionOutcome.Performed,
+            "an unreachable mouse rung must fall through, not refuse");
+        clicked.Path.ShouldBe("Invoke");
+    }
+
     /// <summary>With no menu open, the pattern ladder is unchanged.</summary>
     /// <remarks>
     /// <para>
