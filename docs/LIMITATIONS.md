@@ -5155,3 +5155,46 @@ theory about z-order is unfalsifiable.
 
 9 launches, 2 processes, 1 terminated. The ownership transfer is per process and
 this leak is per window; nothing in these commits addressed it.
+
+## TouchDoubleTap: five refutations and one structural fact
+
+**Nothing here is a fix.** It is the state of an investigation that has now
+defeated three predictions, recorded so the next person does not re-run these.
+
+### What is measured
+
+| claim | verdict |
+|---|---|
+| the double tap is too fast / the gap is wrong | **refuted** — sweeping the gap 0/40/80/160 ms changed nothing, and the route alone maximizes with a single tap as the control |
+| the point is wrong | **refuted** — it aims at (337,171), the same point the PASSING `MouseDoubleClick` uses |
+| process contamination: the app survives across classes | **refuted** — ownership transfer landed, cleanup improved, still 3 of 3 |
+| leftover windows cover Calculator and touch never raised | **refuted** — the raise was added AND a run confirms it succeeds: no `NOT RAISED` line anywhere |
+| pen injection earlier in the run poisons the injector | **refuted** — `ActionsPen` + `TouchDoubleClick` together: 12 of 12 |
+| the `Mouse` class leaves Calculator in a bad state | **refuted** — `Mouse` + `TouchDoubleClick` together: 5 of 5 |
+
+It passes **2 of 2 alone**, **12 of 12** after ActionsPen, **5 of 5** after
+Mouse — and fails **every full run**.
+
+### The structural fact, which is new
+
+`CalculatorBase.session` is `protected static` and `Setup` only creates one
+`if (session == null)`. MSTest defers `[ClassCleanup]`, so **every Calculator
+class in a full run shares ONE session**. Measured from the transcript: the
+session the touch gesture uses was first seen **3 minutes 38 seconds and 302 log
+lines earlier**, created by a different class.
+
+That is why small filtered runs cannot reproduce this — a two-class run makes a
+fresh session, and the full run does not. It also means every earlier Calculator
+class's side effects accumulate on **one window handle**, which is the only
+remaining difference between the runs that pass and the runs that fail.
+
+### What would settle it
+
+A run of every Calculator class together, which is the smallest filter that
+reproduces the shared-session condition. If it fails there, the contaminator is
+inside that set and can be bisected; if it passes, the cause is a non-Calculator
+class touching the desktop.
+
+**Not attempted here** because each bisection step is a guest run, and three
+predictions have already been spent on this test. The next step should be the
+one that halves the search, not the one that sounds most likely.
