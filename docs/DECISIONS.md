@@ -543,3 +543,70 @@ implementing modules one at a time.
 **Nothing is blocked by this.** BiDi is additive by construction — a websocket
 alongside the existing HTTP surface, negotiated by a capability old clients never
 send — so parking it costs nothing and forecloses nothing.
+
+## 9. A click must end an open menu, even though we do not click
+
+**2026-08-30. Not an owner decision — recorded because it is the first place
+this project's headline capability claim costs it compatibility, and someone
+reading the code later will otherwise see only the exception.**
+
+`docs/CLICK-SEMANTICS.md` is the argument for preferring `InvokePattern` to a
+coordinate click: the reference dispatches real mouse input at a point, which
+lands on whatever is drawn there, and invoking the pattern reaches the element
+the caller actually named. That is the capability claim, it has a measured
+before/after behind it, and none of it changes here.
+
+**What it misses is that a click has side effects beyond its target.** A Win32
+menu is a modal input capture. It ends when input arrives somewhere else. An
+Invoke sends no input at all, so it ends nothing — and the menu then sits over
+the window swallowing everything aimed underneath it.
+
+The compatibility suite exercises exactly that, deliberately, in
+`Tests/WebDriverAPI/Mouse.cs`:
+
+```csharp
+session.Mouse.ContextClick(appNameTitle.Coordinates);   // raise the system menu
+// ... assert it contains Minimize ...
+clearButton.Click(); // Dismiss the context menu
+```
+
+The comment is the suite's own. Measured on the guest, two rounds each:
+
+```
+dismissed by             menu open   then maximized
+element click (Invoke)   YES         no
+moveto + click (REAL)    no          YES
+```
+
+`MouseDoubleClick` and `MouseDownMoveUp` both run after it and both act on the
+title bar underneath the surviving menu, which is why they failed — and why
+`MouseDownMoveUp` failed on line 137 rather than 136. The window DID move: a
+menu item pressed at the down point and released at the up point is *activated*,
+and activating Maximize moves the window up. A changed position, in the wrong
+direction.
+
+**The rung: when the foreground thread is in menu mode, a click is real mouse
+input.** It sits above every pattern rung, because when a menu holds input no
+pattern can express what the caller meant.
+
+Three things it deliberately does not do:
+
+- **It does not dismiss and then invoke.** A real click outside an open menu is
+  swallowed by the dismissal — Windows' behaviour, which the reference is subject
+  to as well. Doing both would be strictly more than any real click can do.
+- **It does not cover app-drawn popups.** `GUI_INMENUMODE` names the Win32 modal
+  loop. A WPF `ContextMenu` or a WinUI flyout runs no such loop, holds no capture,
+  and dismisses on its own light-dismiss rules.
+- **It does not fire when no menu is open**, which is the condition the control
+  test exists for. A rung that fired unconditionally would fix these two tests
+  and silently turn every element click into a coordinate click — throwing away
+  the thing this project claims over the reference to buy two tests.
+
+**One methodological note worth keeping, because it nearly published a false
+green.** The first version of the test used the Win32 subject, and all four tests
+passed *before the rung existed*. UI Automation reaches a legacy `BUTTON` through
+the MSAA bridge, which sends the application a real window message — and that
+ends the menu loop by itself. Correct and broken predicted the same observation.
+The condition was wrong, not the assertion; the WPF subject's `Invoke` runs on
+the dispatcher and sends the menu loop nothing, which is where the defect
+actually lives.

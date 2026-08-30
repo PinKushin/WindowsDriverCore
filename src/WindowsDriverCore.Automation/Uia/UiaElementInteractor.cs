@@ -460,6 +460,40 @@ public sealed class UiaElementInteractor : IElementInteractor
 
     private ElementAction ClickElementOrAncestor(nint window, IUIAutomationElement element)
     {
+        // A MENU IS A MODAL INPUT CAPTURE, and only real input ends one. Every
+        // rung below this reaches the provider directly and sends no input at
+        // all, so a menu they should have dismissed simply stays up — and
+        // everything aimed at the window underneath then lands on the menu.
+        //
+        // Measured on the guest 2026-08-30, and it costs two compatibility
+        // tests. The suite's MouseClick right-clicks Calculator's title bar to
+        // raise the system menu and dismisses it with clearButton.Click(); its
+        // own comment on the line is "// Dismiss the context menu". Served as an
+        // Invoke the menu survives, and MouseDoubleClick and MouseDownMoveUp both
+        // then act on the title bar underneath it:
+        //
+        //   dismissed by             menu open   then maximized
+        //   element click (Invoke)   YES         no
+        //   moveto + click (REAL)    no          YES
+        //
+        // THE CLICK IS NOT ALSO INVOKED AFTERWARDS. A real click outside an open
+        // menu is swallowed by the dismissal — Windows' behaviour, which the
+        // reference is subject to as well. Dismissing and then invoking would do
+        // strictly more than any real click can, which is a divergence nothing
+        // asked for.
+        //
+        // Narrow on purpose: this is the Win32 modal menu loop, not every popup.
+        // A WPF ContextMenu or a WinUI flyout runs no such loop, holds no capture
+        // and dismisses on its own rules, so it neither needs this nor trips it.
+        if (_windows?.IsMenuModeActive() == true)
+        {
+            ElementAction dismissed = ClickWithTheMouse(element);
+
+            return dismissed.Outcome == ElementActionOutcome.Performed
+                ? ElementAction.Performed($"menuMode/{dismissed.Path}")
+                : dismissed;
+        }
+
         ScrollIntoView(element);
 
         // Foreground before any rung runs. UI Automation refuses SetFocus
