@@ -72,10 +72,26 @@ public static class TouchRoutes
         MapElementGesture(app, "click", Tap);
         MapElementGesture(app, "longclick", LongPress);
 
-        // Two taps in quick succession. The gap is the system's to interpret:
-        // Windows decides what counts as a double tap from its own double-click
-        // time, so the driver's job is to deliver two contacts promptly and not
-        // to second-guess the threshold.
+        // Two taps in quick succession, with no separation between them beyond
+        // loop overhead.
+        //
+        // UNVERIFIED, AND MARKED AS SUCH BECAUSE THIS TEST IS FAILING. The
+        // reasoning here used to read as settled — "the gap is the system's to
+        // interpret, so the driver's job is to deliver two contacts promptly and
+        // not second-guess the threshold". That is an assumption about the touch
+        // stack, stated as a fact, and a claim in this repository is not
+        // evidence (docs/FOUNDING-PREMISE.md).
+        //
+        // Windows pairs two contacts into a double tap only inside the
+        // double-click TIME and RECTANGLE. The position is identical here, so
+        // timing is what is left — and nothing establishes that the stack cannot
+        // also fail to pair two contacts that arrive too CLOSE together, which
+        // would mean the defect is being too fast rather than too slow.
+        //
+        // TouchDoubleTap fails in every run.
+        // tools/vm/probe-what-gap-makes-a-double-tap.ps1 sweeps the separation
+        // from the client through /actions, with a single tap as the control.
+        // Until it has run, this comment is a question rather than a rationale.
         app.MapPost("/session/{sessionId}/touch/doubleclick",
             async (
                 HttpContext context,
