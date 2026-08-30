@@ -4884,3 +4884,72 @@ Pen_Scroll_Vertical               Failed   4.55 s
 **The suite is kept pristine, so none of this is fixable here** — it is an
 instrument limitation to know about, not a defect to repair. What must not happen
 is quoting a vacuous pass as evidence, or using one as a control.
+
+## The scroll bug: position followed the frame counter, not the clock
+
+**Measured, fixed and re-measured on the guest, 2026-08-30.** This is the defect
+behind `Touch_Scroll_Vertical` (4 failures in 8 runs) and `Pen_Scroll_Vertical`
+(3 in 8), the two worst flappers in the backlog.
+
+### How it was found
+
+Not by reading the code. `Displayed` — what the suite asserts — is a coarse
+proxy, and a `LoopingSelector` **wraps**: an early version of the probe twice saw
+a *down* scroll make `00` appear. Switching the measurement to the selector's own
+value turned a yes/no into a distance, and the distance was the whole answer.
+
+Ten rounds of the suite's own gesture, 200 px over 500 ms, in one session:
+
+```
+round  start  after dn  after up  net drift
+1      00     06        00         0
+2      00     07        01        +1
+4      02     07        58        -4
+6      55     01        46        -9
+8      39     54        47        +8
+
+net drift per round : 0, 1, 1, -4, -3, -9, -7, 8, -3, -3 items
+down and up cancelled exactly : 1 of 10
+```
+
+**An identical request moved the selector by anywhere from 5 to 15 items.** A
+drag cannot do that; a fling can.
+
+### The cause
+
+Position followed the **frame index** while the sleep followed the **clock**.
+
+Frame deadlines are start-relative, which is correct and keeps the total duration
+honest. But Windows wakes a sleeper on a ~15.6 ms tick, so a sleep overshoots —
+and then the next several deadlines are already past, and those frames fire back
+to back with no sleep at all. Index-driven interpolation gives each of them the
+**same position step across almost no time**, which an application measuring
+velocity reads as an enormous spike.
+
+A `LoopingSelector` flings on velocity. A noisy velocity is a noisy distance —
+and whether the *last* frames land inside a catch-up burst is chance, which is
+precisely why this flaked rather than failed.
+
+### The fix, and the measurement after it
+
+Interpolate from **elapsed time**. A late frame becomes a bigger step over a
+bigger interval — the same velocity — and the burst disappears. A final exact
+frame lands the contact on the target as the duration expires, because
+elapsed-driven interpolation otherwise stops a frame's width short.
+
+```
+net drift per round : 0, 0, 0, 0, 0, -1, 0, 0, 0, 0 items
+down and up cancelled exactly : 9 of 10
+```
+
+Every down now moves exactly +5 items and every up exactly −5: `02→07→02`,
+`01→06→01`, round after round. **The same gesture that varied 5–15 is now
+constant.**
+
+### What this does not claim
+
+The suite score at this commit is a separate measurement and is not folded in
+here. Two flaky tests becoming reliable should show, but a three-run window
+cannot attribute a two-test move on its own — the drift number is the evidence,
+because it is a **magnitude** rather than a pass count, and it moved by an order
+of magnitude.
