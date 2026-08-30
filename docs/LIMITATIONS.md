@@ -5109,3 +5109,49 @@ composition, and three equal counts are not three equal runs.
 at that commit, and the teardown fix that landed afterwards targets
 `TouchDoubleTap`, which is a STABLE failure — so it is not a flake fix at all,
 whatever else it is worth.
+
+## NavigateBack_SystemApp is fixed; TouchDoubleTap resisted a second prediction
+
+**Three runs at `ab9b7f9`: 278, 276, 275.** A new best and a wider spread.
+
+### The clean result
+
+`NavigateBack_SystemApp` failed in **14 of 14** runs across every commit measured
+today and passes **3 of 3** here. The only change that touches it is the drain
+widening — the test reads `session.Title` immediately after
+`Navigate().Back()`, while sleeping a full second after the navigation going the
+other way. That asymmetry was the diagnosis and the drain was the fix.
+
+This is the second time a "we are faster than the reference" race has been the
+cause, and both were fixed by applying the SAME measured mechanism rather than a
+new one.
+
+### The wrong prediction, twice, on one test
+
+`TouchDoubleTap` has now survived two fixes that were each predicted to close it:
+
+| prediction | result |
+|---|---|
+| process contamination — the app survives across classes carrying state | ownership transfer landed; still 3 of 3 |
+| leftover windows cover Calculator, and the touch routes never raised | raise added to every touch route; still 3 of 3 |
+
+**What is still true and still unexplained:** it passes **2 of 2 when its class
+runs alone** and fails in every full run. Something a full run leaves behind
+defeats it, and neither process lifetime nor window z-order is that thing.
+
+**What the raise DID buy** is not visible in this test and should not be judged
+by it: injected touch goes to whatever is drawn at the point, and the mouse
+routes have raised since this morning for the same reason. It is right on its own
+terms. But it is not the cause here, and recording it as one because it landed
+in the same commit is how a wrong attribution gets written down.
+
+**Next instrument, not next guess:** the touch path logs its POINT but not what
+held the foreground when it tapped. `WindowLocator.DescribeForeground()` exists
+and is already used on the SendKeys failure path for exactly this question.
+Until a run says what was in front at the moment of the tap, every remaining
+theory about z-order is unfalsifiable.
+
+### Explorer is unchanged, as expected
+
+9 launches, 2 processes, 1 terminated. The ownership transfer is per process and
+this leak is per window; nothing in these commits addressed it.
