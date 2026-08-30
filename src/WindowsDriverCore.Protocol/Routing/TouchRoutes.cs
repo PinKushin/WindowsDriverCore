@@ -134,11 +134,19 @@ public static class TouchRoutes
             // routes give: refusing to act because a window would not come
             // forward is a NEW refusal, and refusing to click cost this project
             // twelve suite tests the last time it was tried.
-            windows.BringToForeground(session.WindowHandle);
+            // THE RESULT IS KEPT, because a raise that failed is the one fact
+            // separating "the gesture went to the wrong window" from "the
+            // gesture was wrong". Read only on the failing branch: naming the
+            // foreground costs two Win32 calls and a process lookup, on a path
+            // that has already gone wrong. Same shape as the SendKeys
+            // diagnostic, which took four runs of archaeology to need.
+            bool raised = windows.BringToForeground(session.WindowHandle);
 
             // See MapElementGesture for why this line exists. TouchDoubleTap is
             // the test that needs it: 200 in 61 ms, and no maximize.
-            log.PointerTargeted("touch doubleclick", x, y, -1, -1, Elapsed(began));
+            log.PointerTargeted(
+                raised ? "touch doubleclick" : $"touch doubleclick NOT RAISED, {windows.DescribeForeground()}",
+                x, y, -1, -1, Elapsed(began));
 
             if (failure is null)
             {
@@ -211,7 +219,13 @@ public static class TouchRoutes
             // routes give: refusing to act because a window would not come
             // forward is a NEW refusal, and refusing to click cost this project
             // twelve suite tests the last time it was tried.
-            windows.BringToForeground(session.WindowHandle);
+            // THE RESULT IS KEPT, because a raise that failed is the one fact
+            // separating "the gesture went to the wrong window" from "the
+            // gesture was wrong". Read only on the failing branch: naming the
+            // foreground costs two Win32 calls and a process lookup, on a path
+            // that has already gone wrong. Same shape as the SendKeys
+            // diagnostic, which took four runs of archaeology to need.
+            bool raised = windows.BringToForeground(session.WindowHandle);
 
             // WHERE THE GESTURE AIMED, WRITTEN DOWN BEFORE IT IS DISPATCHED.
             //
@@ -225,7 +239,9 @@ public static class TouchRoutes
             // Measured 2026-08-30: the same route DOES maximize the window when
             // driven directly, twice, with a single tap as the control. So the
             // difference is context, and context is what a coordinate shows.
-            log.PointerTargeted($"touch {suffix}", x, y, -1, -1, Elapsed(began));
+            log.PointerTargeted(
+                raised ? $"touch {suffix}" : $"touch {suffix} NOT RAISED, {windows.DescribeForeground()}",
+                x, y, -1, -1, Elapsed(began));
 
             failure ??= runner.Tap(x, y, hold);
 

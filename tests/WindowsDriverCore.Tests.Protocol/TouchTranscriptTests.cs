@@ -90,6 +90,7 @@ public sealed class TouchTranscriptTests : IDisposable
             .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
 
         _windows.Exists(Arg.Any<nint>()).Returns(true);
+        _windows.BringToForeground(Arg.Any<nint>()).Returns(true);
 
         // The session window owns every point, so the guard permits the gesture
         // and this measures the ROUTE. Left at the substitute's default of
@@ -183,6 +184,49 @@ public sealed class TouchTranscriptTests : IDisposable
         await Gesture("touch/doubleclick");
 
         _windows.Received().BringToForeground(Arg.Any<nint>());
+    }
+
+    /// <summary>A failed raise is named in the transcript, with the culprit.</summary>
+    /// <remarks>
+    /// <b>An instrument, not a fix.</b> <c>TouchDoubleTap</c> has now survived
+    /// two changes each predicted to close it — the ownership transfer and the
+    /// raise itself — while still passing 2 of 2 when its class runs ALONE and
+    /// failing every full run. Until a run says what held the foreground at the
+    /// moment of the tap, every remaining theory about z-order is
+    /// unfalsifiable. The SendKeys path learned this the expensive way: it
+    /// reported that a raise had failed and not WHERE the keystrokes went, which
+    /// cost four runs of cross-referencing.
+    /// </remarks>
+    [Test]
+    public async Task AFailedRaise_NamesWhatHeldTheForegroundInstead()
+    {
+        _windows.BringToForeground(Arg.Any<nint>()).Returns(false);
+        _windows.DescribeForeground().Returns("'Temp' (explorer, pid 99, hwnd 0xABC)");
+
+        await Gesture("touch/doubleclick");
+
+        _log.Received(1).PointerTargeted(
+            "touch doubleclick NOT RAISED, 'Temp' (explorer, pid 99, hwnd 0xABC)",
+            Arg.Any<int>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<double>());
+    }
+
+    /// <summary>A raise that worked says nothing extra.</summary>
+    /// <remarks>
+    /// <b>The control.</b> Naming the foreground on every gesture would make the
+    /// diagnostic worthless — the line is only informative when it is rare — and
+    /// would pay for two Win32 calls and a process lookup on the happy path.
+    /// </remarks>
+    [Test]
+    public async Task ASuccessfulRaise_LogsThePlainCommandName()
+    {
+        _windows.BringToForeground(Arg.Any<nint>()).Returns(true);
+
+        await Gesture("touch/doubleclick");
+
+        _log.Received(1).PointerTargeted(
+            "touch doubleclick",
+            Arg.Any<int>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<double>());
+        _windows.DidNotReceive().DescribeForeground();
     }
 
     /// <summary>The long press names its point too, under its own name.</summary>
