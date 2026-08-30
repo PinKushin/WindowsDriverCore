@@ -693,3 +693,46 @@ raw socket, the way `tools/vm/probe-what-does-an-empty-session-segment-do.ps1`
 already does for `/session//title` — a client library will normalise the path
 before sending and the probe would measure itself. Recorded rather than guessed;
 it is an obscure shape and no test in the suite produces it.
+
+### Pass 11, second finding: the drain is placed by CODE PATH, not by QUESTION
+
+**Every element property read drains pending input. No window-level read does.**
+
+`ElementPropertyRoutes.MapRead` calls `DrainTypedInput` before every
+`/element/{id}/…` read — text, displayed, selected, enabled, location, size,
+name. That is where the read-after-write race was measured (52 of 52 typed
+characters), and the placement was correct for what was known then.
+
+But the question the drain answers is *"can input this driver dispatched have
+changed the answer?"*, and that question does not stop at element properties:
+
+| read | can dispatched input change it? | drains |
+|---|---|---|
+| `/element/{id}/…` | yes — typing, clicking | **yes** |
+| `/title` | yes — navigation, anything that renames a window | no |
+| `/window/rect`, `/window/current/{size,position}` | yes — a drag, a maximize | no |
+| `/source` | yes — any interaction at all | no |
+| `/window_handle`, `/window_handles` | yes — a click can open a window | no |
+| `/alert_text` | yes — a click can raise the dialog | no |
+| `/orientation` | no | no |
+| `/status`, `/sessions`, `/timeouts`, `/log/types` | no | no |
+
+**Two failing tests sit in that table.** `NavigateBack_SystemApp` reads `/title`
+immediately after `POST /back` — and the same test sleeps a full second after the
+navigation going the other way. `MouseDownMoveUp` reads `/window/current/position`
+after a drag; it passes today, which says the drag is slow enough, not that the
+read is safe.
+
+**Not fixed here, deliberately.** Extending a wait to five more routes on the
+strength of a table is how a remedy gets invented — and an invented remedy for a
+measured defect cost this project twelve tests once. What is missing is whether
+Explorer's title even settles inside `WaitForInputIdle`: shell navigation is
+asynchronous, so the drain could be the right mechanism aimed at the wrong
+moment. `tools/vm/probe-how-does-back-finish.ps1` samples the title on a schedule
+after `/back` precisely to answer that, and it distinguishes a late title from a
+gesture that never landed.
+
+**What DID change, because it is right either way:** `NavigationRoutes` now
+records its dispatched gesture. It was the only input-dispatching route that
+never set `InputPending`, so even a reader that wanted to wait had nothing to
+wait on.
