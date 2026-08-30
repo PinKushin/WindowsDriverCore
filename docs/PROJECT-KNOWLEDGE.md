@@ -732,6 +732,7 @@ Recommended ladder:
 
 | Step | Pattern | ID | Covers |
 |---|---|---|---|
+| −1 | **guarded mouse click, if a menu is open** | — | a modal menu loop holds input; nothing below can end one |
 | 0 | ScrollItem, if supported | 10017 | bring into view first |
 | 1 | Invoke | 10000 | buttons, links |
 | 2 | **Toggle** | 10015 | checkboxes, switches |
@@ -743,6 +744,41 @@ Recommended ladder:
 `CheckBox` and `Switch` expose Toggle and **not** Invoke — the old ladder omitted Toggle, so they
 fell through to `SetFocus()` and silently did nothing. `SetFocus`-then-return must never be the
 fallback: it reports success while doing nothing, the same defect class as the coordinate click.
+
+#### Step −1: a click has side effects the pattern does not, and a menu is the case
+
+**Measured 2026-08-30, and it is the one place the ladder's advantage costs
+compatibility.** Everything from step 0 down reaches the provider directly and
+sends no input at all. That is the point — but it also means none of them can
+**end a modal menu loop**, which only real input does.
+
+The compatibility suite depends on exactly that. `MouseClick` right-clicks
+Calculator's title bar to raise the system menu and then dismisses it, with the
+suite's own comment on the line:
+
+```csharp
+clearButton.Click(); // Dismiss the context menu
+```
+
+Served as an `Invoke`, the menu survives, and the two tests that run next both
+act on the title bar underneath it — `MouseDoubleClick` and `MouseDownMoveUp`,
+which were counted as two separate defects for weeks.
+
+```
+dismissed by             menu open   then maximized     (2 rounds each)
+element click (Invoke)   YES         no
+moveto + click (REAL)    no          YES
+```
+
+Three properties of the rung matter more than the rung:
+
+- **It does not dismiss and then invoke.** A real click outside a menu is
+  swallowed by the dismissal — Windows' behaviour, which binds the reference too.
+- **It falls through on a mouse refusal** rather than returning it, so it can only
+  add behaviour. The suite's own alarm-delete helper clicks `Delete` *inside* a
+  popup that owns its window handle, where the point-ownership guard says no.
+- **It is the Win32 modal loop only** (`GUI_INMENUMODE`). A WPF `ContextMenu` or
+  a WinUI flyout runs no such loop and neither needs it nor trips it.
 
 A mouse fallback **is** required — a MAUI `Border`, `Grid` or `Image` with a `TapGestureRecognizer`
 exposes no pattern at all. Guard it: scroll into view, **re-read the bounding rect after scrolling**
