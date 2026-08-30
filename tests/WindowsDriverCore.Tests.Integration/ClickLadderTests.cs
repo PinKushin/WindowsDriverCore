@@ -50,6 +50,7 @@ public sealed class ClickLadderTests
     private UiaElementInspector _inspector = null!;
     private UiaElementInteractor _interactor = null!;
     private nint _window;
+    private int _processId;
 
     [OneTimeSetUp]
     public void LaunchSettings()
@@ -70,6 +71,7 @@ public sealed class ClickLadderTests
         }
 
         _window = launched.Application.WindowHandle;
+        _processId = launched.Application.ProcessId;
 
         // Wait for content, then for it to stop moving. Settings has a window
         // long before it has a control tree.
@@ -78,8 +80,16 @@ public sealed class ClickLadderTests
         UiSettle.UntilBoundsAreStable(_inspector, _window, anyButton);
     }
 
+    /// <summary>Closes the instance this fixture started, and only that one.</summary>
+    /// <remarks>
+    /// <b>By id, never by name.</b> The rule is already stated on
+    /// <c>AppLifetime.KillProcess</c>; this teardown did not follow it. Killing
+    /// by name ends the developer's own copy and any instance another fixture is
+    /// sharing — measured 2026-08-30, that is what cascaded through every
+    /// fixture running alphabetically after the killer.
+    /// </remarks>
     [OneTimeTearDown]
-    public void CloseSettings() => AppLifetime.KillAll("SystemSettings");
+    public void CloseSettings() => AppLifetime.KillProcess(_processId);
 
     /// <summary>
     /// The first element of a control type that advertises a pattern.

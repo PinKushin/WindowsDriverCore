@@ -49,6 +49,7 @@ public sealed class ToggleRungTests
     private UiaElementInspector _inspector = null!;
     private UiaElementInteractor _interactor = null!;
     private nint _window;
+    private int _processId;
 
     [OneTimeSetUp]
     public void LaunchCharmap()
@@ -69,6 +70,7 @@ public sealed class ToggleRungTests
         }
 
         _window = launched.Application.WindowHandle;
+        _processId = launched.Application.ProcessId;
 
         // A launched application has a window before it has a control tree.
         // Settling on the checkbox rather than on the window keeps the wait tied
@@ -80,8 +82,16 @@ public sealed class ToggleRungTests
         }
     }
 
+    /// <summary>Closes the instance this fixture started, and only that one.</summary>
+    /// <remarks>
+    /// <b>By id, never by name.</b> The rule is already stated on
+    /// <c>AppLifetime.KillProcess</c>; this teardown did not follow it. Killing
+    /// by name ends the developer's own copy and any instance another fixture is
+    /// sharing — measured 2026-08-30, that is what cascaded through every
+    /// fixture running alphabetically after the killer.
+    /// </remarks>
     [OneTimeTearDown]
-    public void CloseCharmap() => AppLifetime.KillAll("charmap");
+    public void CloseCharmap() => AppLifetime.KillProcess(_processId);
 
     /// <summary>The first element in the window advertising TogglePattern.</summary>
     /// <remarks>

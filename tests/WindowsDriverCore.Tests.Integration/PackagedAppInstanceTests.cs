@@ -71,7 +71,8 @@ public sealed class PackagedAppInstanceTests
         // The condition here reproduces it without depending on either
         // behaviour: launch, then ask the waiter to find that same window with a
         // snapshot taken AFTER it exists.
-        AppLifetime.KillAll(CalculatorProcessNameFragment);
+        AppLifetime.SkipIfAlreadyRunning(
+            CalculatorProcessNameFragment, "a cold activation");
 
         MainWindowWaiter waiter = new(TimeProvider.System);
         ApplicationLauncher launcher = new(waiter, new WindowLocator());
@@ -134,7 +135,8 @@ public sealed class PackagedAppInstanceTests
         // So this test is a race detector, not an architecture check. It can pass
         // here and still be a real assertion; do not read a local pass as proof
         // the defect is gone.
-        AppLifetime.KillAll(CalculatorProcessNameFragment);
+        AppLifetime.SkipIfAlreadyRunning(
+            CalculatorProcessNameFragment, "a cold activation");
 
         ApplicationLauncher launcher = new(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator());
@@ -178,7 +180,8 @@ public sealed class PackagedAppInstanceTests
     [Test]
     public void ActivatingAPackagedApplicationTwice_GivesTwoApplications()
     {
-        AppLifetime.KillAll(CalculatorProcessNameFragment);
+        AppLifetime.SkipIfAlreadyRunning(
+            CalculatorProcessNameFragment, "a cold activation");
 
         ApplicationLauncher launcher = new(
             new MainWindowWaiter(TimeProvider.System), new WindowLocator());

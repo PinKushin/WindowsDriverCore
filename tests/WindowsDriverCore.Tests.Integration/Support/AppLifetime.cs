@@ -86,6 +86,50 @@ internal static class AppLifetime
         }
     }
 
+    /// <summary>Skips the test when an application is already running.</summary>
+    /// <param name="processName">The process to look for.</param>
+    /// <param name="why">What the test needs a clean start for.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Replaces killing at the START of a test, on the owner's rule:</b>
+    /// <i>"we shouldnt be killing anything at the start of tests, thats means
+    /// shit isnt right in tests before hand"</i>.
+    /// </para>
+    /// <para>
+    /// A test that clears the machine before it runs is hiding whatever left the
+    /// machine dirty, and when the application is the DEVELOPER's — Calculator is
+    /// not ours — it is also reaching outside its blast radius to do it. Skipping
+    /// says so out loud instead, and leaves the real fault visible.
+    /// </para>
+    /// <para>
+    /// A test that needs a genuinely cold start should drive a subject this
+    /// solution builds and can own end to end, rather than one the person at the
+    /// desk might have open.
+    /// </para>
+    /// </remarks>
+    internal static void SkipIfAlreadyRunning(string processName, string why)
+    {
+        System.Diagnostics.Process[] running =
+            System.Diagnostics.Process.GetProcessesByName(processName);
+
+        try
+        {
+            if (running.Length > 0)
+            {
+                NUnit.Framework.Assert.Ignore(
+                    $"{processName} is already running, and {why} needs it not to be. " +
+                    "This test will not close an application it did not start.");
+            }
+        }
+        finally
+        {
+            foreach (System.Diagnostics.Process p in running)
+            {
+                p.Dispose();
+            }
+        }
+    }
+
     /// <summary>Ends every process whose name contains <paramref name="processName"/>.</summary>
     /// <param name="processName">The name, without extension.</param>
     /// <remarks>
@@ -109,6 +153,7 @@ internal static class AppLifetime
     /// process this suite owns.
     /// </para>
     /// </remarks>
+
     internal static void KillAll(string processName)
     {
         Process[] matching = Array.FindAll(

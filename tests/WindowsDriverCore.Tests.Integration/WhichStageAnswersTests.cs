@@ -64,7 +64,7 @@ public sealed class WhichStageAnswersTests
     [Test]
     public async Task APackagedLaunch_IsAnsweredByAStage_AndNotByTheDeadline()
     {
-        AppLifetime.KillAll(CalculatorProcess);
+        AppLifetime.SkipIfAlreadyRunning(CalculatorProcess, "a cold launch");
 
         IReadOnlySet<nint> before = MainWindowWaiter.SnapshotTopLevelWindows();
 
@@ -109,7 +109,7 @@ public sealed class WhichStageAnswersTests
         }
         finally
         {
-            AppLifetime.KillAll(CalculatorProcess);
+            AppLifetime.KillProcess(launched.Application?.ProcessId ?? 0);
         }
     }
 
@@ -126,8 +126,7 @@ public sealed class WhichStageAnswersTests
         // HostedFrame at once while the launch did not, the difference is the
         // process id the waiter was given - activation returns one thing and the
         // window's content belongs to another - and not the frame's existence.
-        AppLifetime.KillAll(CalculatorProcess);
-        await Task.Delay(1500).ConfigureAwait(false);
+        AppLifetime.SkipIfAlreadyRunning(CalculatorProcess, "a cold launch");
 
         IReadOnlySet<nint> before = MainWindowWaiter.SnapshotTopLevelWindows();
 
@@ -172,7 +171,7 @@ public sealed class WhichStageAnswersTests
         }
         finally
         {
-            AppLifetime.KillAll(CalculatorProcess);
+            AppLifetime.KillProcess(launched.Application?.ProcessId ?? 0);
         }
     }
 
