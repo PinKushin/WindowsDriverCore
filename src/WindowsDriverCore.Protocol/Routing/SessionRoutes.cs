@@ -87,6 +87,27 @@ public static class SessionRoutes
                     .Select(session => new SessionListEntry(session.Capabilities, session.Id))
                     .ToList())));
 
+        // JSON Wire's "retrieve the capabilities of the specified session".
+        //
+        // NOT IN WinAppDriver'S PUBLISHED ENDPOINT TABLE, and served anyway,
+        // because the suite reaches it: Selenium clears its session id on Quit()
+        // and the next command arrives as /session//title, which collapses to
+        // /session/title. Without this route that path meets the unknown-command
+        // fallback, and MiscellaneousSessionError_StaleSessionId asserts on a
+        // message only the session lookup produces.
+        //
+        // The capabilities come back as the session recorded them, which is what
+        // JSON Wire specifies and what POST /session already returns.
+        app.MapGet("/session/{sessionId}",
+            (HttpContext context) =>
+            {
+                DriverSession session = context.GetSession();
+
+                return Results.Json(
+                    JsonWireResponse.ForSession(session.Id, session.Capabilities));
+            })
+            .RequiresSession();
+
         app.MapDelete("/session/{sessionId}",
             (HttpContext context,
              string sessionId,

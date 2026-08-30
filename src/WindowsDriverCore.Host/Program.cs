@@ -319,6 +319,12 @@ public partial class Program
         // base path. It was found by running the real executable with
         // "127.0.0.1 4725/wd/hub" and watching /wd/hub/status 404 while bare
         // /status answered 200.
+        // AFTER the transcript, so the log records the path the client actually
+        // sent, and BEFORE routing, which is the thing being corrected. Selenium
+        // builds /session//title after a Quit(), and the reference answers it by
+        // dropping the empty segment rather than by refusing.
+        app.UseMiddleware<EmptySegmentCollapse>();
+
         app.UseRouting();
 
         app.MapJsonWireProtocol();

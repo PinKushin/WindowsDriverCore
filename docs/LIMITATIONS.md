@@ -4558,3 +4558,61 @@ spend its entire budget every time — on every selection click in every suite.
 That is exactly the shape of *a fix can cost more than the bug*, which cost this
 project twelve tests once already. It needs the settle condition designed for
 this case and measured, not the existing one reused because it is nearby.
+
+## Ground truth 2026-08-30: 275/290, and the gap is 6 named tests
+
+**One full run at `b480f52`, guest `Win10-Baseline`, Windows 10 19045, Alarms &
+Clock `10.1906.2182.0`, Calculator `10.1906.55.0`, offline, static 4 GB, cold,
+no store reset, no warm step.** Three more runs at the same commit were started
+immediately after and are not folded in here — this is one observation, and the
+count is the least durable thing in it.
+
+```
+Total tests: 290    Passed: 275    Failed: 15
+```
+
+**Best measured score in the project's history.** The previous best was 272, in a
+five-run band at `25c8bf6` (271, 271, 270, 272, 270); the last figure recorded in
+CLAUDE.md was 265 at `6a3aa53`.
+
+**The 15 split exactly along the line the reference draws.** Nine are the same
+environmental failures WinAppDriver 1.2.1 has on this guest — eight from Edge and
+the modern-app packages being absent, one from the machine having no location
+provider:
+
+```
+NavigateForward_Browser              Package was not found. (0x80073CF1)
+NavigateBack_Browser                 Package was not found. (0x80073CF1)
+GetWindowHandles_ModernApp           Package was not found. (0x80073CF1)
+CreateSessionWithArguments_ModernApp Package was not found. (0x80073CF1)
+SwitchWindows                        Package was not found. (0x80073CF1)
+TouchFlick_Arbitrary                 ClassInitialize: package not found
+TouchSingleTap                       ClassInitialize: package not found
+TouchSingleTapError_StaleElement     ClassInitialize: package not found
+GetLocation                          no location provider on this machine
+```
+
+**275 + 6 = 281, which is the reference's own score on this guest.** The ceiling
+is therefore confirmed rather than assumed, and the remaining backlog is these
+six:
+
+| test | message | what is known |
+|---|---|---|
+| `TouchLongTap` | element could not be located | open |
+| `TouchDoubleTap` | `Assert.IsFalse failed` | open |
+| `Touch_Scroll_Vertical` | `Assert.IsTrue failed` | was 2/5 in the band; a gesture is a velocity |
+| `NavigateBack_SystemApp` | Expected `File Explorer`, Actual `Temp` | five Explorer windows were left open by the run |
+| `ClickElement` | Expected `8`, Actual `7` | was 4/5 in the band |
+| `MiscellaneousSessionError_StaleSessionId` | `Assert.IsTrue failed` | diagnosed: Selenium sends `GET /session//title` after `Quit()`; we answer `404 jwp 9` where the suite expects `No active session with ID title`. `GET /session/{sessionId}` is not served |
+
+**Two tests were removed from the backlog by one fix and they had been counted
+separately for weeks** — `MouseDoubleClick` and `MouseDownMoveUp`, both caused by
+the system menu `MouseClick` leaves open. See DECISIONS §9.
+
+**`FindNestedElement_ByRuntimeId` passes**, which is the first measurement of the
+runtime-id fix at `c854cd7`; it was merged unmeasured.
+
+**Four tests that were in the flapping band now pass** — `NavigateBack_ModernApp`,
+`CreateSessionWithWorkingDirectoryAndArguments`, `Pen_Scroll_Vertical` and
+`Pen_LongClick`. One run does not make that a fix, and the repeat runs are what
+will say whether the band closed or merely landed well this time.
