@@ -4833,3 +4833,54 @@ measured rather than assumed, and it explains the two probes that misread
 themselves. A confirmed fact about the environment that turns out not to be the
 cause is still worth writing down — the next person to find Calculator maximized
 should not have to re-derive it.
+
+## SEVEN suite tests assert nothing on this app version, not three
+
+**Audit 2026-08-30, after the horizontal scroll finding generalised.** Every
+`if (AlarmTabClassName == "ListViewItem")` branch in the compatibility suite was
+read and classified by whether its body contains any statement:
+
+| test | branch |
+|---|---|
+| `Pen_Scroll_Horizontal` | **EMPTY** |
+| `Touch_Scroll_Horizontal` | **EMPTY** |
+| `TouchScroll_Arbitrary` | **EMPTY** |
+| `TouchScrollOnElement_Horizontal` | **EMPTY** |
+| `ClearElementError_ElementNotVisible` | **EMPTY** |
+| `ClickElementError_ElementNotVisible` | **EMPTY** |
+| `SendKeysToElementError_ElementNotVisible` | **EMPTY** |
+| `FindNestedElement_*`, `FindNestedElements_*`, `FindElements_ByTagName`, `FindElements_ByXPath` (11 more) | an ALTERNATE implementation — these still test something |
+
+**Seven tests pass having asserted nothing.** They pass for the reference too,
+so no score comparison is affected — but the *meaning* of every score changes:
+
+```
+290 total
+ -7 vacuous        pass for free, both drivers
+ -9 environmental  fail for both drivers (no Edge, no modern-app packages, no location)
+=274 tests that actually measure something
+```
+
+The reference's 281 is 274 real passes plus the 7 free ones — **it passes every
+test that can measure anything**. Our best measured run, 277, is 270 real passes:
+**four real failures at best, seven at worst.**
+
+**Why this matters beyond arithmetic.** The scroll family looked like seven tests
+with an axis-shaped pattern. It is **three**: `TouchScrollOnElement_Vertical`
+(passes), `Touch_Scroll_Vertical` and `Pen_Scroll_Vertical` (both flap). There is
+no horizontal result to compare a vertical failure against, and there never was.
+
+**How to spot the rest without reading every branch: the DURATION.** A vacuous
+test cannot perform a 500 ms gesture and a 1 s sleep:
+
+```
+TouchScrollOnElement_Horizontal   Passed   0.013 s
+Touch_Scroll_Horizontal           Passed   0.024 s
+Pen_Scroll_Horizontal             Passed   0.026 s
+Touch_Scroll_Vertical             Failed   4.40 s
+Pen_Scroll_Vertical               Failed   4.55 s
+```
+
+**The suite is kept pristine, so none of this is fixable here** — it is an
+instrument limitation to know about, not a defect to repair. What must not happen
+is quoting a vacuous pass as evidence, or using one as a control.

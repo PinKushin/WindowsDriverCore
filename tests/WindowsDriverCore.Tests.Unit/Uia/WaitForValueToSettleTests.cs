@@ -226,17 +226,40 @@ public sealed class WaitForValueToSettleTests
 
     /// <summary>A caller with no drain available still settles.</summary>
     /// <remarks>
+    /// <para>
     /// THE CONTROL. The drain is optional — <c>UiaElementInteractor</c> takes
     /// its window locator as an optional dependency, so an interactor built
     /// without one must still wait rather than throwing or returning at once.
     /// A change that made the drain mandatory would break every caller that
     /// does not have one, silently, by way of a null.
+    /// </para>
+    /// <para>
+    /// <b>This asserted <c>Should.NotThrow</c> and therefore proved nothing.</b>
+    /// The variable is whether the loop SETTLES; the measurement was whether it
+    /// threw. A version that returned immediately without waiting passed it, and
+    /// so did one that spun the entire budget — the two failures this loop exists
+    /// to avoid, both invisible to the assertion. Found by auditing for
+    /// measurements that cannot respond to the manipulation, 2026-08-30.
+    /// </para>
+    /// <para>
+    /// <b>The read COUNT is the instrument, and it is exact.</b> Settling on the
+    /// agreement takes three reads: the baseline <c>""</c>, the changed
+    /// <c>"abc"</c>, and the <c>"abc"</c> that agrees with it. Returning at once
+    /// is one. Never settling is however many reads fit in the budget — hundreds.
+    /// One number separates all three.
+    /// </para>
     /// </remarks>
     [Test]
     public void WithNoDrainAvailable_TheLoopStillSettlesOnAgreement()
     {
-        Func<string?> typing = Script("", "abc", "abc");
+        int reads = 0;
+        Func<string?> scripted = Script("", "abc", "abc");
+        Func<string?> typing = () => { reads++; return scripted(); };
 
-        Should.NotThrow(() => UiaElementInteractor.WaitForValueToSettle(typing, Budget, drain: null));
+        UiaElementInteractor.WaitForValueToSettle(typing, Budget, drain: null);
+
+        reads.ShouldBe(
+            3,
+            "the loop must stop on the agreement at read 3 — not return at once, and not spin the budget");
     }
 }
