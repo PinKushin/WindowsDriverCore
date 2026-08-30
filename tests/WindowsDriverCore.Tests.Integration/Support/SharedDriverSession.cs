@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -38,12 +39,27 @@ internal static class SharedDriverSession
 
     private static readonly object Gate = new();
     private static DriverServer? _server;
-    private static string? _sessionId;
-    private static nint _window;
 
-    /// <summary>The shared window, opening the application if needed.</summary>
+    /// <summary>One session per application, keyed by what was asked for.</summary>
+    /// <remarks>
+    /// <b>Keyed, because the suite this project is measured against keeps one
+    /// long-lived session PER APPLICATION.</b> It used to hold a single session
+    /// and hard-code Calculator, so every fixture needing anything else — the
+    /// WPF subject, the Win32 subject, Settings, charmap — had to launch its own
+    /// and kill it again. That is a launch and a teardown per fixture, and it is
+    /// the reason a local suite cannot reproduce anything that only appears over
+    /// the life of a session.
+    /// </remarks>
+    private static readonly Dictionary<string, (string SessionId, nint Window)> Sessions = [];
+
+    /// <summary>The shared Calculator window, opening it if needed.</summary>
     /// <returns>The window handle, or zero if the application is unavailable.</returns>
-    public static nint Window()
+    public static nint Window() => Window(CalculatorAumid);
+
+    /// <summary>The shared window for one application, opening it if needed.</summary>
+    /// <param name="appId">An AUMID, or a path to an executable.</param>
+    /// <returns>The window handle, or zero if the application is unavailable.</returns>
+    public static nint Window(string appId)
     {
         lock (Gate)
         {
@@ -51,9 +67,11 @@ internal static class SharedDriverSession
             // destroys windows deliberately would otherwise leave a dead one for
             // whichever fixture ran next, and that failure moves when tests are
             // reordered.
-            if (_window != 0 && AppLifetime.WindowExists(_window))
+            if (Sessions.TryGetValue(appId, out (string SessionId, nint Window) open) &&
+                open.Window != 0 &&
+                AppLifetime.WindowExists(open.Window))
             {
-                return _window;
+                return open.Window;
             }
 
             _server ??= DriverServer.Start();
@@ -64,7 +82,7 @@ internal static class SharedDriverSession
 
             HttpResponseMessage created = _server.Client.PostAsJsonAsync(
                 new Uri("/session", UriKind.Relative),
-                new { desiredCapabilities = new { app = CalculatorAumid } })
+                new { desiredCapabilities = new { app = appId } })
                 .GetAwaiter().GetResult();
 
             if (!created.IsSuccessStatusCode)
@@ -74,10 +92,16 @@ internal static class SharedDriverSession
 
             using JsonDocument body = JsonDocument.Parse(
                 created.Content.ReadAsStringAsync().GetAwaiter().GetResult());
-            _sessionId = body.RootElement.GetProperty("sessionId").GetString();
+            string? sessionId = body.RootElement.GetProperty("sessionId").GetString();
 
-            _window = ReadWindowHandle();
-            return _window;
+            if (sessionId is null)
+            {
+                return 0;
+            }
+
+            nint window = ReadWindowHandle(sessionId);
+            Sessions[appId] = (sessionId, window);
+            return window;
         }
     }
 
@@ -86,27 +110,26 @@ internal static class SharedDriverSession
     {
         lock (Gate)
         {
-            if (_server is not null && _sessionId is not null)
+            foreach ((string sessionId, nint _) in Sessions.Values)
             {
                 // No result check: a session that will not delete is not
                 // something a teardown can act on, and throwing here would
                 // replace a real failure with this one.
-                _server.Client
-                    .DeleteAsync(new Uri($"/session/{_sessionId}", UriKind.Relative))
+                _server?.Client
+                    .DeleteAsync(new Uri($"/session/{sessionId}", UriKind.Relative))
                     .GetAwaiter().GetResult().Dispose();
             }
 
-            _sessionId = null;
-            _window = 0;
+            Sessions.Clear();
             _server?.Dispose();
             _server = null;
         }
     }
 
-    private static nint ReadWindowHandle()
+    private static nint ReadWindowHandle(string sessionId)
     {
         HttpResponseMessage response = _server!.Client
-            .GetAsync(new Uri($"/session/{_sessionId}/window_handle", UriKind.Relative))
+            .GetAsync(new Uri($"/session/{sessionId}/window_handle", UriKind.Relative))
             .GetAwaiter().GetResult();
 
         using JsonDocument body = JsonDocument.Parse(

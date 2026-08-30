@@ -1,6 +1,6 @@
-using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
@@ -72,23 +72,32 @@ public sealed class MenuModeTests
     [OneTimeSetUp]
     public void LaunchTheSubject()
     {
+        _windows = new WindowLocator();
+        CUIAutomationClass automation = new();
+        UiaElementResolver resolver = new(automation);
+        _finder = new UiaElementFinder(automation, resolver);
+        _inspector = new UiaElementInspector(automation, resolver);
+        _interactor = new UiaElementInteractor(
+            automation, resolver, new SendInputPointer(), _windows);
+
+        // THE ONE FIXTURE THAT MUST NOT SHARE, and the reason is the point of
+        // the rule rather than an exception to it.
+        //
+        // Every other fixture uses SharedSubjects, because a suite that reboots
+        // its subject per fixture cannot reproduce anything that only appears
+        // over the life of a session. This one deliberately puts the subject
+        // into a MODAL MENU LOOP, which blocks its message pump — measured when
+        // it first shared: the next fixture alphabetically, XPathAgainstOwn
+        // SubjectTests, hung on eight tests at two minutes each because its UIA
+        // queries could not be served.
+        //
+        // A fixture that deliberately breaks the application owns the
+        // application. Sharing is the default, not a rule to apply blindly.
         string? path = TestApp.Path;
         if (path is null)
         {
             Assert.Ignore("The WPF test subject has not been built.");
         }
-
-        _windows = new WindowLocator();
-
-        CUIAutomationClass automation = new();
-        UiaElementResolver resolver = new(automation);
-        _finder = new UiaElementFinder(automation, resolver);
-        _inspector = new UiaElementInspector(automation, resolver);
-
-        // With a real pointer, or the mouse rung cannot run and "the ladder
-        // refused" and "the rung was unreachable" become the same observation.
-        _interactor = new UiaElementInteractor(
-            automation, resolver, new SendInputPointer(), _windows);
 
         LaunchResult launched = new ApplicationLauncher(
             new MainWindowWaiter(TimeProvider.System), _windows)
@@ -96,14 +105,21 @@ public sealed class MenuModeTests
 
         if (launched.Application is null)
         {
-            // Fail rather than ignore: this application is built by this
-            // solution, so it not launching is a defect here and a skip would
-            // read as a pass.
-            Assert.Fail($"The test subject would not launch: {launched.FailureMessage}");
-            return;
+            throw new AssertionException(
+                $"The test subject would not launch: {launched.FailureMessage}");
         }
 
         _window = launched.Application.WindowHandle;
+    }
+
+    /// <summary>Closes the subject this fixture owns.</summary>
+    [OneTimeTearDown]
+    public void CloseTheSubject()
+    {
+        if (_window != 0)
+        {
+            _windows.Close(_window);
+        }
     }
 
     [TearDown]
@@ -116,15 +132,6 @@ public sealed class MenuModeTests
         {
             MenuProbe.PostMessage(_window, WM_CANCELMODE, 0, 0);
             SpinWait.SpinUntil(() => !_windows.IsMenuModeActive(), 2000);
-        }
-    }
-
-    [OneTimeTearDown]
-    public void CloseTheSubject()
-    {
-        if (_window != 0)
-        {
-            _windows.Close(_window);
         }
     }
 

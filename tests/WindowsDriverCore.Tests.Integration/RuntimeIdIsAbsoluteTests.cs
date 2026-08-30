@@ -1,12 +1,9 @@
-using System;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
@@ -49,36 +46,15 @@ public sealed class RuntimeIdIsAbsoluteTests
     [OneTimeSetUp]
     public void LaunchTheSubject()
     {
-        string? path = Win32TestApp.Path;
-        if (path is null)
-        {
-            Assert.Ignore("The Win32 test subject has not been built.");
-        }
-
         CUIAutomationClass automation = new();
         UiaElementResolver resolver = new(automation);
-        WindowLocator windows = new();
         _finder = new UiaElementFinder(automation, resolver);
 
-        LaunchResult launched = new ApplicationLauncher(
-            new MainWindowWaiter(TimeProvider.System), windows)
-            .Launch(new ApplicationTarget(path, null, null));
-
-        if (launched.Application is null)
-        {
-            Assert.Ignore($"The subject would not launch: {launched.FailureMessage}");
-        }
-
-        _window = launched.Application.WindowHandle;
-    }
-
-    [OneTimeTearDown]
-    public void CloseTheSubject()
-    {
-        if (_window != 0)
-        {
-            new WindowLocator().Close(_window);
-        }
+        // ONE LAUNCH FOR THE WHOLE ASSEMBLY. See SharedSubjects: a
+        // fixture that reboots its subject cannot reproduce anything that
+        // only appears over the life of a session, and a real suite never
+        // restarts the program per test.
+        _window = SharedSubjects.Win32App();
     }
 
     /// <summary>An element finds itself by id from a sibling's scope.</summary>

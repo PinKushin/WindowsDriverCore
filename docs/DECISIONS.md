@@ -649,3 +649,71 @@ rather than two. A list of names without messages would not have shown that.
 **This is not covered by the machine-wide lock**, and should not be. The lock is
 about the host desktop; the guest has its own, which is exactly why these runs do
 not take it. This is a channel, not a desktop.
+
+## 11. Shared fixtures, and why constructing internals made them impossible
+
+**2026-08-30. The owner's direction, given more than once and deferred more than
+once. It should not have been deferred and I was not asked.**
+
+> "when you run our driver i think we are not booting shared fixtures most of the
+> time and rebooting the program, i know thats what we are doing on our local
+> tests and its kinda annoying becaiuse ive told you to stop countless times"
+
+and then the part that names the cause:
+
+> "yea and if you are constructing internally that explains why the fuck you are
+> booting a new app each time, you cant use a shared fixture if you do that"
+
+**That is exactly right, and it is one problem rather than two.** A fixture that
+news up its own `CUIAutomationClass`, `UiaElementFinder` and
+`ApplicationLauncher` has nowhere to put a shared session — so it launches an
+application, uses it, and kills it. The rebooting is a *consequence* of
+constructing internals, not a separate habit.
+
+### Measured
+
+| | |
+|---|---|
+| integration fixtures | 44 |
+| reaching the driver through the real server | 14 |
+| constructing internals directly | 30 |
+| launching their own application | 17 (was 23) |
+
+**A correction to a number I reported mid-investigation:** I first said three
+fixtures reach the real driver, from a grep for `HttpClient` and
+`WebApplicationFactory`. It is fourteen — `SharedDriverSession` accounts for the
+other eleven. The harness was already there and half-adopted; the problem was
+adoption, not design.
+
+### What changed
+
+- `SharedDriverSession` now keys **one session per application** instead of
+  hard-coding Calculator. Every fixture needing anything else — the WPF subject,
+  the Win32 subject — previously had to launch its own precisely because this
+  only knew one app.
+- `SharedSubjects` routes through it. **The first version of that file called
+  `ApplicationLauncher` directly**, which repeated the very mistake being fixed;
+  it now opens subjects through the running driver, and `DELETE /session` closes
+  them, so the driver's own teardown path is exercised rather than bypassed.
+- Six fixtures migrated off their own launches, and the `KillAll(ProcessName)`
+  teardowns removed — those kill by image name and would destroy the shared
+  instance.
+
+### The exception, stated so it is not mistaken for the rule
+
+`MenuModeTests` keeps its own subject and says why: it deliberately puts the
+application into a **modal menu loop**, which blocks its message pump. Measured
+when it first shared — the next fixture alphabetically hung on eight tests at two
+minutes each. **A fixture that deliberately breaks the application owns the
+application.** The same applies to `ApplicationLauncherTests`,
+`PackagedAppInstanceTests`, `HeldElementLivenessTests` and
+`CachingElementResolverTests`, which test launch, instance and destruction
+semantics.
+
+### What is still owed
+
+**30 fixtures still construct internals**, so most of the suite does not exercise
+what ships — and cannot catch the class of defect this project has spent days on,
+because session lifetime, contamination, teardown and drains all live in the
+server rather than in `UiaElementFinder`. That is the remaining work, and it is
+larger than this entry.

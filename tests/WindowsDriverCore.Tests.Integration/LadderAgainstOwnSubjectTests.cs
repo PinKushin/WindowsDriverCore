@@ -1,11 +1,9 @@
-using System;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
 using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
 using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
@@ -72,44 +70,21 @@ public sealed class LadderAgainstOwnSubjectTests
     [OneTimeSetUp]
     public void LaunchTestApp()
     {
-        string? path = TestApp.Path;
-        if (path is null)
-        {
-            Assert.Ignore("The WPF test subject has not been built.");
-        }
-
         CUIAutomationClass automation = new();
         UiaElementResolver resolver = new(automation);
         _finder = new UiaElementFinder(automation, resolver);
         _inspector = new UiaElementInspector(automation, resolver);
-        // With a real pointer and locator, so the mouse rung is reachable. It was
-        // not before, and that made every "the ladder refused" assertion here
-        // ambiguous: a refusal and a mouse rung that could not run are the same
-        // observation when _pointer is null. The clicks it dispatches land on
-        // this fixture's own window, which it foregrounds first.
         _interactor = new UiaElementInteractor(
             automation, resolver, new SendInputPointer(), new WindowLocator());
 
-        LaunchResult launched = new ApplicationLauncher(
-            new MainWindowWaiter(TimeProvider.System), new WindowLocator())
-            .Launch(new ApplicationTarget(path, null, null));
-
-        if (launched.Application is null)
-        {
-            // Fail rather than ignore. This application is built by this
-            // solution, so it not launching is a defect here, not an absent
-            // dependency — and a skip would read as a pass.
-            Assert.Fail($"The test subject would not launch: {launched.FailureMessage}");
-            return;
-        }
-
-        _window = launched.Application.WindowHandle;
+        // ONE LAUNCH FOR THE WHOLE ASSEMBLY. See SharedSubjects: a
+        // fixture that reboots its subject cannot reproduce anything that
+        // only appears over the life of a session, and a real suite never
+        // restarts the program per test.
+        _window = SharedSubjects.WpfApp();
 
         UiSettle.UntilBoundsAreStable(_inspector, _window, Id("invokeOnly"));
     }
-
-    [OneTimeTearDown]
-    public void CloseTestApp() => AppLifetime.KillAll(TestApp.ProcessName);
 
     private string Id(string automationId) =>
         UiSettle.UntilSomethingMatches(_finder, _window, LocatorKind.AutomationId, automationId)[0];
@@ -119,14 +94,12 @@ public sealed class LadderAgainstOwnSubjectTests
         _inspector.Attribute(_window, Id("lastPattern"), "Name").Value ?? "?";
 
     [Test]
-    public void AButtonStillUsesInvoke()
-    {
+    public void AButtonStillUsesInvoke() =>
         // The control. A button maintains no state, so Invoke is genuinely
         // correct for it, and reordering the ladder must not have cost that.
         // Without this, "prefer Toggle and SelectionItem" and "never use Invoke"
         // predict the same result everywhere else in this fixture.
         _interactor.Click(_window, Id("invokeOnly")).Path.ShouldBe("Invoke");
-    }
 
     [Test]
     public void WhenToggleAndInvokeAreBothOffered_TheApplicationReceivesToggle()

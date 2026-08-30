@@ -1,4 +1,3 @@
-using System;
 using System.Xml;
 using Interop.UIAutomationClient;
 using NUnit.Framework;
@@ -6,8 +5,6 @@ using Shouldly;
 using WindowsDriverCore.Automation;
 using WindowsDriverCore.Automation.Locators;
 using WindowsDriverCore.Automation.Uia;
-using WindowsDriverCore.Platform.Applications;
-using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Tests.Integration.Support;
 
 namespace WindowsDriverCore.Tests.Integration;
@@ -44,38 +41,23 @@ public sealed class XPathAgainstOwnSubjectTests
     [OneTimeSetUp]
     public void LaunchTestApp()
     {
-        string? path = TestApp.Path;
-        if (path is null)
-        {
-            Assert.Ignore("The WPF test subject has not been built.");
-        }
-
         CUIAutomationClass automation = new();
         UiaElementResolver resolver = new(automation);
         _finder = new UiaElementFinder(automation, resolver);
         _inspector = new UiaElementInspector(automation, resolver);
         _source = new UiaPageSource(automation);
 
-        LaunchResult launched = new ApplicationLauncher(
-            new MainWindowWaiter(TimeProvider.System), new WindowLocator())
-            .Launch(new ApplicationTarget(path, null, null));
-
-        if (launched.Application is null)
-        {
-            Assert.Fail($"The test subject would not launch: {launched.FailureMessage}");
-            return;
-        }
-
-        _window = launched.Application.WindowHandle;
+        // ONE LAUNCH FOR THE WHOLE ASSEMBLY. See SharedSubjects: a
+        // fixture that reboots its subject cannot reproduce anything that
+        // only appears over the life of a session, and a real suite never
+        // restarts the program per test.
+        _window = SharedSubjects.WpfApp();
         UiSettle.UntilBoundsAreStable(
             _inspector,
             _window,
             UiSettle.UntilSomethingMatches(
                 _finder, _window, LocatorKind.AutomationId, "invokeOnly")[0]);
     }
-
-    [OneTimeTearDown]
-    public void CloseTestApp() => AppLifetime.KillAll(TestApp.ProcessName);
 
     private FindResult Select(string expression) =>
         _finder.FindAll(_window, LocatorKind.XPath, expression);
