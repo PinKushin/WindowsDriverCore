@@ -320,6 +320,26 @@ public sealed class VendorCommandTests
         _clipboard.DidNotReceive().TryWrite(Arg.Any<string>());
     }
 
+    /// <summary>A clipboard with text is read and handed back.</summary>
+    /// <remarks>
+    /// <b>THE CONTROL, and it was missing.</b> Two tests asserted that
+    /// <c>getClipboard</c> REFUSES — one for a clipboard with no text, one for
+    /// an unstubbed substitute — and nothing asserted that it ever succeeds. A
+    /// version that refused every single read passed both. Found by auditing for
+    /// assertions that cannot respond to the manipulation, 2026-08-30.
+    /// </remarks>
+    [Test]
+    public void AClipboardWithText_IsReadAndReturned()
+    {
+        _clipboard.TryRead(out Arg.Any<string?>())
+            .Returns(call => { call[0] = "copied text"; return true; });
+
+        VendorOutcome outcome = Run("windows: getClipboard", null);
+
+        outcome.Refusal.ShouldBeNull("a readable clipboard is not a refusal");
+        outcome.Value.ShouldBe("copied text");
+    }
+
     /// <summary>A clipboard with no text is a failed read, not an empty one.</summary>
     /// <remarks>
     /// A clipboard holding an image answers false. Reporting "" would tell the
