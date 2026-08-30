@@ -15,6 +15,15 @@
   <ItemGroup>
     <ProjectReference Include="..\WindowsDriverCore.Contracts\WindowsDriverCore.Contracts.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- ProgressAt is internal and is the one pure decision in the pointer path
+         worth testing on its own: how far along a move is at a given moment.
+         Driving that from the frame INDEX rather than the clock made an
+         identical gesture move a LoopingSelector by anywhere from 5 to 15 items
+         (measured on the guest, 2026-08-30). It is internal because no caller
+         outside this assembly should reach it, not because it is unimportant. -->
+    <InternalsVisibleTo Include="WindowsDriverCore.Tests.Unit" />
+  </ItemGroup>
   <!-- No Microsoft.Extensions.Logging.Abstractions PackageReference here:
        the ASP.NET Core framework reference above already provides it, and
        NuGet reports the redundant reference as NU1510. -->

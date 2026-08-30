@@ -1013,8 +1013,16 @@ public sealed class PointerActionRunner
         // sees nothing in a single jump.
         for (int frame = 1; frame <= frames; frame++)
         {
-            int stepX = fromX + (int)(((long)(toX - fromX) * frame) / frames);
-            int stepY = fromY + (int)(((long)(toY - fromY) * frame) / frames);
+            // POSITION FOLLOWS THE CLOCK, NOT THE COUNTER. See ProgressAt: a
+            // sleep that overshoots leaves the next deadlines already past, so
+            // frames fire back to back — and an index-driven position gives each
+            // of them the same step across almost no time, which reads as an
+            // enormous velocity. Elapsed-driven, a late frame is a bigger step
+            // over a bigger interval, which is the same velocity.
+            double progress = ProgressAt(Stopwatch.GetElapsedTime(started), duration, frame, frames);
+
+            int stepX = fromX + (int)((toX - fromX) * progress);
+            int stepY = fromY + (int)((toY - fromY) * progress);
 
             if (!_synthetic.Inject(
                 [new SyntheticContact(kind, stepX, stepY, SyntheticContactPhase.Update)]))
@@ -1055,8 +1063,67 @@ public sealed class PointerActionRunner
             }
         }
 
+        // THE ENDPOINT, EXACTLY, and only for a timed move. Elapsed-driven
+        // interpolation reaches the last frame just BEFORE the duration expires —
+        // the loop injects and then sleeps — so it would otherwise stop a frame's
+        // width short of where the client asked. This lands the contact on the
+        // target at the moment the duration is up, which is both the position and
+        // the velocity the caller stated.
+        //
+        // Not needed on the untimed path: there, progress is the frame index and
+        // the final frame is already 1.
+        if (duration > TimeSpan.Zero &&
+            !_synthetic.Inject([new SyntheticContact(kind, toX, toY, SyntheticContactPhase.Update)]))
+        {
+            return PointerRefusal.Reason(
+                $"The system refused a contact update{Because(_synthetic.LastInjectionError)}");
+        }
+
         return null;
     }
+
+    /// <summary>How far along a move is, from the time actually elapsed.</summary>
+    /// <param name="elapsed">Time since the move began.</param>
+    /// <param name="duration">The move's stated duration.</param>
+    /// <param name="frame">The frame index, used only when there is no duration.</param>
+    /// <param name="frames">The total frame count, used only when there is no duration.</param>
+    /// <returns>A fraction from 0 to 1.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Position must follow the CLOCK, not the frame counter, and that is the
+    /// whole of this.</b> Frames sleep to a start-relative deadline, which keeps
+    /// the total duration honest — but when a sleep overshoots (Windows wakes a
+    /// sleeper on a ~15.6 ms tick) the next deadlines are already past, so
+    /// several frames fire back to back with no sleep between them. Index-driven
+    /// interpolation gives each of those the same position step across almost no
+    /// time, and an application measuring velocity sees an enormous spike.
+    /// </para>
+    /// <para>
+    /// <b>Measured on the guest, 2026-08-30.</b> The compatibility suite's own
+    /// gesture — 200 px over 500 ms onto a <c>LoopingSelector</c> — run ten times
+    /// in one session moved the selector by between <b>5 and 15 items</b> for an
+    /// identical request, and a down/up pair cancelled exactly once in ten:
+    /// </para>
+    /// <code>
+    /// net drift per round : 0, 1, 1, -4, -3, -9, -7, 8, -3, -3 items
+    /// </code>
+    /// <para>
+    /// A LoopingSelector flings on velocity, so a noisy velocity is a noisy
+    /// distance. <c>Touch_Scroll_Vertical</c> and <c>Pen_Scroll_Vertical</c> are
+    /// the two worst flappers in the backlog and both assert that a down and an
+    /// up return the selector to where it started.
+    /// </para>
+    /// <para>
+    /// Driving position from elapsed time makes a late frame a LONGER step over a
+    /// LONGER interval — the same velocity — and removes the catch-up burst
+    /// entirely. The frame index is still used when the client states no
+    /// duration, where there is no clock to follow.
+    /// </para>
+    /// </remarks>
+    internal static double ProgressAt(TimeSpan elapsed, TimeSpan duration, int frame, int frames) =>
+        duration <= TimeSpan.Zero
+            ? (double)frame / frames
+            : Math.Clamp(elapsed / duration, 0.0, 1.0);
 
     /// <summary>How many frames a move of this length is broken into.</summary>
     /// <remarks>
