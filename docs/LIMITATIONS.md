@@ -4441,3 +4441,120 @@ green" is the expected outcome either way.
 That rules out the suite as the primary instrument for this defect. What replaces
 it: the mechanism proved directly by a targeted test, and a diagnostic that names
 what holds the foreground when a raise fails. The suite becomes corroboration.
+
+---
+
+## 2026-08-29 (latest) — five runs at one commit, after the foreground fix
+
+`e7a454a`, five times, nothing changed between runs: **269, 270, 270, 269, 273**.
+
+### The parity gap is 8
+
+17 tests fail in all five. Nine of those are the reference's own environmental
+failures, so:
+
+```
+FindNestedElement_ByRuntimeId              MouseDownMoveUp
+MiscellaneousSessionError_StaleSessionId   NavigateBack_SystemApp
+MouseClick                                 TouchDoubleTap
+MouseDoubleClick                           TouchLongTap
+```
+
+| | |
+|---|---|
+| WinAppDriver 1.2.1 | 281/290 |
+| this driver, best run | **273/290** |
+| **gap** | **8 tests** |
+
+`ClickElement` and `Pen_Scroll_Vertical` moved OUT of the stable set at five
+samples — they are band members, not gap members. Three samples had them stable,
+which is a reminder that "stable" is a function of how many runs you took.
+
+### The band is 6
+
+```
+ClickElement                                   4 of 5
+NavigateBack_ModernApp                         3 of 5
+Pen_Scroll_Vertical                            3 of 5
+Touch_Scroll_Vertical                          2 of 5
+CreateSessionWithWorkingDirectoryAndArguments  1 of 5
+Pen_LongClick                                  1 of 5
+```
+
+### The foreground fix: suggestive, not proven
+
+**`SendKeys_*` does not appear in the band at all** — it passed in all five runs,
+where before the fix it failed in 2 of 7. And `NOT RAISED` was **1 in every
+run**, against 2 in a pre-fix good run and 23 in a cascading one.
+
+So the desktop short-circuit is confirmed (it removed exactly one event, every
+time), and the cascade has not recurred in six post-fix runs.
+
+**Six clean runs against a ~29% event rate is about 13% by luck**, which is
+suggestive and not proof. Ten would make it ~4%. Recorded as unproven rather
+than fixed, because the temptation to bank it is exactly how the earlier wrong
+attributions on this page happened.
+
+---
+
+## MouseClick is FIXED. ClickElement is not, and two hypotheses are refuted
+
+### MouseClick: the mouse routes never raised the window
+
+`/moveto`, `/click`, `/buttondown`, `/buttonup` and `/doubleclick` synthesised
+input at a screen coordinate without ever bringing the session's window forward.
+Every other input path in the driver raises — the element-click ladder, the
+keyboard routes, navigation, screenshots. These did not.
+
+A click into a background window is commonly consumed by the activation it
+causes (`WM_MOUSEACTIVATE` → `MA_ACTIVATEANDEAT`), so the first click activates
+and the control never sees it.
+
+**Measured: `MouseClick` had failed in every run ever taken — 5 of 5 at
+`e7a454a` — and passed in both runs after the raise landed.** Parity gap 8 → 7.
+
+### ClickElement still fails, and it is NOT what it looked like
+
+```
+Assert.AreEqual failed. Expected:<8>. Actual:<7>.
+```
+
+An off-by-one on Alarms & Clock's hour `LoopingSelector`. The whole test runs in
+**453 ms**, against the reference's seconds.
+
+**REFUTED — that the click used stale coordinates.** The transcript says
+`Click -> Performed via SelectionItem`. It is a pattern call, not a coordinate,
+so a selector that moved between the find and the click cannot explain it.
+
+**REFUTED — that the ladder forgets to scroll the item into view.**
+`ClickElementOrAncestor` calls `ScrollIntoView` as its first act, before the
+raise and before any rung. A `LoopingSelector` item that reports
+`ScrollItemPattern` therefore gets scrolled.
+
+**What is left.** The hour selector is found **73 ms** after the click that opens
+the Add Alarm page, selected, and read **133 ms** later:
+
+```
+23:51:09.046  Click -> Performed via Invoke        (AddAlarmButton)
+23:51:09.119  find HourLoopingSelector             73 ms later
+23:51:09.196  find Name='8'
+23:51:09.263  Click -> Performed via SelectionItem
+23:51:09.396  drain -> waited 132.7 ms
+```
+
+A `LoopingSelector` snaps with an animation, and **an animation is not input
+processing** — so the drain, which waits for the application to consume dispatched
+input, does not wait for it. The reference passes because a find costs it ~1 s and
+the animation has long finished.
+
+**The candidate fix, not yet taken:** settle the SELECTION the way `SendKeys`
+settles its value — after a `SelectionItem` click, wait for the container's
+reported value to stop changing. That is the same shape as the fix that appears
+to have closed the `SendKeys` family.
+
+**Why it is not taken yet.** `WaitForValueToSettle` requires an observed CHANGE
+before it accepts stability, so a click selecting an already-selected item would
+spend its entire budget every time — on every selection click in every suite.
+That is exactly the shape of *a fix can cost more than the bug*, which cost this
+project twelve tests once already. It needs the settle condition designed for
+this case and measured, not the existing one reused because it is nearby.

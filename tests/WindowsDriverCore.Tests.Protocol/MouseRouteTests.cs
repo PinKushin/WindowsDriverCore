@@ -43,6 +43,7 @@ public sealed class MouseRouteTests : IDisposable
     private WebApplicationFactory<WindowsDriverCore.Host.Program> _factory = null!;
     private HttpClient _client = null!;
     private IPointerInput _pointer = null!;
+    private IWindowLocator _windows = null!;
 
     /// <summary>
     /// Builds the server once. No test here reconfigures a default inline, so
@@ -57,8 +58,9 @@ public sealed class MouseRouteTests : IDisposable
         launcher.Launch(Arg.Any<ApplicationTarget>())
             .Returns(LaunchResult.Success(new LaunchedApplication(4242, 0x1234)));
 
-        IWindowLocator windows = Substitute.For<IWindowLocator>();
-        windows.Exists(Arg.Any<nint>()).Returns(true);
+        _windows = Substitute.For<IWindowLocator>();
+        _windows.Exists(Arg.Any<nint>()).Returns(true);
+        _windows.BringToForeground(Arg.Any<nint>()).Returns(true);
 
         _pointer = Substitute.For<IPointerInput>();
         _pointer.MoveTo(Arg.Any<int>(), Arg.Any<int>()).Returns(true);
@@ -84,7 +86,7 @@ public sealed class MouseRouteTests : IDisposable
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
             {
                 services.AddSingleton(launcher);
-                services.AddSingleton(windows);
+                services.AddSingleton(_windows);
                 services.AddSingleton(_pointer);
                 services.AddSingleton(inspector);
             }));
@@ -103,6 +105,69 @@ public sealed class MouseRouteTests : IDisposable
     {
         _client?.Dispose();
         _factory?.Dispose();
+    }
+
+    /// <summary>Every mouse route raises the window before acting.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The mouse routes were the only input path that never did.</b> Measured
+    /// 2026-08-29 on the guest: <c>MouseClick</c> dispatched its move and its
+    /// click, waited 123 ms for the drain, and read back <c>"0"</c> where
+    /// <c>"8"</c> was expected — the click reached the right coordinate and the
+    /// button never saw it.
+    /// </para>
+    /// <para>
+    /// A click into a BACKGROUND window is commonly eaten by the activation it
+    /// causes (<c>WM_MOUSEACTIVATE</c> answering <c>MA_ACTIVATEANDEAT</c>), so
+    /// the first click activates and the control gets nothing. The element-click
+    /// ladder has raised for this reason since it was written.
+    /// </para>
+    /// <para>
+    /// <c>/click</c> and friends carry no coordinate at all — they act wherever
+    /// the pointer already is — so being in front is the only thing that makes
+    /// it this session's click rather than somebody else's.
+    /// </para>
+    /// </remarks>
+    [TestCase("moveto", """{"xoffset":5,"yoffset":5}""")]
+    [TestCase("click", "{}")]
+    [TestCase("buttondown", "{}")]
+    [TestCase("buttonup", "{}")]
+    [TestCase("doubleclick", "{}")]
+    public async Task EveryMouseRoute_RaisesTheWindowFirst(string route, string body)
+    {
+        // Post creates its own session and takes a SUFFIX, not a full path -
+        // unlike the other fixtures in this suite. Cleared after it, because the
+        // session creation itself is not what is being asserted.
+        _windows.ClearReceivedCalls();
+
+        await Post(route, body);
+
+        _windows.Received().BringToForeground(Arg.Any<nint>());
+    }
+
+    /// <summary>A window that will not come forward still gets the input.</summary>
+    /// <remarks>
+    /// <b>The control, and it guards against the wrong fix.</b> Refusing to click
+    /// when a raise fails would be a NEW refusal, and the last time this project
+    /// added one — declining to click a disabled element — it fixed a real defect
+    /// and cost twelve suite tests. The raise is an attempt, not a precondition;
+    /// the transcript records when it failed.
+    /// </remarks>
+    [Test]
+    public async Task AWindowThatWillNotRaise_IsStillClicked()
+    {
+        _windows.BringToForeground(Arg.Any<nint>()).Returns(false);
+
+        try
+        {
+            ((int)(await Post("click", "{}")).StatusCode).ShouldBe(200);
+
+            _pointer.Received(1).Click(PointerButton.Left);
+        }
+        finally
+        {
+            _windows.BringToForeground(Arg.Any<nint>()).Returns(true);
+        }
     }
 
     private async Task<string> NewSession()

@@ -159,6 +159,28 @@ public static class MouseRoutes
                     hasElement ? height : NoRectangle,
                     Elapsed(began));
 
+                // RAISED FIRST, like every other input path in this driver.
+                //
+                // The mouse routes were the only ones that never did. Measured
+                // 2026-08-29 on the guest: MouseClick dispatches its move and its
+                // click, waits 123 ms for the drain, and reads back "0" where "8"
+                // was expected - the click was delivered to the right coordinate
+                // and the button never saw it.
+                //
+                // A click into a BACKGROUND window is commonly consumed by the
+                // activation it causes (WM_MOUSEACTIVATE answering
+                // MA_ACTIVATEANDEAT), so the first click activates and the
+                // control gets nothing. The element-click ladder has raised for
+                // this reason since it was written; the session-level mouse never
+                // learned it.
+                //
+                // The result is deliberately not checked. A raise that fails is
+                // already recorded by the keys path's own diagnostic, and
+                // refusing to move the pointer because a window would not come
+                // forward would be a new refusal - and refusing to click cost
+                // this project twelve suite tests the last time it was tried.
+                windows.BringToForeground(session.WindowHandle);
+
                 return pointer.MoveTo(x, y)
                     ? Results.Json(JsonWireResponse.ForSessionVoid(session.Id))
                     : Fault(WebDriverFault.UnknownError, "The system rejected the pointer input.");
@@ -179,7 +201,11 @@ public static class MouseRoutes
         Func<IPointerInput, PointerButton, bool> act)
     {
         app.MapPost($"/session/{{sessionId}}/{suffix}",
-            async (HttpContext context, IPointerInput? pointer, IPointerLog log) =>
+            async (
+                HttpContext context,
+                IPointerInput? pointer,
+                IWindowLocator windows,
+                IPointerLog log) =>
             {
                 long began = Stopwatch.GetTimestamp();
 
@@ -193,6 +219,13 @@ public static class MouseRoutes
                 {
                     return Fault(WebDriverFault.UnknownError, NoPointer);
                 }
+
+                // RAISED HERE TOO, and for a sharper reason than moveto's: this
+                // route carries no coordinate at all. It clicks wherever the
+                // pointer already is, so the only thing that makes it this
+                // session's click rather than somebody else's is that this
+                // session's window is in front.
+                windows.BringToForeground(session.WindowHandle);
 
                 // Absent means left. Measured: {} and {"button":0} both answer
                 // 200, and {"button":9} answers 400.
