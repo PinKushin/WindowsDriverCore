@@ -107,9 +107,19 @@ public static class WindowRoutes
         app.MapGet("/session/{sessionId}/window/handles", AllHandles).RequiresSession();
 
         app.MapGet("/session/{sessionId}/title",
-            (HttpContext context, IWindowLocator windows, IElementInspector inspector) =>
+            (HttpContext context,
+             IWindowLocator windows,
+             IElementInspector inspector,
+             ITerminationLog? log) =>
         {
             DriverSession session = context.GetSession();
+
+        // WAIT FOR WHAT WE ALREADY SENT. A read that races the application is a
+        // divergence from the reference, not merely a fast answer: the reference
+        // wins the same race by accident because a single find costs it ~1070 ms.
+        // Costs nothing when no input is outstanding, and is spent once per
+        // input rather than once per read.
+        PendingInput.Drain(session, windows, log);
 
             if (!windows.Exists(session.WindowHandle))
             {
@@ -175,9 +185,13 @@ public static class WindowRoutes
         // wants to know where a window is, or to put it somewhere, has no
         // JSON Wire route to fall back to - so without these a Selenium 4
         // client cannot read or set window geometry at all.
-        app.MapGet("/session/{sessionId}/window/rect", (HttpContext context, IWindowLocator windows) =>
+        app.MapGet("/session/{sessionId}/window/rect",
+            (HttpContext context, IWindowLocator windows, ITerminationLog? log) =>
         {
             DriverSession session = context.GetSession();
+
+            PendingInput.Drain(session, windows, log);
+
             WindowBounds? bounds = windows.GetBounds(session.WindowHandle);
 
             return bounds is null
@@ -468,9 +482,13 @@ public static class WindowRoutes
         app.MapPost($"/session/{{sessionId}}/window/{{windowHandle}}/{property}", Write).RequiresSession();
         app.MapPost($"/session/{{sessionId}}/window/{property}", Write).RequiresSession();
 
-        IResult Read(HttpContext context, IWindowLocator windows)
+        IResult Read(HttpContext context, IWindowLocator windows, ITerminationLog? log)
         {
             DriverSession session = context.GetSession();
+
+            // A DRAG MOVES A WINDOW, and MouseDownMoveUp reads the position
+            // straight afterwards. See PendingInput.
+            PendingInput.Drain(session, windows, log);
 
             (nint handle, IResult? refusal) = AddressedWindow(context, session, windows);
             if (refusal is not null)
@@ -597,6 +615,7 @@ public static class WindowRoutes
     /// <summary>The handle of the window this session is driving.</summary>
     /// <param name="context">The request, carrying the session.</param>
     /// <param name="windows">Answers whether the window is still there.</param>
+    /// <param name="log">Records whether the drain for pending input ran.</param>
     /// <returns>The handle, or the closed-window fault.</returns>
     /// <remarks>
     /// Served at BOTH <c>/window_handle</c> (JSON Wire) and <c>/window</c>
@@ -604,9 +623,17 @@ public static class WindowRoutes
     /// question are how WinAppDriver's own XPath singular and plural drifted
     /// apart into issue #1079.
     /// </remarks>
-    private static IResult CurrentHandle(HttpContext context, IWindowLocator windows)
+    private static IResult CurrentHandle(
+        HttpContext context, IWindowLocator windows, ITerminationLog? log)
     {
         DriverSession session = context.GetSession();
+
+        // WAIT FOR WHAT WE ALREADY SENT. A read that races the application is a
+        // divergence from the reference, not merely a fast answer: the reference
+        // wins the same race by accident because a single find costs it ~1070 ms.
+        // Costs nothing when no input is outstanding, and is spent once per
+        // input rather than once per read.
+        PendingInput.Drain(session, windows, log);
 
         return windows.Exists(session.WindowHandle)
             ? Results.Json(JsonWireResponse.ForSession(session.Id, FormatHandle(session.WindowHandle)))
@@ -616,6 +643,7 @@ public static class WindowRoutes
     /// <summary>Every window this session owns that is still alive.</summary>
     /// <param name="context">The request, carrying the session.</param>
     /// <param name="windows">Answers whether each window is still there.</param>
+    /// <param name="log">Records whether the drain for pending input ran.</param>
     /// <returns>The handles.</returns>
     /// <remarks>
     /// <para>
@@ -636,9 +664,17 @@ public static class WindowRoutes
     /// application is relaunched, which a single handle cannot express.
     /// </para>
     /// </remarks>
-    private static IResult AllHandles(HttpContext context, IWindowLocator windows)
+    private static IResult AllHandles(
+        HttpContext context, IWindowLocator windows, ITerminationLog? log)
     {
         DriverSession session = context.GetSession();
+
+        // WAIT FOR WHAT WE ALREADY SENT. A read that races the application is a
+        // divergence from the reference, not merely a fast answer: the reference
+        // wins the same race by accident because a single find costs it ~1070 ms.
+        // Costs nothing when no input is outstanding, and is spent once per
+        // input rather than once per read.
+        PendingInput.Drain(session, windows, log);
 
         IReadOnlyList<string> handles = session.IsDesktop
             ? []

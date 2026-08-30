@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -164,7 +163,7 @@ public static class ElementPropertyRoutes
                 DriverSession session = context.GetSession();
 
                 // Pay for typing here, and only when something was typed.
-                DrainTypedInput(session, windows, log);
+                PendingInput.Drain(session, windows, log);
 
                 ElementRead<T> result = read(inspector, session.WindowHandle, elementId);
 
@@ -175,109 +174,6 @@ public static class ElementPropertyRoutes
             .RequiresSession();
     }
 
-    /// <summary>Waits for typed input to land, if any is in flight.</summary>
-    /// <param name="session">The session, whose flag is cleared once drained.</param>
-    /// <param name="windows">Used to wait on the application.</param>
-    /// <param name="log">Records whether the wait actually ran. Optional.</param>
-    /// <remarks>
-    /// <para>
-    /// <b>Measured 2026-08-11, three candidate primitives, one survivor.</b>
-    /// A synchronous <c>WM_NULL</c> is delivered AHEAD of queued input, so it
-    /// returns at once and proves only that the thread is responsive.
-    /// <c>AttachThreadInput</c> plus <c>GetQueueStatus</c> reported zero pending
-    /// keys while 51 were still queued. <c>WaitForInputIdle</c> returned with all
-    /// 52 characters present, five times out of five, waiting 46-195 ms.
-    /// </para>
-    /// <para>
-    /// <b>It is not free, which is why it is here and not in <c>/keys</c>.</b>
-    /// Typing stays at ~4 ms, a session that never types never waits, and the
-    /// cost lands once per typing burst on the read that depends on it. For
-    /// comparison, WinAppDriver spends ~2500 ms typing the same 52 characters
-    /// and still races.
-    /// </para>
-    /// </remarks>
-    private static void DrainTypedInput(
-        DriverSession session, IWindowLocator windows, ITerminationLog? log)
-    {
-        if (!session.InputPending)
-        {
-            return;
-        }
-
-        // CAPTURED BEFORE CLEARING, because the floor below is measured from it.
-        long? dispatchedAt = session.DispatchedAt;
-
-        // Cleared either way. A wait that fails - no message loop, or a process
-        // this driver may not open - must not make every later read retry it.
-        session.InputPending = false;
-
-        long started = Stopwatch.GetTimestamp();
-        bool waited = windows.WaitForInputProcessed(session.WindowHandle);
-
-        // AND THEN A FLOOR, BECAUSE THE WAIT ABOVE ANSWERS THE WRONG QUESTION
-        // WHEN THE INPUT HAS NOT BEEN DELIVERED YET.
-        //
-        // WaitForInputIdle asks "is this process waiting for input". Injected
-        // input sits in the SYSTEM queue for a moment before it reaches the
-        // application's, and during that moment the application is idle and the
-        // wait returns in under a millisecond - measured repeatedly as
-        // "drain -> waited 0.8 ms" immediately before a read of the old value.
-        //
-        // MEASURED per-test on the guest against the reference:
-        //
-        //                            WinAppDriver   this driver
-        //   MouseClick                     3.90 s       0.067 s   fails
-        //   ClickElement                   8.17 s       0.29 s    fails
-        //   GetElementDisplayedState       9.64 s       1.51 s    fails
-        //
-        // Those tests carry no synchronisation: they click and read. The
-        // reference passes because a single find costs it ~1070 ms, so the
-        // application has caught up by accident. Answering before the
-        // application has reacted is reporting the wrong state, and being fast
-        // is no defence.
-        //
-        // Measured from when the input was DISPATCHED rather than from here, so
-        // a client that does other work in between pays nothing, and the floor
-        // is spent once per input rather than once per read.
-        if (dispatchedAt is long dispatched)
-        {
-            TimeSpan since = Stopwatch.GetElapsedTime(dispatched);
-            TimeSpan remaining = ReactionFloor - since;
-
-            if (remaining > TimeSpan.Zero)
-            {
-                Thread.Sleep(remaining);
-            }
-        }
-
-        // THE RESULT IS NO LONGER DISCARDED, and that was a real defect by this
-        // repository's own rule: a return-value error signal is checked before
-        // reading dependent state.
-        //
-        // It still does not change what the route DOES - refusing the read
-        // outright is worse than a racy answer, and the reference does not refuse
-        // either. What changes is that a drain which never ran now says so.
-        // Measured 2026-08-12: the SendKeysToElement_* family reads text 0.9 ms
-        // after the keystroke that should have changed it, and nothing in the
-        // transcript could distinguish "waited" from "never ran".
-        //
-        // Read `waited` and the elapsed time TOGETHER. True at 0 ms is a wait
-        // that ran and answered instantly - a different problem from false.
-        log?.InputDrained(waited, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-    }
-
-    /// <summary>The least time an application gets to react before it is read.</summary>
-    /// <remarks>
-    /// Bounded and small on the owner's standing direction - a wait is
-    /// acceptable "as long as they stay small... a second or less" and
-    /// especially where it matches what a client already sees from
-    /// WinAppDriver. This is far under that, and far under the reference's own
-    /// incidental delay of seconds per test.
-    /// </remarks>
-    private static readonly TimeSpan ReactionFloor = TimeSpan.FromMilliseconds(
-        int.TryParse(Environment.GetEnvironmentVariable("WDC_REACTION_MS"), out int sweep)
-            ? sweep
-            : 120);
 
     private static ElementRead<ElementLocation> ReadLocation(
         IElementInspector inspector, nint window, string elementId)

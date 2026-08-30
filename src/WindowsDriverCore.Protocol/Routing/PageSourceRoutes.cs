@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using WindowsDriverCore.Automation;
+using WindowsDriverCore.Diagnostics;
+using WindowsDriverCore.Platform.Windows;
 using WindowsDriverCore.Protocol.Errors;
 using WindowsDriverCore.Protocol.Responses;
 using WindowsDriverCore.Protocol.Sessions;
@@ -26,9 +28,18 @@ public static class PageSourceRoutes
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapGet("/session/{sessionId}/source", (HttpContext context, IPageSourceReader source) =>
+        app.MapGet("/session/{sessionId}/source",
+            (HttpContext context,
+             IPageSourceReader source,
+             IWindowLocator windows,
+             ITerminationLog? log) =>
         {
             DriverSession session = context.GetSession();
+
+            // ANY interaction changes the tree, and the source is a snapshot of
+            // it. See PendingInput: a read that races the application diverges
+            // from the reference, which wins the same race by being slow.
+            PendingInput.Drain(session, windows, log);
 
             string? document = source.Source(session.WindowHandle);
 
