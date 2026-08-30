@@ -275,4 +275,54 @@ public sealed class NavigationRouteTests : IDisposable
 
         _keyboard.DidNotReceive().Type(Arg.Any<string>());
     }
+
+    /// <summary>The gesture is recorded as outstanding input.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Every other route that dispatches input records it, and this one did
+    /// not.</b> <c>ActionRoutes</c>, <c>AlertRoutes</c>,
+    /// <c>ElementActionRoutes</c>, <c>ExecuteRoutes</c>, <c>KeyboardRoutes</c>,
+    /// <c>MouseRoutes</c> and <c>TouchRoutes</c> all set <c>InputPending</c>
+    /// after dispatching. Navigation only ever CONSUMED the flag — it waited for
+    /// somebody else's input before typing and left its own unaccounted for.
+    /// </para>
+    /// <para>
+    /// The consequence is a read-after-write with nothing to wait on: a client
+    /// that navigates and then reads is racing a gesture the driver knows it
+    /// sent.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task Back_RecordsItsOwnGesture_SoALaterReadCanWaitForIt()
+    {
+        string sessionId = await NewSession();
+
+        await Navigate(sessionId, "back");
+
+        _factory.Services.GetRequiredService<ISessionStore>()
+            .Find(sessionId)!.InputPending
+            .ShouldBeTrue("the gesture was dispatched and nothing has consumed it");
+    }
+
+    /// <summary>A gesture the system refused is not recorded.</summary>
+    /// <remarks>
+    /// <b>The control.</b> Setting the flag unconditionally would pass the test
+    /// above and make every later read wait for input that was never sent —
+    /// paying the drain's cost on a path where there is nothing to drain, which
+    /// is the one thing <c>Back_WithNothingOutstanding_DoesNotWait</c> exists to
+    /// prevent.
+    /// </remarks>
+    [Test]
+    public async Task AGestureTheSystemRefused_IsNotRecorded()
+    {
+        string sessionId = await NewSession();
+
+        _keyboard.Type(Arg.Any<string>()).Returns(false);
+
+        await Navigate(sessionId, "back");
+
+        _factory.Services.GetRequiredService<ISessionStore>()
+            .Find(sessionId)!.InputPending
+            .ShouldBeFalse("nothing was dispatched, so nothing is outstanding");
+    }
 }

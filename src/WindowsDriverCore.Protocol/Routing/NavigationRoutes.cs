@@ -143,6 +143,23 @@ public static class NavigationRoutes
                         statusCode: WebDriverFault.UnknownError.HttpStatus);
                 }
 
+                // RECORDED, LIKE EVERY OTHER ROUTE THAT DISPATCHES INPUT, and
+                // this one was the exception. ActionRoutes, AlertRoutes,
+                // ElementActionRoutes, ExecuteRoutes, KeyboardRoutes,
+                // MouseRoutes and TouchRoutes all set this after dispatching;
+                // navigation only ever CONSUMED it, waiting for somebody else's
+                // input before typing and leaving its own unaccounted for.
+                //
+                // The gesture is in flight, not finished. A client that
+                // navigates and then reads was racing a keystroke the driver
+                // knew it had sent, with nothing recorded for the read to wait
+                // on.
+                //
+                // Set only on the path where Type SUCCEEDED - a refused gesture
+                // leaves nothing outstanding, and marking it would make every
+                // later read pay the drain for input that was never sent.
+                session.InputPending = true;
+
                 return Results.Json(JsonWireResponse.ForSessionVoid(session.Id));
             }).RequiresSession();
     }
