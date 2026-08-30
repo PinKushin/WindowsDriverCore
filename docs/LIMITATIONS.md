@@ -5039,3 +5039,39 @@ list is unchanged in character.
 The drift measurement is a magnitude and it moved by an order of magnitude, on
 ten repetitions of the gesture alone. The suite runs are a confirmation, not the
 evidence.
+
+## OPEN: window ownership and process ownership are not the same thing
+
+**Found alongside the single-instance leak, and not fixed by the same change.**
+
+The ownership transfer closes the application a session started, once, when the
+last session using its PROCESS goes. That is right for Calculator and Alarms,
+where one process means one window.
+
+**It is not enough for File Explorer.** Measured over a full run: 9 launches, 2
+distinct process ids, 1 terminate — and the harness reports closing **5 leftover
+Explorer windows** after every run. Each Explorer session opens a NEW WINDOW in
+the SAME long-running shell process, so:
+
+- ownership is tracked per process, and there is only one process
+- the resource that needs cleaning up is per window, and there are nine
+
+`ApplicationTerminator` already does the right thing when it is called — it posts
+`WM_CLOSE` to the window and explicitly refuses to kill the shell, with the
+reasoning recorded at the call site. The gap is that it is **only called when the
+session owns the PROCESS**, so eight of nine Explorer windows are never offered
+to it.
+
+**The shape of the fix, not yet taken:** separate the two questions. A session
+that LAUNCHED closes the window it opened, on delete, regardless of process
+ownership; the process is terminated only when this driver started it and nobody
+else is using it. An ATTACHED session closes nothing, because the window was
+already there.
+
+**Why it is not taken yet.** `NavigateBack_SystemApp` fails 3 of 3 rather than
+intermittently, which is the signature of a defect rather than of contamination —
+so the leak is probably not its cause, and fixing the leak to fix that test would
+be a remedy chosen before the diagnosis.
+`tools/vm/probe-how-does-back-finish.ps1` samples Explorer's title on a schedule
+after `/back` and separates a race from a gesture that never landed. Run it
+first.
