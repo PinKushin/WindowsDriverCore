@@ -115,3 +115,44 @@ about a running desktop that cannot be verified by looking at it is a question,
 not a statement.** A rebuild should assume the same and put assertions where the
 eye currently is — a teardown that fails when a close is refused, a leak test
 that fails when a subject outlives its session.
+
+---
+
+## The rule that supersedes "kill by id, not by name"
+
+**The owner, closing out 2026-08-30:**
+
+> "applifetime shouldnt be how we are tearing down anything, that is the fall
+> back the driver should be the only thing tearing down"
+
+**Correct, and it makes tonight's fix a waypoint rather than a destination.**
+Converting `KillAll(name)` to `KillProcess(id)` stops a fixture destroying the
+developer's application and other fixtures' instances. It does not address the
+larger fault: **a test should not be ending applications at all.**
+
+The driver opens the application through `POST /session` and closes it through
+`DELETE /session`. That is the shipped teardown path, it is the one the
+compatibility suite exercises, and it is the one that has to be correct. A test
+that reaches around it to `Process.Kill` is:
+
+- not testing the thing that ships, and
+- hiding every defect in the real teardown path, because the application dies
+  either way.
+
+**Which is exactly how tonight's defects survived.** The driver had no shutdown
+path at all — stop `WindowsDriverCore.exe` and every application it launched
+keeps running — and no local test could see it, because the tests were killing
+the applications themselves.
+
+**So `AppLifetime` is a fallback and should look like one:**
+
+| | |
+|---|---|
+| primary | `DELETE /session` — the driver closes what the driver opened |
+| fallback | `AppLifetime.KillProcess`, for a subject the driver never owned |
+| never | killing by process name, at any point |
+| never | killing anything at the START of a test |
+
+A suite in that shape would have failed loudly on the missing shutdown path, on
+the refused `WM_CLOSE`, and on the ownership that was dropped instead of handed
+on — all three of which were found on the guest instead, days later.
