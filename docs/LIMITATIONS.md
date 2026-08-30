@@ -5075,3 +5075,37 @@ be a remedy chosen before the diagnosis.
 `tools/vm/probe-how-does-back-finish.ps1` samples Explorer's title on a schedule
 after `/back` and separates a race from a gesture that never landed. Run it
 first.
+
+### Correction: "276, 276, 276 with zero variance" was a stable COUNT, not a stable run
+
+**Written the same day as the claim above, which overstated it.**
+
+Three runs at `2c2fb51` each scored 276. That is 14 failures, and the
+composition is forced by the tally:
+
+```
+14 failures  =  9 environmental  +  5 ours
+ 5 ours      =  4 that fail every run  +  EXACTLY ONE flapper
+```
+
+`TouchLongTap` failed in two of the three runs and `MouseDoubleClick` in the
+third. **One flapper per run, a different one each time.** The score was
+identical because the flake happened to contribute one failure each time, not
+because it had gone.
+
+**This file already warns about exactly this** — subtracting two scores reads a
+run that lost two tests and gained two as "no change" — and the claim above made
+that mistake with a repeated score instead of a subtraction. A count is not a
+composition, and three equal counts are not three equal runs.
+
+**What survives the correction**, because it never rested on the count:
+
+- `Touch_Scroll_Vertical` and `Pen_Scroll_Vertical` failed **0 of 3** after 4 of 8
+  and 3 of 8. Those are names, not a total.
+- The drift measurement is a magnitude and moved by an order of magnitude:
+  5–15 items to exactly 5, over ten repetitions of the gesture alone.
+
+**What does not survive:** any claim that the flake is gone. Two flappers remain
+at that commit, and the teardown fix that landed afterwards targets
+`TouchDoubleTap`, which is a STABLE failure — so it is not a flake fix at all,
+whatever else it is worth.
