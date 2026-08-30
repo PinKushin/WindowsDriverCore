@@ -112,6 +112,54 @@ public sealed class UiaElementFinder : IElementFinder
             return FindResult.Failed(FindFailure.NoSuchWindow);
         }
 
+        // A RUNTIME ID IS ABSOLUTE, so a nested search by one starts at the
+        // window rather than inside the container.
+        //
+        // Every other locator is a DESCRIPTION - "a button named Save" - and
+        // scoping it to a container is the whole point of a nested find. A
+        // runtime id is not a description; it identifies exactly one element on
+        // the machine. Scoping it can only ever return that element or nothing,
+        // so the scope adds no meaning and only removes answers.
+        //
+        // MEASURED 2026-08-30 on the guest. FindNestedElement_ByRuntimeId finds
+        // AddAlarmButton, then asks AlarmButton to find it again by id:
+        //
+        //   find AutomationId='AddAlarmButton' -> 1 match     42.4720086.4.1558
+        //   find RuntimeId='42.4720086.4.1558' -> 0 match(es)  <- from ...1537
+        //   POST /element/42.4720086.4.1537/element -> 404
+        //
+        // The two are cousins, not ancestor and descendant, so the scoped search
+        // was CORRECT to find nothing - and useless. The caller already held the
+        // element and was asking for it back.
+        //
+        // Not a case of copying the reference's defect. WinAppDriver passes this
+        // test, but the reason to change is that scoping an absolute identifier
+        // is meaningless on its own terms.
+        if (kind == LocatorKind.RuntimeId && container.Element is not null)
+        {
+            IUIAutomationElement? window = null;
+
+            try
+            {
+                window = _automation.ElementFromHandle(scope.Window);
+            }
+            catch (COMException)
+            {
+                // The window went while we were deciding. Answered as such
+                // rather than falling back to the container search, because a
+                // find that quietly changes root on an error is a find whose
+                // result cannot be reasoned about.
+                return FindResult.Failed(FindFailure.NoSuchWindow);
+            }
+
+            if (window is null)
+            {
+                return FindResult.Failed(FindFailure.NoSuchWindow);
+            }
+
+            root = window;
+        }
+
         if (kind == LocatorKind.XPath)
         {
             // Rooted at whatever the scope resolved to, so a nested XPath find
