@@ -35,11 +35,18 @@ than 136, so the window really did move, which is what a menu item being
 *activated* between the down point and the up point looks like. See
 DECISIONS §9.
 
-**Two probes are written and not yet run**, both aimed at the stable five:
-`tools/vm/probe-how-does-back-finish.ps1` samples Explorer's title on a schedule
-after `/back` to tell a race apart from a gesture that never landed, and
-`tools/vm/probe-what-gap-makes-a-double-tap.ps1` sweeps the separation between
-two injected taps, since `/touch/doubleclick` currently sends them back to back.
+**FOUR probes are written and none has been run** — one per stable failure.
+They are the next action:
+
+| probe | question |
+|---|---|
+| `probe-how-does-back-finish.ps1` | samples Explorer's title on a schedule after `/back`, to tell a race apart from a gesture that never landed |
+| `probe-what-gap-makes-a-double-tap.ps1` | sweeps the separation between two injected taps; `/touch/doubleclick` sends them back to back |
+| `probe-does-a-long-press-raise-the-menu.ps1` | the long press does not raise the menu a right-click raises fine; both drivers, with positive and negative controls |
+| `probe-when-does-a-looping-selector-settle.ps1` | samples the hour selector after clicking 8, to tell "arrives late" from "landed on 7" |
+
+Each forces or asserts its starting state, after one earlier probe computed its
+verdict as an absolute and printed the exact opposite of its own raw values.
 
 ---
 
@@ -71,21 +78,15 @@ isolation, 6/6). The fourth was measured rather than reasoned.
 
 ## 1. The first thing to do, before writing any code
 
-**Commits are unmeasured.** The last full guest run was `b207b92` at
-**268/290**. Since then, and never scored:
+**Nothing is waiting to be measured.** `aa13c60` was run three times and HEAD
+adds only docs, probes, tests and comments on top of it. The next action is to
+RUN THE FOUR PROBES above, not to score another commit.
 
-```
-758f9ec  flick speed + W3C request shapes   expect: nothing in the suite -
-                                            it is a Selenium 3 client and
-                                            cannot send these
-834cd17  scroll paced by SPEED              expect: TouchScrollOnElement_Vertical
-```
+**When you do score one**, note that the runner now prints every failing name
+with its message, so there is no reason to open a PSDirect session to the guest
+mid-run — doing that killed a runner and cost a run (DECISIONS §10).
 
-Earlier commits now confirmed by the `b207b92` run: the desktop-title fix landed
-(`CreateSession_Desktop`, `GetTitle_Desktop` both recovered), and the mouse-drag
-path did NOT fix `MouseDownMoveUp`, which is still failing and still unexplained.
-
-So the first action is one full run and one comparison:
+The historical instructions below still describe how to run and compare:
 
 ```powershell
 # from the repo root, with the VM started
@@ -108,20 +109,27 @@ swamp a two-test gain.
 | | score | commit |
 |---|---|---|
 | WinAppDriver 1.2.1 (the reference) | **281/290** | `044b71c8` |
-| this driver, last measured | **268/290** | `b207b92` |
-| this driver, best measured | **269/290** | `8dfd26f` |
-| **backlog** | **13 named tests** | |
+| this driver, last measured | **275–277/290** | `aa13c60`, three runs |
+| this driver, best measured | **277/290** | `aa13c60` |
+| **backlog** | **7 named tests** | 4 stable, 3 intermittent |
 
-`268 + 13 = 281` closes exactly, which is the check that two runs are
-comparable. `Compare-Runs.ps1` prints it and says so when it does not close.
+`277 + 4 = 281` closes exactly on the best run, which is the check that two runs
+are comparable — the three intermittent ones are what separate 275 from 277. `Compare-Runs.ps1` prints it and says so when it does not close.
 
 Conditions for every number above: Windows 10 19045 guest, Alarms & Clock
 `10.1906.2182.0`, offline, static 4 GB, cold, **no store reset, no warm step**.
 A score quoted without those is not comparable to these.
 
-### The 13, and what is known about each
+### The 13 as they stood on 2026-08-29 — SUPERSEDED, kept for the notes
 
-Three entries below are now resolved and kept for the record:
+**Nine of these thirteen now pass.** The table is retained because the per-test
+notes are still the best record of what was tried, but the STATUS column is
+stale: the live list is the seven at the top of this file. Resolved since:
+`MouseClick`, `MouseDoubleClick`, `MouseDownMoveUp` (one defect — DECISIONS §9),
+`FindNestedElement_ByRuntimeId`, `MiscellaneousSessionError_StaleSessionId`,
+`TouchScrollOnElement_Vertical`, `GetElementDisplayedState`, plus the two below.
+
+Three entries below were already resolved when this table was written:
 `CreateSession_Desktop` and `GetTitle_Desktop` PASSED at `b207b92`, and
 `TouchScrollOnElement_Vertical` has a measured cause and a fix awaiting a run.
 
