@@ -56,6 +56,27 @@ public sealed record DriverSession(
     /// </remarks>
     public nint WindowHandle { get; set; } = WindowHandle;
 
+    /// <summary>
+    /// Whether this session may end the application, which can be handed on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Mutable because ownership must OUTLIVE the session that holds it.</b>
+    /// A single-instance application returns the process that is already running,
+    /// so only the first session to launch it owns it — and when that session
+    /// quits while another still addresses the same process, the delete route
+    /// hands ownership to one of the survivors rather than terminating.
+    /// </para>
+    /// <para>
+    /// <b>Measured 2026-08-30:</b> without this, a full compatibility run
+    /// launched Calculator nineteen times across four processes and closed two.
+    /// The application survived across test classes carrying the previous
+    /// class's state, which is the contamination behind <c>TouchDoubleTap</c> —
+    /// a test that passes when its class runs alone.
+    /// </para>
+    /// </remarks>
+    public bool OwnsApplication { get; set; } = OwnsApplication;
+
     /// <summary>Every window this session has opened, newest last.</summary>
     /// <remarks>
     /// <para>

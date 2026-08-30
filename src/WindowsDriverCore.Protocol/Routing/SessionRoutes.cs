@@ -174,10 +174,39 @@ public static class SessionRoutes
             // the element route's implicit release exists to prevent.
             keyboard?.ReleaseHeld(removed.Modifiers);
 
-            bool anotherSessionIsUsingIt = sessions.All()
-                .Any(other => other.ProcessId == removed.ProcessId);
+            DriverSession? stillUsingIt = sessions.All()
+                .FirstOrDefault(other => other.ProcessId == removed.ProcessId);
 
-            if (removed.OwnsApplication && !anotherSessionIsUsingIt)
+            if (removed.OwnsApplication && stillUsingIt is not null)
+            {
+                // OWNERSHIP IS HANDED ON, NOT DROPPED, and dropping it was a
+                // leak rather than a safety measure.
+                //
+                // The comment here used to say "the last session out closes it,
+                // so nothing leaks either". That is true only when the last one
+                // out is the OWNER. A single-instance application returns the
+                // process already running, so a second session on it never owns
+                // it — and if the owner quits first, this branch declined to
+                // terminate and the survivor could not:
+                //
+                //   S1 launches Calculator        owns it
+                //   S2 opens on the same process  does not own it
+                //   S1 quits   -> another session shares the pid -> no terminate
+                //   S2 quits   -> does not own it                -> no terminate
+                //
+                // MEASURED over a full run: Calculator launched 19 times across
+                // 4 processes, TERMINATED TWICE. Notepad, which is not
+                // single-instance, was 15 launches, 15 processes, 14 terminated.
+                // The application therefore survived across test classes
+                // carrying the previous class's state.
+                //
+                // ONE heir, not all of them. Marking every remaining session
+                // would close the application on the next delete while others
+                // still use it, which is the four-test regression the
+                // process-sharing check exists to prevent.
+                stillUsingIt.OwnsApplication = true;
+            }
+            else if (removed.OwnsApplication)
             {
                 terminator.Terminate(removed.ProcessId, removed.WindowHandle);
             }
