@@ -424,6 +424,30 @@ if (Test-Path `$path) {
         `$r = `$x.TestRun.Results.UnitTestResult | Where-Object { `$_.testName -eq `$n }
         '  {0,-44} {1}' -f `$n, `$(if (`$r) { `$r.outcome } else { 'ABSENT' })
     }
+
+    # EVERY FAILING NAME, WITH ITS MESSAGE, PRINTED BY THE RUNNER ITSELF.
+    #
+    # Added 2026-08-30 after asking for these DURING a -Repeat cost a run. An
+    # Invoke-Command against the guest while this script holds its own PSDirect
+    # session kills the session with "The Hyper-V socket target process has
+    # ended" - and the guest keeps going, so the run is not lost, only the
+    # host's view of it. The obvious lesson is not to query mid-run; the better
+    # one is to remove the reason to.
+    #
+    # The names are the durable part of a run. A score cannot be attributed to a
+    # commit - the suite has a several-test band - and subtracting two scores
+    # reads a run that lost two tests and gained two as "no change".
+    #
+    # The MESSAGE is here because a test name has lied about its own cause
+    # twice: MouseDownMoveUp failing on the DIRECTION assertion rather than the
+    # movement one is what unmasked MouseDoubleClick as the same defect.
+    '=== every failure, by name ==='
+    `$failed = @(`$x.TestRun.Results.UnitTestResult | Where-Object { `$_.outcome -ne 'Passed' })
+    foreach (`$r in `$failed | Sort-Object testName) {
+        `$message = (`$r.Output.ErrorInfo.Message -replace "\r?\n", ' ') -replace '\s+', ' '
+        if (`$message.Length -gt 110) { `$message = `$message.Substring(0, 110) + '...' }
+        '  {0,-46} {1}' -f `$r.testName, `$message
+    }
 }
 'run complete'
 "@

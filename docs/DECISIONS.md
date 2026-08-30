@@ -610,3 +610,42 @@ ends the menu loop by itself. Correct and broken predicted the same observation.
 The condition was wrong, not the assertion; the WPF subject's `Invoke` runs on
 the dispatcher and sends the menu loop nothing, which is where the defect
 actually lives.
+
+## 10. Do not query the guest while a run is in flight — and make that unnecessary
+
+**2026-08-30. Not an owner decision. Recorded because I caused a lost
+measurement and the failure message points at the wrong thing.**
+
+During a `-Repeat 3` run I repeatedly opened PSDirect sessions to the guest to
+read TRX files and transcripts. The third run's runner died:
+
+```
+[Win10-Baseline] The background process reported an error with the following
+message: "The Hyper-V socket target process has ended."
+```
+
+**That message reads like the guest crashed. It did not.** `vstest.console` was
+still running minutes later and wrote its TRX normally. What ended was the
+runner's own channel to the guest, killed by a competing session. The run
+survived; the host's view of it did not, and the wrapper exited 1.
+
+**The rule is the obvious one — leave the guest alone while it is running.** The
+useful part is the second half.
+
+**Why I was querying at all: the runner printed a SCORE and not the failing
+NAMES.** The names are the durable part of a run. A score cannot be attributed to
+a commit, because the suite has a several-test band; and subtracting two scores
+reads a run that lost two tests and gained two as "no change". So every run
+ended with me going to fetch the one thing that actually carries information.
+
+**So the runner now prints every failing name with its message.** Four runs'
+worth of names should cost zero extra queries; asking per run cost a run.
+
+The message is included because **a test name has lied about its own cause
+twice**. `MouseDownMoveUp` failing on line 137 — the *direction* assertion —
+rather than line 136 is what revealed it and `MouseDoubleClick` as one defect
+rather than two. A list of names without messages would not have shown that.
+
+**This is not covered by the machine-wide lock**, and should not be. The lock is
+about the host desktop; the guest has its own, which is exactly why these runs do
+not take it. This is a channel, not a desktop.
