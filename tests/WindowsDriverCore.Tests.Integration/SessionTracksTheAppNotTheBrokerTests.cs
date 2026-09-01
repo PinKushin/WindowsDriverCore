@@ -60,16 +60,6 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class SessionTracksTheAppNotTheBrokerTests
 {
-    /// <summary>Substring that matches Calculator on BOTH Windows versions.</summary>
-    /// <remarks>
-    /// Windows 10 names the process <c>Calculator</c> and Windows 11 names it
-    /// <c>CalculatorApp</c>. <c>AppLifetime.KillAll</c> matches on substring, so
-    /// "CalculatorApp" matches NOTHING on the guest — a cleanup that silently does
-    /// nothing, which turns a cold-launch measurement into a re-attach without
-    /// saying so. Measured 2026-08-11: a "cold" launch there reported 616 ms and an
-    /// ApplicationFrameWindow because the application had never been closed.
-    /// </remarks>
-    private const string CalculatorProcess = "Calculator";
 
     private const string BrokerProcess = "ApplicationFrameHost";
     private const string PackagedApplication =
@@ -115,7 +105,7 @@ public sealed class SessionTracksTheAppNotTheBrokerTests
         finally
         {
             new ApplicationTerminator().Terminate(tracked, window: 0);
-            AppLifetime.KillAll(CalculatorProcess);
+            AppLifetime.KillProcess(launched.Application?.ProcessId ?? 0);
         }
     }
 
@@ -209,7 +199,10 @@ public sealed class SessionTracksTheAppNotTheBrokerTests
         }
         finally
         {
-            AppLifetime.KillAll(CalculatorProcess);
+            // `first`, not `second`: second is declared inside the try and is out
+            // of scope here — and Calculator is single-instance, so both name the same
+            // process anyway.
+            AppLifetime.KillProcess(first.Application?.ProcessId ?? 0);
         }
     }
 

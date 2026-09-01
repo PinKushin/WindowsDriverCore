@@ -44,16 +44,6 @@ namespace WindowsDriverCore.Tests.Integration;
 [NonParallelizable]
 public sealed class PackagedAppAttachesToTheFrameTests
 {
-    /// <summary>Substring that matches Calculator on BOTH Windows versions.</summary>
-    /// <remarks>
-    /// Windows 10 names the process <c>Calculator</c> and Windows 11 names it
-    /// <c>CalculatorApp</c>. <c>AppLifetime.KillAll</c> matches on substring, so
-    /// "CalculatorApp" matches NOTHING on the guest — a cleanup that silently does
-    /// nothing, which turns a cold-launch measurement into a re-attach without
-    /// saying so. Measured 2026-08-11: a "cold" launch there reported 616 ms and an
-    /// ApplicationFrameWindow because the application had never been closed.
-    /// </remarks>
-    private const string CalculatorProcess = "Calculator";
 
     private const string FrameWindowClass = "ApplicationFrameWindow";
     private const string CoreWindowClass = "Windows.UI.Core.CoreWindow";
@@ -117,8 +107,10 @@ public sealed class PackagedAppAttachesToTheFrameTests
         }
         finally
         {
+            // The driver's own teardown, and nothing after it. A KillAll here
+            // was belt-and-braces that ended the developer's Calculator too - and
+            // it hid whether the line above actually worked.
             new ApplicationTerminator().Terminate(launched.Application.ProcessId, launched.Application.WindowHandle);
-            AppLifetime.KillAll(CalculatorProcess);
         }
     }
 
