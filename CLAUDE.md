@@ -216,13 +216,35 @@ the build is clean, its tests are green, and its behaviour is mutation-verified.
 
 ## Commands
 
-```powershell
-# Build and test
-dotnet build WindowsDriverCore.slnx
-dotnet test WindowsDriverCore.slnx
+| I want to | Command |
+|---|---|
+| Build | `dotnet build WindowsDriverCore.slnx` |
+| Test (takes the lock) | `pwsh ../run-exclusive.ps1 -TimeoutMinutes 45 dotnet test WindowsDriverCore.slnx --filter "TestCategory!=Comparison"` |
+| Full test incl. comparison | same, without the filter (6+ minutes slower) |
+| Run the server | `dotnet run --project src/WindowsDriverCore.Host` |
+| Mutation testing | `pwsh ../run-exclusive.ps1 -TimeoutMinutes 45 dotnet stryker` |
+| Compatibility scoreboard | see below — runs in the VM, does **not** take the lock |
+| Clean up orphans | `Get-Process CalculatorApp,Notepad,WinAppDriver ... | Stop-Process -Force` |
 
-# Skip the slow WinAppDriver comparison (6+ minutes)
-dotnet test WindowsDriverCore.slnx --filter "TestCategory!=Comparison"
+**The local suite takes the machine-wide lock — all of it, not only the `Desktop`
+category.** The integration tests drive real windows and the UIA tree, so another agent's
+foreground work fails them intermittently, which looks exactly like a flaky test. Owner
+correction, DECISIONS 6c: *"you didnt run exclusive so you got stepped on in that last
+run"*. **The lock is also the diagnosis** — it prints the holder's PID and command line
+while waiting, so "why did that fail once" is answered by the wait banner rather than by
+an investigation.
+
+The compatibility suite is the exception: it runs inside the guest VM, which has its own
+desktop, so locking it would serialise runs that can never conflict.
+
+```powershell
+# Build
+dotnet build WindowsDriverCore.slnx
+
+# Everything, under the lock. Drop the filter to include the slow WinAppDriver
+# comparison (6+ minutes).
+pwsh ../run-exclusive.ps1 -TimeoutMinutes 45 `
+  dotnet test WindowsDriverCore.slnx --filter "TestCategory!=Comparison"
 
 # Run the server
 dotnet run --project src/WindowsDriverCore.Host
@@ -232,24 +254,6 @@ dotnet run --project src/WindowsDriverCore.Host
 # switch, because the argument grammar is a compatibility contract.
 $env:WINDOWSDRIVERCORE_LOG = "C:\temp\driver.log"
 
-# Requests at the margin, the work they caused indented under them:
-#
-#   ...36.030Z   launch 'Microsoft.WindowsCalculator...' -> pid 34112 window 0x2A204C6 760.7 ms
-#   ...36.038Z POST /session -> 200 jwp 0 776.9 ms
-#   ...36.121Z   find AutomationId='num5Button' -> 1 match(es) 55.4 ms
-#   ...36.123Z POST /session/{id}/element -> 200 jwp 0 79.0 ms
-#   ...36.183Z   Click -> Performed via Invoke 49.2 ms
-#   ...36.226Z   find AutomationId='NormalOutput' -> 0 match(es) 35.5 ms
-#   ...36.234Z POST /session/{id}/element -> 404 jwp 7 44.2 ms
-#
-# Read three things off that: the find cost 55.4 of the request's 79.0 ms, so
-# 23.6 ms is our own overhead; the click went via Invoke rather than an ancestor
-# climb or the mouse; and NormalOutput RAN and matched nothing, which is a fact
-# about the application, where a search that could not run reads "FAILED: ...".
-#
-# Locators are logged. SetValue and SendKeys arguments never are — that is where
-# a password appears, and IInteractionLog has no parameter that could take one.
-
 # WinAppDriver-compatible argument forms
 WindowsDriverCore.exe                       # 127.0.0.1:4723
 WindowsDriverCore.exe 4727                  # port only
@@ -258,15 +262,38 @@ WindowsDriverCore.exe 10.0.0.10 4723/wd/hub # base path rides on the PORT argume
 WindowsDriverCore.exe * 4723                # all interfaces
 
 # Mutation testing (reports; break threshold is 0 until it earns raising)
-dotnet stryker
+pwsh ../run-exclusive.ps1 -TimeoutMinutes 45 dotnet stryker
 
-# Compatibility suite against a running server — the scoreboard, kept UNMODIFIED
+# Compatibility suite against a running server — the scoreboard, kept UNMODIFIED.
+# Runs in the guest VM; no lock.
 & "F:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" `
   "C:\Users\pinku\source\repos\PinKushin\WinAppDriver\Tests\WebDriverAPI\bin\Debug\WebDriverAPI.dll"
 
 # Clean up orphaned test apps
 Get-Process CalculatorApp,Notepad,WinAppDriver -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
+
+### Reading the transcript
+
+Requests at the margin, the work they caused indented under them:
+
+```
+...36.030Z   launch 'Microsoft.WindowsCalculator...' -> pid 34112 window 0x2A204C6 760.7 ms
+...36.038Z POST /session -> 200 jwp 0 776.9 ms
+...36.121Z   find AutomationId='num5Button' -> 1 match(es) 55.4 ms
+...36.123Z POST /session/{id}/element -> 200 jwp 0 79.0 ms
+...36.183Z   Click -> Performed via Invoke 49.2 ms
+...36.226Z   find AutomationId='NormalOutput' -> 0 match(es) 35.5 ms
+...36.234Z POST /session/{id}/element -> 404 jwp 7 44.2 ms
+```
+
+Read three things off that: the find cost 55.4 of the request's 79.0 ms, so **23.6 ms is
+our own overhead**; the click went via **Invoke** rather than an ancestor climb or the
+mouse; and `NormalOutput` **RAN and matched nothing**, which is a fact about the
+application — where a search that could not run reads `FAILED: ...`.
+
+**Locators are logged. `SetValue` and `SendKeys` arguments never are** — that is where a
+password appears, and `IInteractionLog` has no parameter that could take one.
 
 ## Ground truth worth memorising
 
