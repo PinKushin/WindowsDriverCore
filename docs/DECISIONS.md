@@ -650,6 +650,54 @@ rather than two. A list of names without messages would not have shown that.
 about the host desktop; the guest has its own, which is exactly why these runs do
 not take it. This is a channel, not a desktop.
 
+## 12. Performance is a goal first: round trips dominate, not codegen
+
+**Standing architecture rule.** This driver exists to beat WinAppDriver on speed. The targets, in order:
+
+| Subject | Role | Measured |
+|---|---|---|
+| FlaUI, in-process | the floor — no transport | not yet |
+| This driver | floor + HTTP + our layering | ~33 ms per find |
+| WinAppDriver | the baseline to beat | ~1070 ms per find |
+
+**What that implies, concretely:**
+
+- **Round trips dominate, not codegen.** This is cross-process COM. A find that shows up in a benchmark needs `IUIAutomationCacheRequest` — fetch more per trip — or holding the element the caller already named.
+- **Raw COM interfaces, no managed wrappers.** `IUIAutomation` directly; no `System.Windows.Automation`, no `FlaUI.Core`. Each wrapper is a layer whose cost and behaviour you inherit.
+- **Deterministic COM lifetime.** `ComScope`, explicit `ReleaseComObject`, not finalizer roulette.
+- **Source-generated P/Invoke** (`LibraryImport`) where it marshals, `DllImport` where it will not.
+- **No hidden behaviour.** No implicit retries, no caching the caller did not ask for, no exception translation that loses the original. Keep a live handle against the element id the caller supplied.
+
+---
+
+## 13. Explicit types, composition, no static, zero warnings
+
+**Standing rules:**
+
+- **No `var`.** Explicit types everywhere, which also rules out anonymous types and forces every response to be a named record.
+- **Composition, not inheritance.** Interfaces are contracts for substitution; no base class carries logic; `sealed` on every concrete class.
+- **No static reachable from a route handler.** That is what made the previous implementation untestable. The automation layer does not know HTTP or JSON exist — enforced by `Automation` and `Platform` not referencing ASP.NET Core.
+- **Zero warnings.** `TreatWarningsAsErrors`, `AnalysisModeSecurity=All`.
+
+---
+
+## 14. Exclusive workloads take the machine-wide lock — UI tests and Stryker only
+
+See global CLAUDE.md "Exclusive workloads take the machine-wide lock" for the full rule and the why.
+
+**What takes the lock:** UI test suites (`TestCategory=Comparison` is the explicit marker) and mutation testing via Stryker. These drive the interactive desktop and contend for it.
+
+**What does not:** unit and integration tests, which contend for nothing and run freely in parallel.
+
+```powershell
+pwsh ../run-exclusive.ps1 -TimeoutMinutes 45 dotnet test WindowsDriverCore.slnx --filter "TestCategory!=Comparison"
+pwsh ../run-exclusive.ps1 -TimeoutMinutes 45 dotnet stryker
+```
+
+The lock prints the current holder's PID and command line while waiting, so "why did that fail once" is answered by the wait banner rather than by an investigation.
+
+---
+
 ## 11. Shared fixtures, and why constructing internals made them impossible
 
 **2026-08-30. The owner's direction, given more than once and deferred more than

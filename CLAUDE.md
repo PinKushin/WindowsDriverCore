@@ -140,73 +140,15 @@ under unmatched conditions.
 
 ## As close to the metal as possible — meaning fast
 
-Standing direction, and it is a performance goal first. Every layer between this
-code and UIA costs time, and the whole reason to write a driver rather than use
-one is that the layers WinAppDriver has are not paying for themselves.
+See `docs/DECISIONS.md` entry 12 for the performance goal, targets, and the concrete implications: round trips dominate, raw COM interfaces, deterministic lifetime, source-generated P/Invoke, and no hidden behaviour. 
 
-**The targets, in order:**
-
-| Subject | Role | Measured |
-|---|---|---|
-| FlaUI, in-process | **the floor** — what this costs with no transport at all | not yet |
-| This driver | floor + HTTP hop + our layering | ~33 ms per find |
-| WinAppDriver | **the baseline to beat** | ~1070 ms per find |
-
-Roughly 30x on the one measurement taken, under unmatched conditions. The gap
-between us and FlaUI is the optimization budget; closing on FlaUI is the goal,
-and it is what `bench/WindowsDriverCore.Benchmarks` exists to track.
-
-**What that implies, concretely:**
-
-- **Round trips dominate**, not codegen. This is cross-process COM. If a find
-  shows up in a benchmark the answer is `IUIAutomationCacheRequest` — fetch more
-  per trip — or holding the element the caller already named.
-
-  **Corrected 2026-08-08, and this rule previously said the opposite.** It read
-  "never a snapshot held *between* calls, which trades correctness for speed".
-  `HeldElementLivenessTests` measured the premise: an `IUIAutomationElement`
-  obtained without a cache request is a **live proxy, not a snapshot**. Every
-  `Current*` read crosses to the provider, its runtime id survives changes to the
-  tree, and once the element is destroyed it throws `UIA_E_ELEMENTNOTAVAILABLE`
-  rather than answering with the last value it saw.
-
-  So the ban never applied to element handles. What it correctly forbids is
-  holding a *cached property snapshot* (`FindAllBuildCache` results reused across
-  calls) or a stale *result set*. Holding a live handle to an element the client
-  has already been given an id for is neither.
-- **Raw COM interfaces, no managed wrappers.** `IUIAutomation` directly; no
-  `System.Windows.Automation`, no `FlaUI.Core`. Each wrapper is a layer whose
-  cost and behaviour you inherit and then have to explain.
-- **Deterministic COM lifetime.** `ComScope`, explicit `ReleaseComObject`, not
-  finalizer roulette. The previous implementation stored elements and released
-  none of them.
-- **Source-generated P/Invoke** (`LibraryImport`) where it marshals, `DllImport`
-  where it will not, with the reason at the declaration. `unsafe` is on in
-  `Platform` because that is what the generator emits.
-- **No hidden behaviour** — no implicit retries, no caching the caller did not
-  ask for, no exception translation that loses the original. This one is not a
-  speed argument, but it is what keeps the speed honest: a driver that quietly
-  caches *values* looks fast and is wrong. Keeping a live handle against the
-  element id the caller supplied is not that — the id **is** the caller asking
-  for that element, and every property still comes from the provider.
+Roughly 30x faster than WinAppDriver under unmatched conditions (~33ms vs ~1070ms per find). The gap to FlaUI in-process is the optimization budget; closing on FlaUI is the goal.
 
 ## Rules that are not negotiable
 
-- **Measure, do not infer.** Wire behaviour comes from
-  `tests/WindowsDriverCore.Tests.Protocol/Recordings/winappdriver-responses.json`,
-  captured from the real server. Do not hand-edit it; re-record it.
-- **Test-first.** A test that has never been red proves nothing. Where that is
-  not possible, verify by mutation — and make the mutation assert it applied and
-  compile cleanly, or a build failure will masquerade as an uncaught mutation.
-- **No `var`.** Explicit types everywhere, which also rules out anonymous types
-  and forces every response to be a named record.
-- **Composition, not inheritance.** Interfaces are contracts for substitution;
-  no base class carries logic; `sealed` on every concrete class.
-- **No static reachable from a route handler.** That is what made the previous
-  implementation untestable.
-- **The automation layer does not know HTTP or JSON exist.** Enforced by
-  `Automation` and `Platform` not referencing ASP.NET Core.
-- **Zero warnings.** `TreatWarningsAsErrors`, `AnalysisModeSecurity=All`.
+- **Measure, do not infer.** Wire behaviour comes from `tests/WindowsDriverCore.Tests.Protocol/Recordings/winappdriver-responses.json`, captured from the real server. Do not hand-edit it; re-record it.
+- **Test-first.** A test that has never been red proves nothing. Where that is not possible, verify by mutation — build must compile cleanly or a failure masquerades as uncaught mutation.
+- See `docs/DECISIONS.md` entries 13–14 for the non-negotiable code rules: explicit types (no `var`), composition over inheritance, no static in handlers, zero warnings, and the machine-wide lock for desktop work.
 
 ## Branching
 
@@ -226,16 +168,7 @@ the build is clean, its tests are green, and its behaviour is mutation-verified.
 | Compatibility scoreboard | see below — runs in the VM, does **not** take the lock |
 | Clean up orphans | `Get-Process CalculatorApp,Notepad,WinAppDriver ... | Stop-Process -Force` |
 
-**The local suite takes the machine-wide lock — all of it, not only the `Desktop`
-category.** The integration tests drive real windows and the UIA tree, so another agent's
-foreground work fails them intermittently, which looks exactly like a flaky test. Owner
-correction, DECISIONS 6c: *"you didnt run exclusive so you got stepped on in that last
-run"*. **The lock is also the diagnosis** — it prints the holder's PID and command line
-while waiting, so "why did that fail once" is answered by the wait banner rather than by
-an investigation.
-
-The compatibility suite is the exception: it runs inside the guest VM, which has its own
-desktop, so locking it would serialise runs that can never conflict.
+See `docs/DECISIONS.md` entry 14 for the exclusive lock rule. UI test suites (marked `TestCategory=Comparison`) and Stryker take the lock; unit and integration tests do not. The lock prints the holder's PID and command while waiting — the diagnosis is built in. The compatibility suite runs in the guest VM with its own desktop, so it does not take the lock.
 
 ```powershell
 # Build
