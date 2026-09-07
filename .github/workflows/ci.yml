@@ -135,6 +135,43 @@ jobs:
             throw "Only $passed tests actually ran, floor is $floor. A skip reads as a pass — find the fixture that stopped finding its subject."
           }
 
+      # C3 (CONVENTIONS-HARVEST): the ratchet above catches integration alone.
+      # Unit and protocol had no floor at all, so a --filter typo or a crashed
+      # host on either one exits 0 with nothing run and no reader would notice.
+      #
+      # STAGE 1: nonzero per lane only. The union total across all three is
+      # printed but not yet asserted to an exact number — a grep-based estimate
+      # of the suite size was unreliable (TestCase rows vs method rows do not
+      # map cleanly to test counts), and hardcoding a guessed total repeats the
+      # exact mistake TcgDex.CSharpSdk's C3 job made with 415. The real total
+      # this prints on the first green run becomes the baseline in a follow-up
+      # commit — measure, then assert, never the other way round.
+      - name: Verify no lane silently ran nothing
+        if: always()
+        shell: pwsh
+        run: |
+          $lanes = 'unit.trx', 'protocol.trx', 'integration.trx'
+          $total = 0
+          $failed = @()
+
+          foreach ($name in $lanes) {
+            $trx = Get-ChildItem -Recurse -Filter $name | Select-Object -First 1
+            if (-not $trx) { $failed += "$name`: file not found - the test step did not run"; continue }
+
+            [xml]$results = Get-Content $trx.FullName
+            $count = [int]$results.TestRun.ResultSummary.Counters.total
+            Write-Host "$name`: $count tests"
+
+            if ($count -eq 0) { $failed += "$name`: 0 tests - a --filter matched nothing, or the host crashed before running any" }
+            $total += $count
+          }
+
+          Write-Host "union total across all three lanes: $total"
+
+          if ($failed.Count -gt 0) {
+            throw ($failed -join "`n")
+          }
+
       # Orphaned test applications survive a cancelled or failed run and the
       # next job on a fresh runner will not see them — but a self-hosted runner
       # would. Cheap insurance, and it documents which processes these tests
