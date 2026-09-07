@@ -135,6 +135,51 @@ jobs:
             throw "Only $passed tests actually ran, floor is $floor. A skip reads as a pass — find the fixture that stopped finding its subject."
           }
 
+      # C3 (CONVENTIONS-HARVEST): the ratchet above catches integration alone.
+      # Unit and protocol had no floor at all, so a --filter typo or a crashed
+      # host on either one exits 0 with nothing run and no reader would notice.
+      #
+      # Exact union asserted, not just nonzero: three DISTINCT test projects
+      # (no shared test names, unlike TcgDex.CSharpSdk where the same suite ran
+      # on multiple platforms), so summing each lane's total is the union with
+      # no dedup needed.
+      #
+      # Measured directly from a green run before this number was written -
+      # unit 189, protocol 442, integration 202, total 833 (run 34169385488,
+      # 2026-09-07). A grep-based estimate came back 661, unreliable because
+      # TestCase rows and method rows do not map cleanly to test counts - so
+      # this was measured, not guessed. If a lane changes, re-measure the same
+      # way rather than adjusting this constant to whatever the log printed.
+      - name: Verify no lane silently ran nothing
+        if: always()
+        shell: pwsh
+        run: |
+          $expected = 833
+          $lanes = 'unit.trx', 'protocol.trx', 'integration.trx'
+          $total = 0
+          $failed = @()
+
+          foreach ($name in $lanes) {
+            $trx = Get-ChildItem -Recurse -Filter $name | Select-Object -First 1
+            if (-not $trx) { $failed += "$name`: file not found - the test step did not run"; continue }
+
+            [xml]$results = Get-Content $trx.FullName
+            $count = [int]$results.TestRun.ResultSummary.Counters.total
+            Write-Host "$name`: $count tests"
+
+            if ($count -eq 0) { $failed += "$name`: 0 tests - a --filter matched nothing, or the host crashed before running any" }
+            $total += $count
+          }
+
+          Write-Host "union total across all three lanes: $total (expected $expected)"
+
+          if ($failed.Count -gt 0) {
+            throw ($failed -join "`n")
+          }
+          if ($total -ne $expected) {
+            throw "Expected $expected tests across unit+protocol+integration but found $total. If this is a deliberate change (new tests added, a test removed), re-measure and update `$expected in this step - do not just copy whatever this run printed without checking why it moved."
+          }
+
       # Orphaned test applications survive a cancelled or failed run and the
       # next job on a fresh runner will not see them — but a self-hosted runner
       # would. Cheap insurance, and it documents which processes these tests
