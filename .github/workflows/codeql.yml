@@ -1,0 +1,72 @@
+name: CodeQL
+
+# CodeQL does interprocedural taint analysis - it follows a value from where it
+# enters the program to where it is used. That is complementary to
+# TreatWarningsAsErrors and the analyzers ci.yml already gates on, which match
+# known-dangerous shapes at a single call site rather than tracing a value
+# across calls.
+#
+# windows-latest, not ubuntu-latest like TcgDex.CSharpSdk's version of this
+# workflow: this repository's automation layer is raw IUIAutomation COM and
+# every project targets net10.0-windows, so it can only build where ci.yml
+# already builds it.
+#
+# Free for public repositories.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, Tuesday 04:23 UTC - a different day and an off-hour minute from
+    # ci.yml and mutation.yml, so a scheduled security scan never queues
+    # behind either of them.
+    - cron: "23 4 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  analyze:
+    name: Analyze C#
+    runs-on: windows-latest
+
+    permissions:
+      # Required to upload results to the Security tab.
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          queries: security-and-quality
+
+      # The whole solution, matching ci.yml's own build step: unlike
+      # TcgDex.CSharpSdk, WindowsDriverCore's projects are genuinely different
+      # code rather than one library multi-targeted three times, so there is
+      # no single project that stands in for the rest.
+      - name: Restore
+        run: dotnet restore WindowsDriverCore.slnx
+
+      - name: Build
+        run: dotnet build WindowsDriverCore.slnx --no-restore --configuration Release
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:csharp"
